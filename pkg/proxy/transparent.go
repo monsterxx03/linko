@@ -5,19 +5,22 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strconv"
+	"syscall"
 	"sync"
 	"time"
 )
 
 // TransparentProxy represents a transparent proxy
 type TransparentProxy struct {
-	listenAddr string
-	targetAddr string
-	server     net.Listener
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	stats      *ProxyStats
+	listenAddr   string
+	server       net.Listener
+	ctx          context.Context
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
+	stats        *ProxyStats
+	upstream     *UpstreamClient
+	enableDirect bool // Enable direct connection when upstream is disabled
 }
 
 // ProxyStats tracks proxy statistics
@@ -30,16 +33,17 @@ type ProxyStats struct {
 }
 
 // NewTransparentProxy creates a new transparent proxy
-func NewTransparentProxy(listenAddr, targetAddr string) *TransparentProxy {
+func NewTransparentProxy(listenAddr string, upstream *UpstreamClient) *TransparentProxy {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &TransparentProxy{
-		listenAddr: listenAddr,
-		targetAddr: targetAddr,
-		ctx:        ctx,
-		cancel:     cancel,
+		listenAddr:   listenAddr,
+		ctx:          ctx,
+		cancel:       cancel,
 		stats: &ProxyStats{
 			startTime: time.Now(),
 		},
+		upstream:     upstream,
+		enableDirect: !upstream.IsEnabled(),
 	}
 }
 
@@ -55,7 +59,11 @@ func (p *TransparentProxy) Start() error {
 	p.wg.Add(1)
 	go p.acceptLoop()
 
-	fmt.Printf("Transparent proxy listening on %s -> %s\n", p.listenAddr, p.targetAddr)
+	if p.upstream.IsEnabled() {
+		fmt.Printf("Transparent proxy listening on %s (upstream: %s %s)\n", p.listenAddr, p.upstream.GetConfig().Type, p.upstream.GetConfig().Addr)
+	} else {
+		fmt.Printf("Transparent proxy listening on %s (direct mode)\n", p.listenAddr)
+	}
 	return nil
 }
 
@@ -120,11 +128,44 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 		p.stats.mu.Unlock()
 	}()
 
-	// Connect to target
-	targetConn, err := net.Dial("tcp", p.targetAddr)
+	// Get original destination from connection
+	originalDst, err := p.getOriginalDestination(clientConn)
 	if err != nil {
-		fmt.Printf("Failed to connect to target %s: %v\n", p.targetAddr, err)
+		fmt.Printf("Failed to get original destination: %v\n", err)
 		return
+	}
+
+	fmt.Printf("Proxying connection from %s to %s\n", clientConn.RemoteAddr(), originalDst)
+
+	// Parse destination address
+	targetHost, targetPortStr, err := net.SplitHostPort(originalDst)
+	if err != nil {
+		fmt.Printf("Invalid destination address %s: %v\n", originalDst, err)
+		return
+	}
+
+	targetPort, err := strconv.Atoi(targetPortStr)
+	if err != nil {
+		fmt.Printf("Invalid port %s: %v\n", targetPortStr, err)
+		return
+	}
+
+	// Connect to target through upstream proxy or directly
+	var targetConn net.Conn
+	if p.upstream.IsEnabled() {
+		// Connect through upstream proxy
+		targetConn, err = p.upstream.Connect(targetHost, targetPort)
+		if err != nil {
+			fmt.Printf("Failed to connect to %s via upstream proxy: %v\n", originalDst, err)
+			return
+		}
+	} else {
+		// Connect directly
+		targetConn, err = net.Dial("tcp", originalDst)
+		if err != nil {
+			fmt.Printf("Failed to connect to %s: %v\n", originalDst, err)
+			return
+		}
 	}
 	defer targetConn.Close()
 
@@ -173,6 +214,61 @@ func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, e
 	return totalBytes, err
 }
 
+// getOriginalDestination gets the original destination address from a redirected connection
+func (p *TransparentProxy) getOriginalDestination(conn net.Conn) (string, error) {
+	// Try to get SO_ORIGINAL_DST on Linux
+	if originalDst, err := p.getSOOriginalDst(conn); err == nil {
+		return originalDst, nil
+	}
+
+	// Fallback: try to parse from connection remote addr
+	// This works when using REDIRECT target but not all cases
+	addr := conn.RemoteAddr().String()
+	if host, port, err := net.SplitHostPort(addr); err == nil {
+		// If it's a local address, we can't determine the original destination
+		if !isLocalHost(host) {
+			return fmt.Sprintf("%s:%s", host, port), nil
+		}
+	}
+
+	return "", fmt.Errorf("unable to determine original destination")
+}
+
+// getSOOriginalDst gets the original destination using SO_ORIGINAL_DST socket option (Linux)
+func (p *TransparentProxy) getSOOriginalDst(conn net.Conn) (string, error) {
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		return "", fmt.Errorf("connection is not TCP")
+	}
+
+	// Get underlying socket file descriptor
+	file, err := tcpConn.File()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// Get SO_ORIGINAL_DST address
+	addr, err := syscall.GetsockoptIPv6Mreq(int(file.Fd()), syscall.IPPROTO_IP, SO_ORIGINAL_DST)
+	if err != nil {
+		return "", err
+	}
+
+	// Parse the address
+	ip := net.IP(addr.Multiaddr[4:8]).String()
+	port := int(addr.Multiaddr[2])<<8 + int(addr.Multiaddr[3])
+
+	return fmt.Sprintf("%s:%d", ip, port), nil
+}
+
+// isLocalHost checks if an IP address is localhost
+func isLocalHost(ip string) bool {
+	return ip == "127.0.0.1" || ip == "::1" || ip == "localhost"
+}
+
+// SO_ORIGINAL_dst is the socket option to get original destination
+const SO_ORIGINAL_DST = 80 // Linux socket option number
+
 // GetStats returns proxy statistics
 func (p *TransparentProxy) GetStats() map[string]interface{} {
 	p.stats.mu.RLock()
@@ -182,7 +278,11 @@ func (p *TransparentProxy) GetStats() map[string]interface{} {
 
 	stats := make(map[string]interface{})
 	stats["listen_addr"] = p.listenAddr
-	stats["target_addr"] = p.targetAddr
+	stats["upstream_enabled"] = p.upstream.IsEnabled()
+	if p.upstream.IsEnabled() {
+		stats["upstream_type"] = p.upstream.GetConfig().Type
+		stats["upstream_addr"] = p.upstream.GetConfig().Addr
+	}
 	stats["total_connections"] = p.stats.totalConnections
 	stats["active_connections"] = p.stats.activeConnections
 	stats["bytes_transferred"] = p.stats.bytesTransferred
@@ -203,7 +303,7 @@ func (p *TransparentProxy) GetListenAddr() string {
 	return p.listenAddr
 }
 
-// GetTargetAddr returns the target address
+// GetTargetAddr returns the listen address (no fixed target in transparent mode)
 func (p *TransparentProxy) GetTargetAddr() string {
-	return p.targetAddr
+	return "dynamic (from original destination)"
 }

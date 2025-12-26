@@ -85,3 +85,21 @@ firewall:
 
   # Enable HTTPS (port 443) redirect to proxy
   redirect_https: true
+
+# Upstream proxy configuration
+# Configure how Linko forwards traffic to upstream proxies
+upstream:
+  # Enable upstream proxy
+  enable: false
+
+  # Upstream proxy type: "socks5" or "http"
+  type: "socks5"
+
+  # Upstream proxy address (host:port)
+  addr: "127.0.0.1:1080"
+
+  # Username for upstream proxy (optional)
+  username: ""
+
+  # Password for upstream proxy (optional)
+  password: ""

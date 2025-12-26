@@ -112,6 +112,19 @@ func runServer(cmd *cobra.Command, args []string) {
 		defer socks5Server.Stop()
 	}
 
+	// Start transparent proxy (listens on firewall redirect port)
+	var transparentProxy *proxy.TransparentProxy
+	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
+		fmt.Println("Starting transparent proxy...")
+		upstreamClient := proxy.NewUpstreamClient(cfg.Upstream)
+		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.Firewall.ProxyPort, upstreamClient)
+		if err := transparentProxy.Start(); err != nil {
+			fmt.Printf("Failed to start transparent proxy: %v\n", err)
+			// Continue without failing
+		}
+		defer transparentProxy.Stop()
+	}
+
 	// TODO: Start HTTP tunnel and Shadowsocks servers
 	fmt.Println("HTTP tunnel and Shadowsocks will be implemented in Phase 4")
 

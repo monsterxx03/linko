@@ -20,6 +20,9 @@ type Config struct {
 
 	// Firewall configuration
 	Firewall FirewallConfig `mapstructure:"firewall" json:"firewall"`
+
+	// Upstream proxy configuration
+	Upstream UpstreamConfig `mapstructure:"upstream" json:"upstream"`
 }
 
 // ServerConfig contains server-related settings
@@ -107,6 +110,24 @@ type FirewallConfig struct {
 	RedirectHTTPS bool `mapstructure:"redirect_https" json:"redirect_https"`
 }
 
+// UpstreamConfig contains upstream proxy settings
+type UpstreamConfig struct {
+	// Enable upstream proxy
+	Enable bool `mapstructure:"enable" json:"enable"`
+
+	// Upstream proxy type (socks5, http)
+	Type string `mapstructure:"type" json:"type"`
+
+	// Upstream proxy address (host:port)
+	Addr string `mapstructure:"addr" json:"addr"`
+
+	// Username for upstream proxy (optional)
+	Username string `mapstructure:"username" json:"username"`
+
+	// Password for upstream proxy (optional)
+	Password string `mapstructure:"password" json:"password"`
+}
+
 // DefaultConfig returns a default configuration
 func DefaultConfig() *Config {
 	return &Config{
@@ -139,6 +160,13 @@ func DefaultConfig() *Config {
 			ProxyPort:      "7890",
 			RedirectHTTP:   true,
 			RedirectHTTPS:  true,
+		},
+		Upstream: UpstreamConfig{
+			Enable:   false,
+			Type:     "socks5",
+			Addr:     "127.0.0.1:1080",
+			Username: "",
+			Password: "",
 		},
 	}
 }
