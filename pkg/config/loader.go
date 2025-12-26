@@ -29,6 +29,15 @@ func LoadConfig(configPath string) (*Config, error) {
 	v.SetDefault("traffic.enable_realtime", true)
 	v.SetDefault("traffic.enable_history", true)
 	v.SetDefault("traffic.update_interval", "1s")
+	v.SetDefault("firewall.enable_auto", false)
+	v.SetDefault("firewall.proxy_port", "7890")
+	v.SetDefault("firewall.redirect_http", true)
+	v.SetDefault("firewall.redirect_https", true)
+	v.SetDefault("upstream.enable", false)
+	v.SetDefault("upstream.type", "socks5")
+	v.SetDefault("upstream.addr", "127.0.0.1:1080")
+	v.SetDefault("upstream.username", "")
+	v.SetDefault("upstream.password", "")
 
 	// Create config directory if it doesn't exist
 	configDir := filepath.Dir(configPath)
@@ -70,6 +79,8 @@ func SaveConfig(configPath string, config *Config) error {
 	v.Set("dns", config.DNS)
 	v.Set("proxy", config.Proxy)
 	v.Set("traffic", config.Traffic)
+	v.Set("firewall", config.Firewall)
+	v.Set("upstream", config.Upstream)
 
 	if err := v.WriteConfig(); err != nil {
 		return fmt.Errorf("failed to save config: %w", err)

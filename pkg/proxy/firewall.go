@@ -103,9 +103,9 @@ func (f *FirewallManager) removeMacOS() error {
 
 // writeMacOSRules writes rules to pf.conf
 func (f *FirewallManager) writeMacOSRules(rules string) error {
-	// For simplicity, we'll create a temporary file
-	// In production, you should handle this more securely
-	return nil
+	// Write rules to /etc/pf.linko.conf
+	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("cat > /etc/pf.linko.conf << 'EOF'\n%s\nEOF", rules))
+	return cmd.Run()
 }
 
 // loadMacOSRules loads pfctl rules
