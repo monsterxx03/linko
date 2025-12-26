@@ -70,3 +70,18 @@ traffic:
 
   # Database file path for traffic statistics
   db_path: "data/traffic.db"
+
+# Firewall configuration
+firewall:
+  # Enable automatic firewall rule management
+  # WARNING: This requires sudo/root privileges
+  enable_auto: false
+
+  # Proxy port for transparent proxy
+  proxy_port: "7890"
+
+  # Enable HTTP (port 80) redirect to proxy
+  redirect_http: true
+
+  # Enable HTTPS (port 443) redirect to proxy
+  redirect_https: true

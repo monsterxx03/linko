@@ -17,6 +17,9 @@ type Config struct {
 
 	// Traffic statistics
 	Traffic TrafficConfig `mapstructure:"traffic" json:"traffic"`
+
+	// Firewall configuration
+	Firewall FirewallConfig `mapstructure:"firewall" json:"firewall"`
 }
 
 // ServerConfig contains server-related settings
@@ -89,6 +92,21 @@ type TrafficConfig struct {
 	DBPath string `mapstructure:"db_path" json:"db_path"`
 }
 
+// FirewallConfig contains firewall-related settings
+type FirewallConfig struct {
+	// Enable automatic firewall rule management
+	EnableAuto bool `mapstructure:"enable_auto" json:"enable_auto"`
+
+	// Proxy port for transparent proxy
+	ProxyPort string `mapstructure:"proxy_port" json:"proxy_port"`
+
+	// Enable HTTP redirect
+	RedirectHTTP bool `mapstructure:"redirect_http" json:"redirect_http"`
+
+	// Enable HTTPS redirect
+	RedirectHTTPS bool `mapstructure:"redirect_https" json:"redirect_https"`
+}
+
 // DefaultConfig returns a default configuration
 func DefaultConfig() *Config {
 	return &Config{
@@ -115,6 +133,12 @@ func DefaultConfig() *Config {
 			EnableHistory:  true,
 			UpdateInterval: 1 * time.Second,
 			DBPath:         "data/traffic.db",
+		},
+		Firewall: FirewallConfig{
+			EnableAuto:     false,
+			ProxyPort:      "7890",
+			RedirectHTTP:   true,
+			RedirectHTTPS:  true,
 		},
 	}
 }

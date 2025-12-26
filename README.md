@@ -122,12 +122,13 @@ make bench
 - [x] DNS服务器(UDP/TCP)
 - [x] DNS缓存机制
 
-### Phase 2: 核心代理层
-- [ ] SOCKS5协议实现
-- [ ] 透明代理核心逻辑
-- [ ] 连接池和连接管理
-- [ ] 错误处理和重连机制
-- [ ] macOS/Linux防火墙配置
+### Phase 2: 核心代理层 ✅
+- [x] SOCKS5协议实现
+- [x] 透明代理核心逻辑
+- [x] 连接池和连接管理
+- [x] 错误处理和重连机制
+- [x] macOS/Linux防火墙配置
+- [x] 流量限流和管理
 
 ### Phase 3: 流量分析和统计
 - [ ] SNI信息提取
@@ -188,18 +189,66 @@ make docker-run
 
 ## 📝 使用说明
 
-### 配置透明代理
+### 基础使用
 
-#### macOS
+#### 启动服务器
+```bash
+# 启动DNS和SOCKS5代理服务器
+./bin/linko -c config/linko.yaml
+
+# 启用自动防火墙配置 (需要sudo权限)
+sudo ./bin/linko --firewall -c config/linko.yaml
+```
+
+#### 客户端配置
+
+**SOCKS5代理**
+- 主机: 127.0.0.1
+- 端口: 7890
+
+**HTTP代理**
+- 主机: 127.0.0.1
+- 端口: 7890
+
+**DNS配置**
+- 主DNS: 127.0.0.1:5353
+
+### 透明代理配置
+
+#### 自动配置 (推荐)
+Linko支持自动配置防火墙规则：
+
+```bash
+# 启用自动防火墙配置
+sudo ./bin/linko --firewall
+```
+
+或者在配置文件中设置：
+```yaml
+firewall:
+  enable_auto: true
+  proxy_port: "7890"
+  redirect_http: true
+  redirect_https: true
+```
+
+**注意**: 自动配置需要sudo/root权限，会自动设置以下规则：
+- HTTP (80) → 代理端口
+- HTTPS (443) → 代理端口
+
+#### 手动配置
+
+##### macOS
 ```bash
 # 使用pfctl配置规则
 sudo pfctl -f pf.conf
 ```
 
-#### Linux
+##### Linux
 ```bash
 # 使用iptables配置规则
 sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port 7890
+sudo iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port 7890
 ```
 
 ### DNS配置
@@ -208,16 +257,6 @@ sudo iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port 7890
 ```
 127.0.0.1:5353
 ```
-
-### 客户端配置
-
-#### SOCKS5代理
-- 主机: 127.0.0.1
-- 端口: 7890
-
-#### HTTP代理
-- 主机: 127.0.0.1
-- 端口: 7890
 
 ## 🤝 贡献
 
