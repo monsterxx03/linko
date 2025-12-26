@@ -1,0 +1,72 @@
+# Linko Configuration File
+# This is the default configuration for the Linko proxy server
+
+# Server configuration
+server:
+  # Listen address for the main proxy server
+  listen_addr: "127.0.0.1:7890"
+
+  # HTTP API port for management interface
+  admin_port: 8080
+
+  # Log level (debug, info, warn, error)
+  log_level: "info"
+
+# DNS configuration
+dns:
+  # Listen address for DNS server
+  listen_addr: "127.0.0.1:5353"
+
+  # Domestic DNS servers (China)
+  # These servers will be queried for domains that resolve to Chinese IPs
+  domestic_dns:
+    - "114.114.114.114"  # 114 DNS
+    - "223.5.5.5"        # AliDNS
+
+  # Foreign DNS servers (International)
+  # These servers will be queried for domains that resolve to foreign IPs
+  foreign_dns:
+    - "8.8.8.8"          # Google DNS
+    - "1.1.1.1"          # Cloudflare DNS
+
+  # Path to GeoIP database file
+  # Download GeoLite2-Country.mmdb from MaxMind and place it here
+  ipdb_path: "data/geoip.mmdb"
+
+  # DNS cache TTL (time to live)
+  cache_ttl: "5m"
+
+  # Use TCP protocol for foreign DNS queries
+  # This allows DNS queries to go through the proxy if it doesn't support UDP
+  tcp_for_foreign: true
+
+# Proxy protocol configuration
+proxy:
+  # Enable SOCKS5 proxy
+  socks5: true
+
+  # Enable HTTP CONNECT tunnel
+  http_tunnel: true
+
+  # Enable Shadowsocks
+  shadowsocks: false
+
+  # Shadowsocks configuration (only used if shadowsocks is enabled)
+  shadowsocks_config:
+    method: "aes-256-gcm"
+    password: "your-password"
+    port: 8388
+
+# Traffic statistics configuration
+traffic:
+  # Enable real-time traffic statistics
+  enable_realtime: true
+
+  # Enable historical statistics
+  enable_history: true
+
+  # Statistics update interval
+  update_interval: "1s"
+
+  # Database file path for traffic statistics
+  db_path: "data/traffic.db"
