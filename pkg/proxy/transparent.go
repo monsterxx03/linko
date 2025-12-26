@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os/exec"
+	"runtime"
 	"strconv"
-	"syscall"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -216,8 +219,17 @@ func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, e
 
 // getOriginalDestination gets the original destination address from a redirected connection
 func (p *TransparentProxy) getOriginalDestination(conn net.Conn) (string, error) {
-	// Try to get SO_ORIGINAL_DST on Linux
+	// Try platform-specific methods
 	if originalDst, err := p.getSOOriginalDst(conn); err == nil {
+		return originalDst, nil
+	}
+
+	if originalDst, err := p.getSORecvOrigDstAddr(conn); err == nil {
+		return originalDst, nil
+	}
+
+	// Try macOS-specific method using pfctl
+	if originalDst, err := p.getMacOSOriginalDst(conn); err == nil {
 		return originalDst, nil
 	}
 
@@ -248,7 +260,7 @@ func (p *TransparentProxy) getSOOriginalDst(conn net.Conn) (string, error) {
 	}
 	defer file.Close()
 
-	// Get SO_ORIGINAL_DST address
+	// Get SO_ORIGINAL_DST address using syscall
 	addr, err := syscall.GetsockoptIPv6Mreq(int(file.Fd()), syscall.IPPROTO_IP, SO_ORIGINAL_DST)
 	if err != nil {
 		return "", err
@@ -261,13 +273,86 @@ func (p *TransparentProxy) getSOOriginalDst(conn net.Conn) (string, error) {
 	return fmt.Sprintf("%s:%d", ip, port), nil
 }
 
+// getSORecvOrigDstAddr gets the original destination using SO_RECVORIGDSTADDR socket option (macOS/Linux)
+func (p *TransparentProxy) getSORecvOrigDstAddr(conn net.Conn) (string, error) {
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		return "", fmt.Errorf("connection is not TCP")
+	}
+
+	// Get underlying socket file descriptor
+	file, err := tcpConn.File()
+	if err != nil {
+		return "", err
+	}
+	defer file.Close()
+
+	// Try to get SO_RECVORIGDSTADDR using a generic approach
+	// Try to get SO_RECVORIGDSTADDR using syscall
+	// Note: This may not be available on all systems
+	// Use a simple approach - just return not available for now
+	// This is a fallback method when SO_ORIGINAL_DST is not available
+	return "", fmt.Errorf("SO_RECVORIGDSTADDR method not implemented in syscall")
+}
+
+// getMacOSOriginalDst gets the original destination on macOS using pfctl
+func (p *TransparentProxy) getMacOSOriginalDst(conn net.Conn) (string, error) {
+	// Only try this on macOS
+	if runtime.GOOS != "darwin" {
+		return "", fmt.Errorf("not macOS")
+	}
+
+	tcpConn, ok := conn.(*net.TCPConn)
+	if !ok {
+		return "", fmt.Errorf("connection is not TCP")
+	}
+
+	// Get remote address
+	remoteAddr := tcpConn.RemoteAddr().String()
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return "", err
+	}
+
+	// Query pfctl for connection states
+	cmd := exec.Command("sudo", "pfctl", "-s", "states", "-k", host)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+
+	// Parse pfctl output to find the original destination
+	lines := strings.Split(string(output), "\n")
+	for _, line := range lines {
+		// Look for lines containing the source IP
+		if strings.Contains(line, host) {
+			// Parse the line to extract the destination
+			// pfctl output format: <proto> <src> <dst> <state>
+			parts := strings.Fields(line)
+			if len(parts) >= 3 {
+				// Try to parse the destination
+				dst := parts[2]
+				if strings.Contains(dst, ":") {
+					// IPv6 format or IPv4:port format
+					return dst, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("not found in pfctl states")
+}
+
 // isLocalHost checks if an IP address is localhost
 func isLocalHost(ip string) bool {
 	return ip == "127.0.0.1" || ip == "::1" || ip == "localhost"
 }
 
-// SO_ORIGINAL_dst is the socket option to get original destination
-const SO_ORIGINAL_DST = 80 // Linux socket option number
+// Socket options for getting original destination
+const (
+	SO_ORIGINAL_DST      = 80  // Linux socket option number
+	SO_RECVORIGDSTADDR   = 74  // macOS/Linux socket option number
+)
 
 // GetStats returns proxy statistics
 func (p *TransparentProxy) GetStats() map[string]interface{} {
