@@ -9,6 +9,7 @@ import (
 	"github.com/monsterxx03/linko/pkg/config"
 	"github.com/monsterxx03/linko/pkg/dns"
 	"github.com/monsterxx03/linko/pkg/ipdb"
+	"github.com/monsterxx03/linko/pkg/proxy"
 	"github.com/spf13/cobra"
 )
 
@@ -93,8 +94,19 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	defer dnsServer.Stop()
 
-	// TODO: Start proxy servers (SOCKS5, HTTP, Shadowsocks)
-	fmt.Println("Proxy servers will be implemented in Phase 2")
+	// Start proxy servers
+	if cfg.Proxy.SOCKS5 {
+		fmt.Println("Starting SOCKS5 proxy server...")
+		socks5Server := proxy.NewSOCKS5Server(cfg.Server.ListenAddr, nil)
+		if err := socks5Server.Start(); err != nil {
+			fmt.Printf("Failed to start SOCKS5 server: %v\n", err)
+			// Continue without failing
+		}
+		defer socks5Server.Stop()
+	}
+
+	// TODO: Start HTTP tunnel and Shadowsocks servers
+	fmt.Println("HTTP tunnel and Shadowsocks will be implemented in Phase 4")
 
 	// Wait for interrupt signal
 	fmt.Println("Server started successfully. Press Ctrl+C to stop.")
