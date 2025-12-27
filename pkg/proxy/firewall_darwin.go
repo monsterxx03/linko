@@ -10,24 +10,29 @@ import (
 	"strings"
 )
 
+const pfTableName = "linko_reserved"
+
 func (f *FirewallManager) SetupTransparentProxy() error {
 	cmd := exec.Command("sudo", "pfctl", "-s", "info")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("pf is not enabled: %w", err)
 	}
 
-	excludedAddrs := strings.Join(reservedCIDRs, ", ")
+	if err := f.createTable(); err != nil {
+		return fmt.Errorf("failed to create pf table: %w", err)
+	}
+
 	ruleConfig := fmt.Sprintf(`
 # Linko Transparent Proxy Rules
 ext_if = "en0"
 linko_port = "%s"
 
-rdr on $ext_if inet proto tcp from any to not { %s } port 80 -> 127.0.0.1 port $linko_port
-rdr on $ext_if inet proto tcp from any to not { %s } port 443 -> 127.0.0.1 port $linko_port
+rdr on $ext_if inet proto tcp from any to not <%s> port 80 -> 127.0.0.1 port $linko_port
+rdr on $ext_if inet proto tcp from any to not <%s> port 443 -> 127.0.0.1 port $linko_port
 
 pass in on $ext_if inet proto tcp from any to 127.0.0.1 port $linko_port
 pass out on $ext_if inet proto tcp from 127.0.0.1 port $linko_port to any
-`, f.proxyPort, excludedAddrs, excludedAddrs)
+`, f.proxyPort, pfTableName, pfTableName)
 
 	if err := f.writeMacOSRules(ruleConfig); err != nil {
 		return fmt.Errorf("failed to write MacOS rules: %w", err)
@@ -36,11 +41,24 @@ pass out on $ext_if inet proto tcp from 127.0.0.1 port $linko_port to any
 	return f.loadMacOSRules()
 }
 
+func (f *FirewallManager) createTable() error {
+	addresses := strings.Join(reservedCIDRs, "\n")
+	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | pfctl -t %s -T add -", addresses, pfTableName))
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+	return nil
+}
+
 func (f *FirewallManager) RemoveTransparentProxy() error {
 	cmd := exec.Command("sudo", "pfctl", "-F", "rdr")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to remove rdr rules: %w", err)
 	}
+
+	cmd = exec.Command("sudo", "pfctl", "-t", pfTableName, "-T", "flush")
+	cmd.Run()
+
 	return nil
 }
 
@@ -75,6 +93,12 @@ func (f *FirewallManager) CheckFirewallStatus() (map[string]interface{}, error) 
 		stats["enabled"] = true
 		stats["output"] = stdout.String()
 	}
+
+	cmd = exec.Command("sudo", "pfctl", "-t", pfTableName, "-T", "show")
+	var tableBuf bytes.Buffer
+	cmd.Stdout = &tableBuf
+	cmd.Run()
+	stats["table"] = tableBuf.String()
 
 	return stats, nil
 }
