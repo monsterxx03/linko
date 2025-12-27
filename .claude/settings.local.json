@@ -10,7 +10,10 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(cat:*)",
-      "Bash(go doc:*)"
+      "Bash(go doc:*)",
+      "Bash(go version)",
+      "Bash(go list -f '{{.GoFiles}}':*)",
+      "Bash(ls:*)"
     ]
   }
 }
