@@ -63,28 +63,21 @@ run:
 download-geoip:
 	@echo "Downloading GeoIP database..."
 	@mkdir -p data
-	@echo "Please download GeoLite2-Country.mmdb from MaxMind and place it in data/"
-	@echo "Or run: curl -L -o data/geoip.mmdb 'https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=YOUR_LICENSE_KEY&suffix=tar.gz'"
+	@if [ ! -f .env ]; then echo "Error: .env file not found. Copy .env.example to .env and add your credentials."; exit 1; fi
+	@. .env && if [ -z "$$MAXMIND_ACCOUNT_ID" ] || [ -z "$$MAXMIND_LICENSE_KEY" ]; then echo "Error: MAXMIND_ACCOUNT_ID or MAXMIND_LICENSE_KEY not set in .env"; exit 1; fi
+	@. .env && curl -L -o /tmp/geoip.tar.gz "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-Country&license_key=$$MAXMIND_LICENSE_KEY&suffix=tar.gz" --user "$$MAXMIND_ACCOUNT_ID:$$MAXMIND_LICENSE_KEY"
+	@tar -xzf /tmp/geoip.tar.gz -C /tmp
+	@mv /tmp/GeoLite2-Country_*/GeoLite2-Country.mmdb data/geoip.mmdb 2>/dev/null || mv /tmp/*/GeoLite2-Country.mmdb data/geoip.mmdb
+	@rm -rf /tmp/geoip.tar.gz /tmp/GeoLite2-Country_* 2>/dev/null
+	@echo "GeoIP database downloaded to data/geoip.mmdb"
 
 # Generate default config
 config:
 	@echo "Generating default config..."
 	@mkdir -p config
-	@$(GOCMD) run -tags '!noquirks' -ldflags '-X main.version=0.1.0' - <<'EOF'
-package main
-import (
-	"fmt"
-	"os"
-	"github.com/monsterxx03/linko/pkg/config"
-)
-func main() {
-	if err := config.GenerateConfig("config/linko.yaml"); err != nil {
-		fmt.Printf("Error: %v\n", err)
-		os.Exit(1)
-	}
-	fmt.Println("Default config generated at config/linko.yaml")
-}
-EOF
+	@echo 'package main; import ("fmt"; "os"; "github.com/monsterxx03/linko/pkg/config"); func main() { if err := config.GenerateConfig("config/linko.yaml"); err != nil { fmt.Printf("Error: %v\n", err); os.Exit(1) }; fmt.Println("Default config generated at config/linko.yaml") }' > /tmp/gen_config.go
+	@$(GOCMD) run -tags '!noquirks' -ldflags '-X main.version=0.1.0' /tmp/gen_config.go
+	@rm -f /tmp/gen_config.go
 
 # Dev tools
 dev-deps:
