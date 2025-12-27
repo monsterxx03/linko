@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -48,10 +48,10 @@ var configCmd = &cobra.Command{
 	Long:  "Generate a default configuration file at the specified path",
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := config.GenerateConfig(configPathFlag); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			slog.Error("failed to generate config", "error", err)
 			os.Exit(1)
 		}
-		fmt.Printf("Default config generated at %s\n", configPathFlag)
+		slog.Info("default config generated", "path", configPathFlag)
 	},
 }
 
@@ -67,50 +67,47 @@ func main() {
 	rootCmd.AddCommand(configCmd)
 
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		slog.Error("failed to execute command", "error", err)
 		os.Exit(1)
 	}
 }
 
 func runServer(cmd *cobra.Command, args []string) {
-	// Load configuration
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to load config: %v\n", err)
+		slog.Error("failed to load config", "error", err)
 		os.Exit(1)
 	}
 
-	// Override log level if specified
 	if logLevel != "" {
 		cfg.Server.LogLevel = logLevel
 	}
 
-	// Override firewall setting if specified via flag
 	if enableFirewall {
 		cfg.Firewall.EnableAuto = true
 	}
 
-	// Ensure directories exist
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+		Level: parseLogLevel(cfg.Server.LogLevel),
+	}))
+	slog.SetDefault(logger)
+
 	if err := config.EnsureDirectories(cfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to ensure directories: %v\n", err)
+		slog.Error("failed to ensure directories", "error", err)
 		os.Exit(1)
 	}
 
-	// Initialize GeoIP database
-	fmt.Println("Initializing GeoIP database...")
+	slog.Info("initializing GeoIP database")
 	geoIP, err := ipdb.NewGeoIPManager(cfg.DNS.IPDBPath)
 	if err != nil {
-		fmt.Printf("Warning: Failed to initialize GeoIP database: %v\n", err)
-		fmt.Println("Please download GeoIP database to enable IP geolocation features")
-		// Continue without GeoIP for now
+		slog.Warn("failed to initialize GeoIP database", "error", err)
+		slog.Info("please download GeoIP database to enable IP geolocation features")
 	}
 
-	// Initialize DNS cache
-	fmt.Println("Initializing DNS cache...")
+	slog.Info("initializing DNS cache")
 	dnsCache := dns.NewDNSCache(cfg.DNS.CacheTTL, 10000)
 
-	// Initialize DNS splitter
-	fmt.Println("Initializing DNS splitter...")
+	slog.Info("initializing DNS splitter")
 	dnsSplitter := dns.NewDNSSplitter(
 		geoIP,
 		cfg.DNS.DomesticDNS,
@@ -118,32 +115,28 @@ func runServer(cmd *cobra.Command, args []string) {
 		cfg.DNS.TCPForForeign,
 	)
 
-	// Start DNS server
-	fmt.Println("Starting DNS server...")
+	slog.Info("starting DNS server", "address", cfg.DNS.ListenAddr)
 	dnsServer := dns.NewDNSServer(cfg.DNS.ListenAddr, dnsSplitter, dnsCache)
 	if err := dnsServer.Start(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to start DNS server: %v\n", err)
+		slog.Error("failed to start DNS server", "error", err)
 		os.Exit(1)
 	}
 	defer dnsServer.Stop()
 
-	// Start transparent proxy (listens on firewall redirect port)
 	var transparentProxy *proxy.TransparentProxy
 	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
-		fmt.Println("Starting transparent proxy...")
+		slog.Info("starting transparent proxy", "address", "127.0.0.1:"+cfg.ProxyPort())
 		upstreamClient := proxy.NewUpstreamClient(cfg.Upstream)
 		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient, geoIP)
 		if err := transparentProxy.Start(); err != nil {
-			fmt.Printf("Failed to start transparent proxy: %v\n", err)
-			// Continue without failing
+			slog.Error("failed to start transparent proxy", "error", err)
 		}
 		defer transparentProxy.Stop()
 	}
 
-	// Setup firewall rules if enabled
 	var firewallManager *proxy.FirewallManager
 	if cfg.Firewall.EnableAuto {
-		fmt.Println("Setting up firewall rules...")
+		slog.Info("setting up firewall rules")
 		firewallManager = proxy.NewFirewallManager(
 			cfg.ProxyPort(),
 			cfg.DNSServerPort(),
@@ -152,36 +145,47 @@ func runServer(cmd *cobra.Command, args []string) {
 			cfg.Firewall.RedirectHTTPS,
 		)
 		if err := firewallManager.SetupTransparentProxy(); err != nil {
-			fmt.Printf("Warning: Failed to setup firewall rules: %v\n", err)
-			fmt.Println("Please ensure you have sudo privileges and try again")
-			// Continue without firewall setup
+			slog.Warn("failed to setup firewall rules", "error", err)
+			slog.Info("please ensure you have sudo privileges")
 		} else {
-			fmt.Println("Firewall rules configured successfully")
+			slog.Info("firewall rules configured successfully")
 		}
 	}
 
-	// Wait for interrupt signal
-	fmt.Println("Server started successfully. Press Ctrl+C to stop.")
+	slog.Info("server started successfully. press Ctrl+C to stop")
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	fmt.Println("\nShutting down server...")
+	slog.Info("shutting down server")
 
-	// Cleanup firewall rules if they were set
 	if firewallManager != nil && cfg.Firewall.EnableAuto {
-		fmt.Println("Removing firewall rules...")
+		slog.Info("removing firewall rules")
 		if err := firewallManager.RemoveTransparentProxy(); err != nil {
-			fmt.Printf("Warning: Failed to remove firewall rules: %v\n", err)
+			slog.Warn("failed to remove firewall rules", "error", err)
 		} else {
-			fmt.Println("Firewall rules removed successfully")
+			slog.Info("firewall rules removed successfully")
 		}
 	}
 
-	// Cleanup
 	if geoIP != nil {
 		geoIP.Close()
 	}
 
-	fmt.Println("Server stopped")
+	slog.Info("server stopped")
+}
+
+func parseLogLevel(level string) slog.Level {
+	switch level {
+	case "debug":
+		return slog.LevelDebug
+	case "info":
+		return slog.LevelInfo
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }

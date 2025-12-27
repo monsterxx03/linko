@@ -3,6 +3,7 @@ package dns
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
@@ -51,11 +52,11 @@ func (s *DNSServer) Start() error {
 	go func() {
 		defer s.wg.Done()
 		if err := s.serverUDP.ListenAndServe(); err != nil {
-			fmt.Printf("UDP server error: %v\n", err)
+			slog.Error("UDP server error", "error", err)
 		}
 	}()
 
-	fmt.Printf("DNS server started on %s (UDP only, for transparent proxy)\n", s.addr)
+	slog.Info("DNS server started", "address", s.addr, "mode", "UDP only (transparent proxy)")
 	return nil
 }
 
@@ -75,7 +76,7 @@ func (s *DNSServer) Stop() error {
 
 	select {
 	case <-done:
-		fmt.Println("DNS server stopped")
+		slog.Info("DNS server stopped")
 		return nil
 	case <-time.After(10 * time.Second):
 		return fmt.Errorf("timeout waiting for DNS server to stop")
@@ -97,7 +98,7 @@ func (s *DNSServer) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 	// Process query through splitter
 	resp, err := s.splitter.SplitQuery(ctx, r)
 	if err != nil {
-		fmt.Printf("DNS query error: %v\n", err)
+		slog.Error("DNS query error", "error", err)
 		dns.HandleFailed(w, r)
 		return
 	}

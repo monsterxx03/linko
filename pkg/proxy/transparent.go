@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"strconv"
 	"sync"
@@ -63,9 +64,9 @@ func (p *TransparentProxy) Start() error {
 	go p.acceptLoop()
 
 	if p.upstream.IsEnabled() {
-		fmt.Printf("Transparent proxy listening on %s (upstream: %s %s)\n", p.listenAddr, p.upstream.GetConfig().Type, p.upstream.GetConfig().Addr)
+		slog.Info("Transparent proxy listening", "address", p.listenAddr, "upstream_type", p.upstream.GetConfig().Type, "upstream_addr", p.upstream.GetConfig().Addr, "mode", "proxy")
 	} else {
-		fmt.Printf("Transparent proxy listening on %s (direct mode)\n", p.listenAddr)
+		slog.Info("Transparent proxy listening", "address", p.listenAddr, "mode", "direct")
 	}
 	return nil
 }
@@ -86,7 +87,7 @@ func (p *TransparentProxy) Stop() error {
 
 	select {
 	case <-done:
-		fmt.Println("Transparent proxy stopped")
+		slog.Info("Transparent proxy stopped")
 		return nil
 	case <-time.After(10 * time.Second):
 		return fmt.Errorf("timeout waiting for proxy to stop")
@@ -104,7 +105,7 @@ func (p *TransparentProxy) acceptLoop() {
 			case <-p.ctx.Done():
 				return
 			default:
-				fmt.Printf("Accept error: %v\n", err)
+				slog.Error("Accept error", "error", err)
 				continue
 			}
 		}
@@ -134,22 +135,22 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 	// Get original destination from connection
 	originalDst, err := p.getOriginalDestination(clientConn)
 	if err != nil {
-		fmt.Printf("Failed to get original destination: %v\n", err)
+		slog.Error("Failed to get original destination", "error", err)
 		return
 	}
 
-	fmt.Printf("Proxying connection from %s to %s\n", clientConn.RemoteAddr(), originalDst)
+	slog.Debug("Proxying connection", "from", clientConn.RemoteAddr(), "to", originalDst)
 
 	// Parse destination address
 	targetHost, targetPortStr, err := net.SplitHostPort(originalDst)
 	if err != nil {
-		fmt.Printf("Invalid destination address %s: %v\n", originalDst, err)
+		slog.Error("Invalid destination address", "address", originalDst, "error", err)
 		return
 	}
 
 	targetPort, err := strconv.Atoi(targetPortStr)
 	if err != nil {
-		fmt.Printf("Invalid port %s: %v\n", targetPortStr, err)
+		slog.Error("Invalid port", "port", targetPortStr, "error", err)
 		return
 	}
 
@@ -162,13 +163,13 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 		// Check if target IP is domestic
 		isDomestic, err := p.geoIP.IsDomesticIP(targetHost)
 		if err != nil {
-			fmt.Printf("Warning: Failed to lookup GeoIP for %s: %v, falling back to upstream proxy\n", targetHost, err)
+			slog.Warn("Failed to lookup GeoIP", "target", targetHost, "error", err, "using_upstream", true)
 			shouldUseUpstream = true
 		} else if isDomestic {
-			fmt.Printf("Direct connection for domestic IP: %s\n", targetHost)
+			slog.Debug("Direct connection for domestic IP", "target", targetHost)
 			shouldUseUpstream = false
 		} else {
-			fmt.Printf("Using upstream proxy for foreign IP: %s\n", targetHost)
+			slog.Debug("Using upstream proxy for foreign IP", "target", targetHost)
 			shouldUseUpstream = true
 		}
 	} else if p.upstream.IsEnabled() {
@@ -181,14 +182,14 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 		// Connect through upstream proxy
 		targetConn, err = p.upstream.Connect(targetHost, targetPort)
 		if err != nil {
-			fmt.Printf("Failed to connect to %s via upstream proxy: %v\n", originalDst, err)
+			slog.Error("Failed to connect via upstream proxy", "target", originalDst, "error", err)
 			return
 		}
 	} else {
 		// Connect directly
 		targetConn, err = net.Dial("tcp", originalDst)
 		if err != nil {
-			fmt.Printf("Failed to connect to %s: %v\n", originalDst, err)
+			slog.Error("Failed to connect to target", "target", originalDst, "error", err)
 			return
 		}
 	}

@@ -10,6 +10,16 @@ import (
 	"github.com/miekg/dns"
 )
 
+var typeMap = map[uint16]string{
+	dns.TypeA:     "A",
+	dns.TypeAAAA:  "AAAA",
+	dns.TypeCNAME: "CNAME",
+	dns.TypeMX:    "MX",
+	dns.TypeNS:    "NS",
+	dns.TypeTXT:   "TXT",
+	dns.TypeSOA:   "SOA",
+}
+
 // CacheEntry represents a cached DNS response
 type CacheEntry struct {
 	Response  *dns.Msg
@@ -20,7 +30,7 @@ type CacheEntry struct {
 // DNSCache manages DNS response caching
 type DNSCache struct {
 	cache   map[string]*CacheEntry
-Mutex    sync.RWMutex
+	Mutex   sync.RWMutex
 	ttl     time.Duration
 	maxSize int
 	hits    int64
@@ -104,16 +114,6 @@ func (c *DNSCache) generateKey(question *dns.Msg) string {
 	}
 
 	q := question.Question[0]
-	// Simple type to string mapping
-	typeMap := map[uint16]string{
-		dns.TypeA:     "A",
-		dns.TypeAAAA:  "AAAA",
-		dns.TypeCNAME: "CNAME",
-		dns.TypeMX:    "MX",
-		dns.TypeNS:    "NS",
-		dns.TypeTXT:   "TXT",
-		dns.TypeSOA:   "SOA",
-	}
 	typeStr, exists := typeMap[q.Qtype]
 	if !exists {
 		typeStr = "UNKNOWN"

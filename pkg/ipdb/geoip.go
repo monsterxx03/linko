@@ -19,10 +19,10 @@ type Location struct {
 
 // GeoIPManager manages GeoIP database operations
 type GeoIPManager struct {
-	db           *geoip2.Reader
-	dbPath       string
-	initialized  bool
-	initMutex    sync.RWMutex
+	db          *geoip2.Reader
+	dbPath      string
+	initialized bool
+	initMutex   sync.RWMutex
 }
 
 // NewGeoIPManager creates a new GeoIP manager
