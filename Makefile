@@ -71,14 +71,6 @@ download-geoip:
 	@rm -rf /tmp/geoip.tar.gz /tmp/GeoLite2-Country_* 2>/dev/null
 	@echo "GeoIP database downloaded to data/geoip.mmdb"
 
-# Generate default config
-config:
-	@echo "Generating default config..."
-	@mkdir -p config
-	@echo 'package main; import ("fmt"; "os"; "github.com/monsterxx03/linko/pkg/config"); func main() { if err := config.GenerateConfig("config/linko.yaml"); err != nil { fmt.Printf("Error: %v\n", err); os.Exit(1) }; fmt.Println("Default config generated at config/linko.yaml") }' > /tmp/gen_config.go
-	@$(GOCMD) run -tags '!noquirks' -ldflags '-X main.version=0.1.0' /tmp/gen_config.go
-	@rm -f /tmp/gen_config.go
-
 # Dev tools
 dev-deps:
 	@echo "Installing development tools..."
@@ -135,7 +127,6 @@ help:
 	@echo "  install      - Install to GOPATH"
 	@echo "  run          - Run the application"
 	@echo "  download-geoip - Download GeoIP database"
-	@echo "  config       - Generate default config"
 	@echo "  dev-deps     - Install development tools"
 	@echo "  fmt          - Format code"
 	@echo "  lint         - Lint code"

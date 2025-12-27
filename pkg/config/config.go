@@ -1,154 +1,148 @@
 package config
 
 import (
+	"net"
 	"time"
 )
 
 // Config represents the main configuration for the proxy
 type Config struct {
 	// Server configuration
-	Server ServerConfig `mapstructure:"server" json:"server"`
+	Server ServerConfig `mapstructure:"server"`
 
 	// DNS configuration
-	DNS DNSConfig `mapstructure:"dns" json:"dns"`
+	DNS DNSConfig `mapstructure:"dns"`
 
 	// Proxy protocols
-	Proxy ProxyConfig `mapstructure:"proxy" json:"proxy"`
+	Proxy ProxyConfig `mapstructure:"proxy"`
 
 	// Traffic statistics
-	Traffic TrafficConfig `mapstructure:"traffic" json:"traffic"`
+	Traffic TrafficConfig `mapstructure:"traffic"`
 
 	// Firewall configuration
-	Firewall FirewallConfig `mapstructure:"firewall" json:"firewall"`
+	Firewall FirewallConfig `mapstructure:"firewall"`
 
 	// Upstream proxy configuration
-	Upstream UpstreamConfig `mapstructure:"upstream" json:"upstream"`
+	Upstream UpstreamConfig `mapstructure:"upstream"`
 }
 
 // ServerConfig contains server-related settings
 type ServerConfig struct {
 	// Listen address for the main proxy server
-	ListenAddr string `mapstructure:"listen_addr" json:"listen_addr"`
+	ListenAddr string `mapstructure:"listen_addr" yaml:"listen_addr"`
 
 	// HTTP API port for management interface
-	AdminPort int `mapstructure:"admin_port" json:"admin_port"`
+	AdminPort int `mapstructure:"admin_port" yaml:"admin_port"`
 
 	// Log level (debug, info, warn, error)
-	LogLevel string `mapstructure:"log_level" json:"log_level"`
+	LogLevel string `mapstructure:"log_level" yaml:"log_level"`
 }
 
 // DNSConfig contains DNS分流 settings
 type DNSConfig struct {
 	// Listen address for DNS server
-	ListenAddr string `mapstructure:"listen_addr" json:"listen_addr"`
+	ListenAddr string `mapstructure:"listen_addr" yaml:"listen_addr"`
 
 	// Domestic DNS servers (China)
-	DomesticDNS []string `mapstructure:"domestic_dns" json:"domestic_dns"`
+	DomesticDNS []string `mapstructure:"domestic_dns" yaml:"domestic_dns"`
 
 	// Foreign DNS servers (International)
-	ForeignDNS []string `mapstructure:"foreign_dns" json:"foreign_dns"`
+	ForeignDNS []string `mapstructure:"foreign_dns" yaml:"foreign_dns"`
 
 	// IP database file path
-	IPDBPath string `mapstructure:"ipdb_path" json:"ipdb_path"`
+	IPDBPath string `mapstructure:"ipdb_path" yaml:"ipdb_path"`
 
 	// DNS cache TTL
-	CacheTTL time.Duration `mapstructure:"cache_ttl" json:"cache_ttl"`
+	CacheTTL time.Duration `mapstructure:"cache_ttl" yaml:"cache_ttl"`
 
 	// Enable DNS over TCP for foreign queries
-	TCPForForeign bool `mapstructure:"tcp_for_foreign" json:"tcp_for_foreign"`
+	TCPForForeign bool `mapstructure:"tcp_for_foreign" yaml:"tcp_for_foreign"`
 }
 
 // ProxyConfig contains proxy protocol settings
 type ProxyConfig struct {
 	// Enable SOCKS5 proxy
-	SOCKS5 bool `mapstructure:"socks5" json:"socks5"`
+	SOCKS5 bool `mapstructure:"socks5" yaml:"socks5"`
 
 	// Enable HTTP CONNECT tunnel
-	HTTPTunnel bool `mapstructure:"http_tunnel" json:"http_tunnel"`
+	HTTPTunnel bool `mapstructure:"http_tunnel" yaml:"http_tunnel"`
 
 	// Enable Shadowsocks
-	Shadowsocks bool `mapstructure:"shadowsocks" json:"shadowsocks"`
+	Shadowsocks bool `mapstructure:"shadowsocks" yaml:"shadowsocks"`
 
 	// Shadowsocks configuration
-	ShadowsocksConfig *ShadowsocksConfig `mapstructure:"shadowsocks_config" json:"shadowsocks_config,omitempty"`
+	ShadowsocksConfig *ShadowsocksConfig `mapstructure:"shadowsocks_config" yaml:"shadowsocks_config"`
 }
 
-// ShadowsocksConfig contains Shadowsocks-specific settings
 type ShadowsocksConfig struct {
-	Method   string `mapstructure:"method" json:"method"`
-	Password string `mapstructure:"password" json:"password"`
-	Port     int    `mapstructure:"port" json:"port"`
+	Method   string `mapstructure:"method" yaml:"method"`
+	Password string `mapstructure:"password" yaml:"password"`
+	Port     int    `mapstructure:"port" yaml:"port"`
 }
 
 // TrafficConfig contains traffic statistics settings
 type TrafficConfig struct {
 	// Enable real-time traffic statistics
-	EnableRealtime bool `mapstructure:"enable_realtime" json:"enable_realtime"`
+	EnableRealtime bool `mapstructure:"enable_realtime" yaml:"enable_realtime"`
 
 	// Enable historical statistics
-	EnableHistory bool `mapstructure:"enable_history" json:"enable_history"`
+	EnableHistory bool `mapstructure:"enable_history" yaml:"enable_history"`
 
 	// Statistics update interval
-	UpdateInterval time.Duration `mapstructure:"update_interval" json:"update_interval"`
+	UpdateInterval time.Duration `mapstructure:"update_interval" yaml:"update_interval"`
 
 	// Database file path
-	DBPath string `mapstructure:"db_path" json:"db_path"`
+	DBPath string `mapstructure:"db_path" yaml:"db_path"`
 }
 
 // FirewallConfig contains firewall-related settings
 type FirewallConfig struct {
 	// Enable automatic firewall rule management
-	EnableAuto bool `mapstructure:"enable_auto" json:"enable_auto"`
-
-	// Proxy port for transparent proxy
-	ProxyPort string `mapstructure:"proxy_port" json:"proxy_port"`
+	EnableAuto bool `mapstructure:"enable_auto" yaml:"enable_auto"`
 
 	// Enable DNS redirect (UDP 53 -> local DNS server)
-	RedirectDNS bool `mapstructure:"redirect_dns" json:"redirect_dns"`
-
-	// DNS server port (where redirected DNS traffic goes)
-	DNSServerPort string `mapstructure:"dns_server_port" json:"dns_server_port"`
+	RedirectDNS bool `mapstructure:"redirect_dns" yaml:"redirect_dns"`
 
 	// Enable HTTP redirect
-	RedirectHTTP bool `mapstructure:"redirect_http" json:"redirect_http"`
+	RedirectHTTP bool `mapstructure:"redirect_http" yaml:"redirect_http"`
 
 	// Enable HTTPS redirect
-	RedirectHTTPS bool `mapstructure:"redirect_https" json:"redirect_https"`
+	RedirectHTTPS bool `mapstructure:"redirect_https" yaml:"redirect_https"`
 }
 
 // UpstreamConfig contains upstream proxy settings
 type UpstreamConfig struct {
 	// Enable upstream proxy
-	Enable bool `mapstructure:"enable" json:"enable"`
+	Enable bool `mapstructure:"enable" yaml:"enable"`
 
 	// Upstream proxy type (socks5, http)
-	Type string `mapstructure:"type" json:"type"`
+	Type string `mapstructure:"type" yaml:"type"`
 
 	// Upstream proxy address (host:port)
-	Addr string `mapstructure:"addr" json:"addr"`
+	Addr string `mapstructure:"addr" yaml:"addr"`
 
 	// Username for upstream proxy (optional)
-	Username string `mapstructure:"username" json:"username"`
+	Username string `mapstructure:"username" yaml:"username"`
 
 	// Password for upstream proxy (optional)
-	Password string `mapstructure:"password" json:"password"`
+	Password string `mapstructure:"password" yaml:"password"`
 }
 
 // DefaultConfig returns a default configuration
 func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
-			ListenAddr: "127.0.0.1:7890",
+			ListenAddr: "127.0.0.1:9890",
 			AdminPort:  8080,
 			LogLevel:   "info",
 		},
 		DNS: DNSConfig{
-			ListenAddr:     "127.0.0.1:5353",
-			DomesticDNS:    []string{"114.114.114.114", "223.5.5.5"},
-			ForeignDNS:     []string{"8.8.8.8", "1.1.1.1"},
-			IPDBPath:       "data/geoip.mmdb",
-			CacheTTL:       5 * time.Minute,
-			TCPForForeign:  true,
+			ListenAddr:    "127.0.0.1:6363",
+			DomesticDNS:   []string{"114.114.114.114", "223.5.5.5"},
+			ForeignDNS:    []string{"8.8.8.8", "1.1.1.1"},
+			IPDBPath:      "data/geoip.mmdb",
+			CacheTTL:      5 * time.Minute,
+			TCPForForeign: true,
 		},
 		Proxy: ProxyConfig{
 			SOCKS5:      true,
@@ -162,12 +156,10 @@ func DefaultConfig() *Config {
 			DBPath:         "data/traffic.db",
 		},
 		Firewall: FirewallConfig{
-			EnableAuto:     false,
-			ProxyPort:      "7890",
-			DNSServerPort:  "5353",
-			RedirectDNS:    true,
-			RedirectHTTP:   true,
-			RedirectHTTPS:  true,
+			EnableAuto:    false,
+			RedirectDNS:   true,
+			RedirectHTTP:  true,
+			RedirectHTTPS: true,
 		},
 		Upstream: UpstreamConfig{
 			Enable:   false,
@@ -177,4 +169,20 @@ func DefaultConfig() *Config {
 			Password: "",
 		},
 	}
+}
+
+func extractPort(listenAddr string) string {
+	_, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return ""
+	}
+	return port
+}
+
+func (c *Config) ProxyPort() string {
+	return extractPort(c.Server.ListenAddr)
+}
+
+func (c *Config) DNSServerPort() string {
+	return extractPort(c.DNS.ListenAddr)
 }

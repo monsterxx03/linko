@@ -8,94 +8,66 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
-// LoadConfig loads configuration from file
 func LoadConfig(configPath string) (*Config, error) {
-	v := viper.New()
-	v.SetConfigFile(configPath)
-	v.SetConfigType("yaml")
-	v.SetDefault("server.listen_addr", "127.0.0.1:7890")
-	v.SetDefault("server.admin_port", 8080)
-	v.SetDefault("server.log_level", "info")
-	v.SetDefault("dns.listen_addr", "127.0.0.1:5353")
-	v.SetDefault("dns.domestic_dns", []string{"114.114.114.114", "223.5.5.5"})
-	v.SetDefault("dns.foreign_dns", []string{"8.8.8.8", "1.1.1.1"})
-	v.SetDefault("dns.cache_ttl", "5m")
-	v.SetDefault("dns.tcp_for_foreign", true)
-	v.SetDefault("proxy.socks5", true)
-	v.SetDefault("proxy.http_tunnel", true)
-	v.SetDefault("proxy.shadowsocks", false)
-	v.SetDefault("traffic.enable_realtime", true)
-	v.SetDefault("traffic.enable_history", true)
-	v.SetDefault("traffic.update_interval", "1s")
-	v.SetDefault("firewall.enable_auto", false)
-	v.SetDefault("firewall.proxy_port", "7890")
-	v.SetDefault("firewall.redirect_http", true)
-	v.SetDefault("firewall.redirect_https", true)
-	v.SetDefault("upstream.enable", false)
-	v.SetDefault("upstream.type", "socks5")
-	v.SetDefault("upstream.addr", "127.0.0.1:1080")
-	v.SetDefault("upstream.username", "")
-	v.SetDefault("upstream.password", "")
-
-	// Create config directory if it doesn't exist
 	configDir := filepath.Dir(configPath)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	// If config file doesn't exist, create default
+	config := DefaultConfig()
+
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		defaultConfig := DefaultConfig()
-		if err := SaveConfig(configPath, defaultConfig); err != nil {
+		if err := SaveConfig(configPath, config); err != nil {
 			return nil, fmt.Errorf("failed to create default config: %w", err)
 		}
+		return config, nil
 	}
+
+	v := viper.New()
+	v.SetConfigFile(configPath)
+	v.SetConfigType("yaml")
 
 	if err := v.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("failed to read config: %w", err)
 	}
 
-	var config Config
-	if err := v.Unmarshal(&config); err != nil {
+	if err := v.Unmarshal(config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
 	}
 
-	// Validate configuration
-	if err := validateConfig(&config); err != nil {
+	if err := validateConfig(config); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	return &config, nil
+	return config, nil
 }
 
-// SaveConfig saves configuration to file
 func SaveConfig(configPath string, config *Config) error {
-	v := viper.New()
-	v.SetConfigFile(configPath)
-	v.SetConfigType("yaml")
-	v.Set("server", config.Server)
-	v.Set("dns", config.DNS)
-	v.Set("proxy", config.Proxy)
-	v.Set("traffic", config.Traffic)
-	v.Set("firewall", config.Firewall)
-	v.Set("upstream", config.Upstream)
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
 
-	if err := v.WriteConfig(); err != nil {
-		return fmt.Errorf("failed to save config: %w", err)
+	configDir := filepath.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
 	}
 
 	return nil
 }
 
-// GenerateConfig generates a sample configuration file
 func GenerateConfig(configPath string) error {
 	config := DefaultConfig()
 	return SaveConfig(configPath, config)
 }
 
-// GetConfigHash returns MD5 hash of config file
 func GetConfigHash(configPath string) (string, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -106,7 +78,6 @@ func GetConfigHash(configPath string) (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
-// validateConfig validates the configuration
 func validateConfig(config *Config) error {
 	if config.Server.ListenAddr == "" {
 		return fmt.Errorf("server listen address cannot be empty")
@@ -132,7 +103,6 @@ func validateConfig(config *Config) error {
 		config.Traffic.DBPath = "data/traffic.db"
 	}
 
-	// Create data directory if it doesn't exist
 	dataDir := filepath.Dir(config.DNS.IPDBPath)
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return fmt.Errorf("failed to create data directory: %w", err)
@@ -141,7 +111,6 @@ func validateConfig(config *Config) error {
 	return nil
 }
 
-// ConfigExists checks if configuration file exists
 func ConfigExists(configPath string) (bool, error) {
 	_, err := os.Stat(configPath)
 	if os.IsNotExist(err) {
@@ -150,7 +119,6 @@ func ConfigExists(configPath string) (bool, error) {
 	return err == nil, err
 }
 
-// EnsureDirectories ensures all required directories exist
 func EnsureDirectories(config *Config) error {
 	dirs := []string{
 		filepath.Dir(config.DNS.IPDBPath),

@@ -31,14 +31,40 @@ Features:
   • Multi-protocol support (SOCKS5, HTTP, Shadowsocks)
   • Real-time traffic analysis
   • SNI-based host extraction`,
-	Run: runServer,
+}
+
+var serveCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Start the proxy server",
+	Long:  "Start the transparent proxy server with DNS splitting and firewall rules",
+	Run:   runServer,
+}
+
+var configPathFlag string
+
+var configCmd = &cobra.Command{
+	Use:   "config",
+	Short: "Generate default configuration file",
+	Long:  "Generate a default configuration file at the specified path",
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := config.GenerateConfig(configPathFlag); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Default config generated at %s\n", configPathFlag)
+	},
 }
 
 func main() {
-	rootCmd.Flags().StringVarP(&configPath, "config", "c", "config/linko.yaml", "Configuration file path")
-	rootCmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "Run as daemon")
-	rootCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
-	rootCmd.Flags().BoolVar(&enableFirewall, "firewall", false, "Enable automatic firewall rule setup (requires sudo)")
+	serveCmd.Flags().StringVarP(&configPath, "config", "c", "config/linko.yaml", "Configuration file path")
+	serveCmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "Run as daemon")
+	serveCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
+	serveCmd.Flags().BoolVar(&enableFirewall, "firewall", false, "Enable automatic firewall rule setup (requires sudo)")
+
+	configCmd.Flags().StringVarP(&configPathFlag, "output", "o", "config/linko.yaml", "Output configuration file path")
+
+	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(configCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -101,23 +127,12 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	defer dnsServer.Stop()
 
-	// Start proxy servers
-	if cfg.Proxy.SOCKS5 {
-		fmt.Println("Starting SOCKS5 proxy server...")
-		socks5Server := proxy.NewSOCKS5Server(cfg.Server.ListenAddr, nil)
-		if err := socks5Server.Start(); err != nil {
-			fmt.Printf("Failed to start SOCKS5 server: %v\n", err)
-			// Continue without failing
-		}
-		defer socks5Server.Stop()
-	}
-
 	// Start transparent proxy (listens on firewall redirect port)
 	var transparentProxy *proxy.TransparentProxy
 	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
 		fmt.Println("Starting transparent proxy...")
 		upstreamClient := proxy.NewUpstreamClient(cfg.Upstream)
-		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.Firewall.ProxyPort, upstreamClient, geoIP)
+		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient, geoIP)
 		if err := transparentProxy.Start(); err != nil {
 			fmt.Printf("Failed to start transparent proxy: %v\n", err)
 			// Continue without failing
@@ -125,16 +140,13 @@ func runServer(cmd *cobra.Command, args []string) {
 		defer transparentProxy.Stop()
 	}
 
-	// TODO: Start HTTP tunnel and Shadowsocks servers
-	fmt.Println("HTTP tunnel and Shadowsocks will be implemented in Phase 4")
-
 	// Setup firewall rules if enabled
 	var firewallManager *proxy.FirewallManager
 	if cfg.Firewall.EnableAuto {
 		fmt.Println("Setting up firewall rules...")
 		firewallManager = proxy.NewFirewallManager(
-			cfg.Firewall.ProxyPort,
-			cfg.Firewall.DNSServerPort,
+			cfg.ProxyPort(),
+			cfg.DNSServerPort(),
 			cfg.Firewall.RedirectDNS,
 			cfg.Firewall.RedirectHTTP,
 			cfg.Firewall.RedirectHTTPS,
