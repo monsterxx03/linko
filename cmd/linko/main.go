@@ -117,7 +117,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
 		fmt.Println("Starting transparent proxy...")
 		upstreamClient := proxy.NewUpstreamClient(cfg.Upstream)
-		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.Firewall.ProxyPort, upstreamClient)
+		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.Firewall.ProxyPort, upstreamClient, geoIP)
 		if err := transparentProxy.Start(); err != nil {
 			fmt.Printf("Failed to start transparent proxy: %v\n", err)
 			// Continue without failing

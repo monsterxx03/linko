@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/monsterxx03/linko/pkg/ipdb"
 )
 
 // TransparentProxy represents a transparent proxy
@@ -19,29 +21,31 @@ type TransparentProxy struct {
 	wg           sync.WaitGroup
 	stats        *ProxyStats
 	upstream     *UpstreamClient
+	geoIP        *ipdb.GeoIPManager
 	enableDirect bool // Enable direct connection when upstream is disabled
 }
 
 // ProxyStats tracks proxy statistics
 type ProxyStats struct {
-	totalConnections   uint64
-	activeConnections  uint64
-	bytesTransferred   uint64
-	startTime          time.Time
-	mu                 sync.RWMutex
+	totalConnections  uint64
+	activeConnections uint64
+	bytesTransferred  uint64
+	startTime         time.Time
+	mu                sync.RWMutex
 }
 
 // NewTransparentProxy creates a new transparent proxy
-func NewTransparentProxy(listenAddr string, upstream *UpstreamClient) *TransparentProxy {
+func NewTransparentProxy(listenAddr string, upstream *UpstreamClient, geoIP *ipdb.GeoIPManager) *TransparentProxy {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &TransparentProxy{
-		listenAddr:   listenAddr,
-		ctx:          ctx,
-		cancel:       cancel,
+		listenAddr: listenAddr,
+		ctx:        ctx,
+		cancel:     cancel,
 		stats: &ProxyStats{
 			startTime: time.Now(),
 		},
 		upstream:     upstream,
+		geoIP:        geoIP,
 		enableDirect: !upstream.IsEnabled(),
 	}
 }
@@ -149,9 +153,31 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// Connect to target through upstream proxy or directly
+	// Determine whether to connect directly or via upstream proxy based on GeoIP
 	var targetConn net.Conn
-	if p.upstream.IsEnabled() {
+	shouldUseUpstream := false
+
+	// Check if GeoIP is available and upstream is enabled
+	if p.upstream.IsEnabled() && p.geoIP != nil && p.geoIP.IsInitialized() {
+		// Check if target IP is domestic
+		isDomestic, err := p.geoIP.IsDomesticIP(targetHost)
+		if err != nil {
+			fmt.Printf("Warning: Failed to lookup GeoIP for %s: %v, falling back to upstream proxy\n", targetHost, err)
+			shouldUseUpstream = true
+		} else if isDomestic {
+			fmt.Printf("Direct connection for domestic IP: %s\n", targetHost)
+			shouldUseUpstream = false
+		} else {
+			fmt.Printf("Using upstream proxy for foreign IP: %s\n", targetHost)
+			shouldUseUpstream = true
+		}
+	} else if p.upstream.IsEnabled() {
+		// Upstream is enabled but GeoIP is not available, use upstream
+		shouldUseUpstream = true
+	}
+
+	// Connect to target
+	if shouldUseUpstream {
 		// Connect through upstream proxy
 		targetConn, err = p.upstream.Connect(targetHost, targetPort)
 		if err != nil {
