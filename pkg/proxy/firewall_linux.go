@@ -23,10 +23,16 @@ func (f *FirewallManager) SetupTransparentProxy() error {
 	}
 
 	rules := []string{
+		// DNS redirect: UDP 53 -> local DNS server
+		fmt.Sprintf("iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", f.dnsServerPort),
+		// HTTP redirect: exclude reserved IPs
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", f.proxyPort),
+		// HTTPS redirect: exclude reserved IPs
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", f.proxyPort),
+		// Allow redirected traffic
+		fmt.Sprintf("iptables -A INPUT -p udp --dport %s -j ACCEPT", f.dnsServerPort),
 		fmt.Sprintf("iptables -A INPUT -p tcp --dport %s -j ACCEPT", f.proxyPort),
 	}
 
@@ -71,10 +77,12 @@ func (f *FirewallManager) destroyIPSet() {
 func (f *FirewallManager) RemoveTransparentProxy() error {
 	rules := []string{
 		fmt.Sprintf("iptables -D INPUT -p tcp --dport %s -j ACCEPT", f.proxyPort),
+		fmt.Sprintf("iptables -D INPUT -p udp --dport %s -j ACCEPT", f.dnsServerPort),
 		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", f.proxyPort),
 		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
 		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", f.proxyPort),
 		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
+		fmt.Sprintf("iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", f.dnsServerPort),
 	}
 
 	for _, rule := range rules {
@@ -126,6 +134,13 @@ func (f *FirewallManager) parseLinuxRules(output string) []FirewallRule {
 	lines := strings.Split(output, "\n")
 
 	for _, line := range lines {
+		if strings.Contains(line, "REDIRECT") && strings.Contains(line, "53") {
+			rules = append(rules, FirewallRule{
+				Protocol: "udp",
+				DstPort:  "53",
+				Target:   "REDIRECT",
+			})
+		}
 		if strings.Contains(line, "REDIRECT") && strings.Contains(line, "80") {
 			rules = append(rules, FirewallRule{
 				Protocol: "tcp",

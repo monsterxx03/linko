@@ -132,7 +132,13 @@ func runServer(cmd *cobra.Command, args []string) {
 	var firewallManager *proxy.FirewallManager
 	if cfg.Firewall.EnableAuto {
 		fmt.Println("Setting up firewall rules...")
-		firewallManager = proxy.NewFirewallManager(cfg.Firewall.ProxyPort)
+		firewallManager = proxy.NewFirewallManager(
+			cfg.Firewall.ProxyPort,
+			cfg.Firewall.DNSServerPort,
+			cfg.Firewall.RedirectDNS,
+			cfg.Firewall.RedirectHTTP,
+			cfg.Firewall.RedirectHTTPS,
+		)
 		if err := firewallManager.SetupTransparentProxy(); err != nil {
 			fmt.Printf("Warning: Failed to setup firewall rules: %v\n", err)
 			fmt.Println("Please ensure you have sudo privileges and try again")

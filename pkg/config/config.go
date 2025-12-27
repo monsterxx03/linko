@@ -103,6 +103,12 @@ type FirewallConfig struct {
 	// Proxy port for transparent proxy
 	ProxyPort string `mapstructure:"proxy_port" json:"proxy_port"`
 
+	// Enable DNS redirect (UDP 53 -> local DNS server)
+	RedirectDNS bool `mapstructure:"redirect_dns" json:"redirect_dns"`
+
+	// DNS server port (where redirected DNS traffic goes)
+	DNSServerPort string `mapstructure:"dns_server_port" json:"dns_server_port"`
+
 	// Enable HTTP redirect
 	RedirectHTTP bool `mapstructure:"redirect_http" json:"redirect_http"`
 
@@ -158,6 +164,8 @@ func DefaultConfig() *Config {
 		Firewall: FirewallConfig{
 			EnableAuto:     false,
 			ProxyPort:      "7890",
+			DNSServerPort:  "5353",
+			RedirectDNS:    true,
 			RedirectHTTP:   true,
 			RedirectHTTPS:  true,
 		},

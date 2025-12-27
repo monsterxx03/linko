@@ -30,12 +30,22 @@ type FirewallRule struct {
 	Target   string
 }
 
+// FirewallManager manages firewall rules for transparent proxy
 type FirewallManager struct {
-	proxyPort string
+	proxyPort      string
+	dnsServerPort  string
+	redirectDNS    bool
+	redirectHTTP   bool
+	redirectHTTPS  bool
 }
 
-func NewFirewallManager(proxyPort string) *FirewallManager {
+// NewFirewallManager creates a new firewall manager
+func NewFirewallManager(proxyPort string, dnsServerPort string, redirectDNS, redirectHTTP, redirectHTTPS bool) *FirewallManager {
 	return &FirewallManager{
-		proxyPort: proxyPort,
+		proxyPort:     proxyPort,
+		dnsServerPort: dnsServerPort,
+		redirectDNS:   redirectDNS,
+		redirectHTTP:  redirectHTTP,
+		redirectHTTPS: redirectHTTPS,
 	}
 }

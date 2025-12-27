@@ -16,7 +16,6 @@ type DNSServer struct {
 	splitter  *DNSSplitter
 	cache     *DNSCache
 	serverUDP *dns.Server
-	serverTCP *dns.Server
 	wg        sync.WaitGroup
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -34,7 +33,7 @@ func NewDNSServer(addr string, splitter *DNSSplitter, cache *DNSCache) *DNSServe
 	}
 }
 
-// Start starts the DNS server
+// Start starts the DNS server (UDP only for transparent proxy)
 func (s *DNSServer) Start() error {
 	// Create UDP handler
 	udpHandler := s.handleDNS
@@ -47,13 +46,6 @@ func (s *DNSServer) Start() error {
 		Handler: dns.HandlerFunc(udpHandler),
 	}
 
-	// Create TCP server
-	s.serverTCP = &dns.Server{
-		Addr:    s.addr,
-		Net:     "tcp",
-		Handler: dns.HandlerFunc(udpHandler),
-	}
-
 	// Start UDP server
 	s.wg.Add(1)
 	go func() {
@@ -63,16 +55,7 @@ func (s *DNSServer) Start() error {
 		}
 	}()
 
-	// Start TCP server
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		if err := s.serverTCP.ListenAndServe(); err != nil {
-			fmt.Printf("TCP server error: %v\n", err)
-		}
-	}()
-
-	fmt.Printf("DNS server started on %s (UDP/TCP)\n", s.addr)
+	fmt.Printf("DNS server started on %s (UDP only, for transparent proxy)\n", s.addr)
 	return nil
 }
 
@@ -82,9 +65,6 @@ func (s *DNSServer) Stop() error {
 
 	if s.serverUDP != nil {
 		s.serverUDP.Shutdown()
-	}
-	if s.serverTCP != nil {
-		s.serverTCP.Shutdown()
 	}
 
 	done := make(chan struct{})

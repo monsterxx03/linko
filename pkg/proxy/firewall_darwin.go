@@ -26,13 +26,21 @@ func (f *FirewallManager) SetupTransparentProxy() error {
 # Linko Transparent Proxy Rules
 ext_if = "en0"
 linko_port = "%s"
+dns_port = "%s"
 
+# DNS redirect: UDP 53 -> local DNS server
+rdr on $ext_if inet proto udp from any to any port 53 -> 127.0.0.1 port $dns_port
+
+# HTTP/HTTPS redirect: exclude reserved IPs
 rdr on $ext_if inet proto tcp from any to not <%s> port 80 -> 127.0.0.1 port $linko_port
 rdr on $ext_if inet proto tcp from any to not <%s> port 443 -> 127.0.0.1 port $linko_port
 
+# Allow redirected traffic
+pass in on $ext_if inet proto udp from any to 127.0.0.1 port $dns_port
 pass in on $ext_if inet proto tcp from any to 127.0.0.1 port $linko_port
+pass out on $ext_if inet proto udp from 127.0.0.1 port $dns_port to any
 pass out on $ext_if inet proto tcp from 127.0.0.1 port $linko_port to any
-`, f.proxyPort, pfTableName, pfTableName)
+`, f.proxyPort, f.dnsServerPort, pfTableName, pfTableName)
 
 	if err := f.writeMacOSRules(ruleConfig); err != nil {
 		return fmt.Errorf("failed to write MacOS rules: %w", err)
@@ -51,11 +59,13 @@ func (f *FirewallManager) createTable() error {
 }
 
 func (f *FirewallManager) RemoveTransparentProxy() error {
+	// Remove rdr rules
 	cmd := exec.Command("sudo", "pfctl", "-F", "rdr")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to remove rdr rules: %w", err)
 	}
 
+	// Flush the table
 	cmd = exec.Command("sudo", "pfctl", "-t", pfTableName, "-T", "flush")
 	cmd.Run()
 
@@ -119,6 +129,13 @@ func (f *FirewallManager) parseMacOSRules(output string) []FirewallRule {
 	lines := strings.Split(output, "\n")
 
 	for _, line := range lines {
+		if strings.Contains(line, "rdr") && strings.Contains(line, "53") {
+			rules = append(rules, FirewallRule{
+				Protocol: "udp",
+				DstPort:  "53",
+				Target:   "REDIRECT",
+			})
+		}
 		if strings.Contains(line, "rdr") && strings.Contains(line, "80") {
 			rules = append(rules, FirewallRule{
 				Protocol: "tcp",
