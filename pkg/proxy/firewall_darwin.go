@@ -16,17 +16,18 @@ func (f *FirewallManager) SetupTransparentProxy() error {
 		return fmt.Errorf("pf is not enabled: %w", err)
 	}
 
+	excludedAddrs := strings.Join(reservedCIDRs, ", ")
 	ruleConfig := fmt.Sprintf(`
 # Linko Transparent Proxy Rules
 ext_if = "en0"
 linko_port = "%s"
 
-rdr on $ext_if inet proto tcp from any to any port 80 -> 127.0.0.1 port $linko_port
-rdr on $ext_if inet proto tcp from any to any port 443 -> 127.0.0.1 port $linko_port
+rdr on $ext_if inet proto tcp from any to not { %s } port 80 -> 127.0.0.1 port $linko_port
+rdr on $ext_if inet proto tcp from any to not { %s } port 443 -> 127.0.0.1 port $linko_port
 
 pass in on $ext_if inet proto tcp from any to 127.0.0.1 port $linko_port
 pass out on $ext_if inet proto tcp from 127.0.0.1 port $linko_port to any
-`, f.proxyPort)
+`, f.proxyPort, excludedAddrs, excludedAddrs)
 
 	if err := f.writeMacOSRules(ruleConfig); err != nil {
 		return fmt.Errorf("failed to write MacOS rules: %w", err)

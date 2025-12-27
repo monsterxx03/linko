@@ -17,10 +17,15 @@ func (f *FirewallManager) SetupTransparentProxy() error {
 	}
 
 	rules := []string{
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", f.proxyPort),
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", f.proxyPort),
-		fmt.Sprintf("iptables -A INPUT -p tcp --dport %s -j ACCEPT", f.proxyPort),
+		"# Exclude reserved addresses for HTTP (port 80)",
 	}
+	rules = append(rules, buildReservedExclusionRules("80")...)
+	rules = append(rules, fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", f.proxyPort))
+
+	rules = append(rules, "# Exclude reserved addresses for HTTPS (port 443)")
+	rules = append(rules, buildReservedExclusionRules("443")...)
+	rules = append(rules, fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", f.proxyPort))
+	rules = append(rules, fmt.Sprintf("iptables -A INPUT -p tcp --dport %s -j ACCEPT", f.proxyPort))
 
 	for _, rule := range rules {
 		cmd := exec.Command("sudo", "sh", "-c", rule)
@@ -32,12 +37,22 @@ func (f *FirewallManager) SetupTransparentProxy() error {
 	return nil
 }
 
+func buildReservedExclusionRules(port string) []string {
+	var rules []string
+	for _, cidr := range reservedCIDRs {
+		rules = append(rules, fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport %s -d %s -j ACCEPT", port, cidr))
+	}
+	return rules
+}
+
 func (f *FirewallManager) RemoveTransparentProxy() error {
 	rules := []string{
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", f.proxyPort),
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", f.proxyPort),
 		fmt.Sprintf("iptables -D INPUT -p tcp --dport %s -j ACCEPT", f.proxyPort),
+		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", f.proxyPort),
 	}
+	rules = append(rules, buildReservedExclusionRulesRemove("443")...)
+	rules = append(rules, fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", f.proxyPort))
+	rules = append(rules, buildReservedExclusionRulesRemove("80")...)
 
 	for _, rule := range rules {
 		cmd := exec.Command("sudo", "sh", "-c", rule)
@@ -47,6 +62,14 @@ func (f *FirewallManager) RemoveTransparentProxy() error {
 	}
 
 	return nil
+}
+
+func buildReservedExclusionRulesRemove(port string) []string {
+	var rules []string
+	for _, cidr := range reservedCIDRs {
+		rules = append(rules, fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport %s -d %s -j ACCEPT", port, cidr))
+	}
+	return rules
 }
 
 func (f *FirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
