@@ -10,65 +10,63 @@ import (
 	"strings"
 )
 
+const pfAnchorName = "com.apple/linko"
 const pfTableName = "linko_reserved"
 
 func (f *FirewallManager) SetupTransparentProxy() error {
-	cmd := exec.Command("sudo", "pfctl", "-s", "info")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("pf is not enabled: %w", err)
-	}
-
-	if err := f.createTable(); err != nil {
-		return fmt.Errorf("failed to create pf table: %w", err)
-	}
-
-	ruleConfig := fmt.Sprintf(`
-# Linko Transparent Proxy Rules
+	ruleConfig := fmt.Sprintf(`# Linko Transparent Proxy Rules
 ext_if = "en0"
+lo_if = "lo0"
 linko_port = "%s"
 dns_port = "%s"
 
-# DNS redirect: UDP 53 -> local DNS server
-rdr on $ext_if inet proto udp from any to any port 53 -> 127.0.0.1 port $dns_port
+# Options and table definition
+table <%s> const { %s }
 
-# HTTP/HTTPS redirect: exclude reserved IPs
-rdr on $ext_if inet proto tcp from any to not <%s> port 80 -> 127.0.0.1 port $linko_port
-rdr on $ext_if inet proto tcp from any to not <%s> port 443 -> 127.0.0.1 port $linko_port
+# Translation rules (rdr must come before filtering)
+# rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
+rdr pass on $lo_if inet proto tcp from $ext_if to any port 80 -> 127.0.0.1 port $linko_port
+rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port $linko_port
 
-# Allow redirected traffic
-pass in on $ext_if inet proto udp from any to 127.0.0.1 port $dns_port
-pass in on $ext_if inet proto tcp from any to 127.0.0.1 port $linko_port
-pass out on $ext_if inet proto udp from 127.0.0.1 port $dns_port to any
-pass out on $ext_if inet proto tcp from 127.0.0.1 port $linko_port to any
-`, f.proxyPort, f.dnsServerPort, pfTableName, pfTableName)
+# Filtering rules (must come after translation)
+# pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 80
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
+`, f.proxyPort, f.dnsServerPort, pfTableName, strings.Join(reservedCIDRs, ", "))
 
 	if err := f.writeMacOSRules(ruleConfig); err != nil {
 		return fmt.Errorf("failed to write MacOS rules: %w", err)
 	}
 
-	return f.loadMacOSRules()
+	return f.loadMacOSAnchor()
 }
 
-func (f *FirewallManager) createTable() error {
-	addresses := strings.Join(reservedCIDRs, "\n")
-	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | pfctl -t %s -T add -", addresses, pfTableName))
+func (f *FirewallManager) RemoveTransparentProxy() error {
+	cmd := exec.Command("sudo", "pfctl", "-a", pfAnchorName, "-F", "all")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
+		return fmt.Errorf("failed to flush linko anchor: %w", err)
 	}
 	return nil
 }
 
-func (f *FirewallManager) RemoveTransparentProxy() error {
-	// Remove rdr rules
-	cmd := exec.Command("sudo", "pfctl", "-F", "rdr")
+func (f *FirewallManager) disablePf() error {
+	cmd := exec.Command("sudo", "pfctl", "-d")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to remove rdr rules: %w", err)
+		return fmt.Errorf("failed to disable pf: %w", err)
 	}
+	return nil
+}
 
-	// Flush the table
-	cmd = exec.Command("sudo", "pfctl", "-t", pfTableName, "-T", "flush")
-	cmd.Run()
+func (f *FirewallManager) enablePf() error {
+	cmd := exec.Command("sudo", "pfctl", "-e")
+	return cmd.Run()
+}
 
+func (f *FirewallManager) removeConfigFile() error {
+	cmd := exec.Command("sudo", "rm", "-f", "/etc/pf.linko.conf")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to remove config file: %w", err)
+	}
 	return nil
 }
 
@@ -77,14 +75,13 @@ func (f *FirewallManager) writeMacOSRules(rules string) error {
 	return cmd.Run()
 }
 
-func (f *FirewallManager) loadMacOSRules() error {
-	cmd := exec.Command("sudo", "pfctl", "-f", "/etc/pf.linko.conf")
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+func (f *FirewallManager) loadMacOSAnchor() error {
+	cmd := exec.Command("sudo", "pfctl", "-f", "/etc/pf.conf")
+	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to load pf rules: %w\nstderr: %s", err, stderr.String())
+		return fmt.Errorf("failed to load pf config: %w\nstderr: %s", err, stderr.String())
 	}
 
 	return nil
@@ -110,11 +107,17 @@ func (f *FirewallManager) CheckFirewallStatus() (map[string]interface{}, error) 
 	cmd.Run()
 	stats["table"] = tableBuf.String()
 
+	cmd = exec.Command("sudo", "pfctl", "-a", pfAnchorName, "-s", "nat")
+	var anchorBuf bytes.Buffer
+	cmd.Stdout = &anchorBuf
+	cmd.Run()
+	stats["anchor_rules"] = anchorBuf.String()
+
 	return stats, nil
 }
 
 func (f *FirewallManager) GetCurrentRules() ([]FirewallRule, error) {
-	cmd := exec.Command("sudo", "pfctl", "-s", "nat")
+	cmd := exec.Command("sudo", "pfctl", "-a", pfAnchorName, "-s", "nat")
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {

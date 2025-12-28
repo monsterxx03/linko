@@ -1,6 +1,5 @@
 server:
     listen_addr: 127.0.0.1:9890
-    admin_port: 8080
     log_level: info
 dns:
     listen_addr: 127.0.0.1:6363
@@ -13,24 +12,19 @@ dns:
     ipdb_path: data/geoip.mmdb
     cache_ttl: 5m0s
     tcp_for_foreign: true
-proxy:
-    socks5: true
-    http_tunnel: true
-    shadowsocks: false
-    shadowsocks_config: null
 traffic:
     enable_realtime: true
     enable_history: true
     update_interval: 1s
     db_path: data/traffic.db
 firewall:
-    enable_auto: false
+    enable_auto: true
     redirect_dns: true
     redirect_http: true
     redirect_https: true
 upstream:
-    enable: false
+    enable: true
     type: socks5
-    addr: 127.0.0.1:1080
+    addr: 127.0.0.1:7891
     username: ""
     password: ""

@@ -12,8 +12,6 @@ import (
 type Location struct {
 	Country     string `json:"country"`
 	CountryCode string `json:"country_code"`
-	Region      string `json:"region"`
-	City        string `json:"city"`
 	IsDomestic  bool   `json:"is_domestic"`
 }
 
@@ -100,7 +98,7 @@ func (m *GeoIPManager) LookupIP(ipStr string) (*Location, error) {
 		return nil, fmt.Errorf("invalid IP address: %s", ipStr)
 	}
 
-	record, err := m.db.City(ip)
+	record, err := m.db.Country(ip)
 	if err != nil {
 		return nil, fmt.Errorf("failed to lookup IP %s: %w", ipStr, err)
 	}
@@ -108,8 +106,6 @@ func (m *GeoIPManager) LookupIP(ipStr string) (*Location, error) {
 	location := &Location{
 		Country:     record.Country.Names["en"],
 		CountryCode: record.Country.IsoCode,
-		Region:      record.Subdivisions[0].Names["en"],
-		City:        record.City.Names["en"],
 		IsDomestic:  m.isDomesticCountry(record.Country.IsoCode),
 	}
 

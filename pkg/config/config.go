@@ -131,7 +131,7 @@ func DefaultConfig() *Config {
 		Upstream: UpstreamConfig{
 			Enable:   false,
 			Type:     "socks5",
-			Addr:     "127.0.0.1:1080",
+			Addr:     "127.0.0.1:7891",
 			Username: "",
 			Password: "",
 		},
