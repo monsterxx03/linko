@@ -23,15 +23,11 @@ func (f *FirewallManager) SetupTransparentProxy() error {
 	}
 
 	rules := []string{
-		// DNS redirect: UDP 53 -> local DNS server
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", f.dnsServerPort),
-		// HTTP redirect: exclude reserved IPs
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", f.proxyPort),
-		// HTTPS redirect: exclude reserved IPs
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", f.proxyPort),
-		// Allow redirected traffic
 		fmt.Sprintf("iptables -A INPUT -p udp --dport %s -j ACCEPT", f.dnsServerPort),
 		fmt.Sprintf("iptables -A INPUT -p tcp --dport %s -j ACCEPT", f.proxyPort),
 	}
@@ -60,13 +56,41 @@ func (f *FirewallManager) createIPSet() error {
 		return fmt.Errorf("failed to create ipset: %w", err)
 	}
 
-	addresses := strings.Join(reservedCIDRs, "\n")
-	cmd = exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | ipset add - %s", addresses, ipsetName))
-	if err := cmd.Run(); err != nil {
-		f.destroyIPSet()
-		return fmt.Errorf("failed to add addresses to ipset: %w", err)
+	if err := f.addReservedIPsToIPSet(); err != nil {
+		return fmt.Errorf("failed to add reserved IPs: %w", err)
 	}
 
+	if err := f.addChinaIPsToIPSet(); err != nil {
+		return fmt.Errorf("failed to add China IPs: %w", err)
+	}
+
+	return nil
+}
+
+func (f *FirewallManager) addReservedIPsToIPSet() error {
+	addresses := strings.Join(reservedCIDRs, "\n")
+	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | ipset add - %s", addresses, ipsetName))
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (f *FirewallManager) addChinaIPsToIPSet() error {
+	if err := LoadChinaIPRanges(); err != nil {
+		return fmt.Errorf("failed to load China IP ranges: %w", err)
+	}
+
+	chinaIPs := GetChinaCIDRs()
+	if len(chinaIPs) == 0 {
+		return nil
+	}
+
+	addresses := strings.Join(chinaIPs, "\n")
+	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | ipset add - %s", addresses, ipsetName))
+	if err := cmd.Run(); err != nil {
+		return err
+	}
 	return nil
 }
 

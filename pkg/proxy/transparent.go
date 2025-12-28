@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/monsterxx03/linko/pkg/ipdb"
 )
 
 // TransparentProxy represents a transparent proxy
@@ -22,7 +20,6 @@ type TransparentProxy struct {
 	wg           sync.WaitGroup
 	stats        *ProxyStats
 	upstream     *UpstreamClient
-	geoIP        *ipdb.GeoIPManager
 	enableDirect bool // Enable direct connection when upstream is disabled
 }
 
@@ -36,7 +33,7 @@ type ProxyStats struct {
 }
 
 // NewTransparentProxy creates a new transparent proxy
-func NewTransparentProxy(listenAddr string, upstream *UpstreamClient, geoIP *ipdb.GeoIPManager) *TransparentProxy {
+func NewTransparentProxy(listenAddr string, upstream *UpstreamClient) *TransparentProxy {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &TransparentProxy{
 		listenAddr: listenAddr,
@@ -46,7 +43,6 @@ func NewTransparentProxy(listenAddr string, upstream *UpstreamClient, geoIP *ipd
 			startTime: time.Now(),
 		},
 		upstream:     upstream,
-		geoIP:        geoIP,
 		enableDirect: !upstream.IsEnabled(),
 	}
 }
@@ -154,31 +150,9 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// Determine whether to connect directly or via upstream proxy based on GeoIP
-	var targetConn net.Conn
-	shouldUseUpstream := false
-
-	// Check if GeoIP is available and upstream is enabled
-	if p.upstream.IsEnabled() && p.geoIP != nil && p.geoIP.IsInitialized() {
-		// Check if target IP is domestic
-		isDomestic, err := p.geoIP.IsDomesticIP(targetHost)
-		if err != nil {
-			slog.Warn("Failed to lookup GeoIP", "target", targetHost, "error", err, "using_upstream", true)
-			shouldUseUpstream = true
-		} else if isDomestic {
-			slog.Debug("Direct connection for domestic IP", "target", targetHost)
-			shouldUseUpstream = false
-		} else {
-			slog.Debug("Using upstream proxy for foreign IP", "target", targetHost)
-			shouldUseUpstream = true
-		}
-	} else if p.upstream.IsEnabled() {
-		// Upstream is enabled but GeoIP is not available, use upstream
-		shouldUseUpstream = true
-	}
-
 	// Connect to target
-	if shouldUseUpstream {
+	var targetConn net.Conn
+	if p.upstream.IsEnabled() {
 		// Connect through upstream proxy
 		targetConn, err = p.upstream.Connect(targetHost, targetPort)
 		if err != nil {

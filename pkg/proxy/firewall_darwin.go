@@ -6,6 +6,7 @@ package proxy
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 )
@@ -14,6 +15,12 @@ const pfAnchorName = "com.apple/linko"
 const pfTableName = "linko_reserved"
 
 func (f *FirewallManager) SetupTransparentProxy() error {
+	if err := LoadChinaIPRanges(); err != nil {
+		slog.Warn("Failed to load cached China IP ranges", "error", err)
+		slog.Info("Run 'linko update-cn-ip' to download China IP data")
+	}
+
+	allCIDRs := append(reservedCIDRs, GetChinaCIDRs()...)
 	ruleConfig := fmt.Sprintf(`# Linko Transparent Proxy Rules
 ext_if = "en0"
 lo_if = "lo0"
@@ -23,7 +30,7 @@ dns_port = "%s"
 # Options and table definition
 table <%s> const { %s }
 
-# Translation rules (rdr must come before filtering)
+
 # rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
 rdr pass on $lo_if inet proto tcp from $ext_if to any port 80 -> 127.0.0.1 port $linko_port
 rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port $linko_port
@@ -32,7 +39,7 @@ rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port
 # pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
 pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 80
 pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
-`, f.proxyPort, f.dnsServerPort, pfTableName, strings.Join(reservedCIDRs, ", "))
+`, f.proxyPort, f.dnsServerPort, pfTableName, strings.Join(allCIDRs, ", "))
 
 	if err := f.writeMacOSRules(ruleConfig); err != nil {
 		return fmt.Errorf("failed to write MacOS rules: %w", err)

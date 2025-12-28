@@ -55,6 +55,20 @@ var configCmd = &cobra.Command{
 	},
 }
 
+var updateCnIPCmd = &cobra.Command{
+	Use:   "update-cn-ip",
+	Short: "Download China IP ranges from APNIC",
+	Long:  "Fetch the latest China IP address ranges from APNIC and save to data directory",
+	Run: func(cmd *cobra.Command, args []string) {
+		slog.Info("fetching China IP ranges from APNIC...")
+		if err := proxy.FetchChinaIPRanges(); err != nil {
+			slog.Error("failed to fetch China IP ranges", "error", err)
+			os.Exit(1)
+		}
+		slog.Info("China IP ranges updated successfully", "output_dir", "data/china_ip_ranges.json")
+	},
+}
+
 func main() {
 	serveCmd.Flags().StringVarP(&configPath, "config", "c", "config/linko.yaml", "Configuration file path")
 	serveCmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "Run as daemon")
@@ -65,6 +79,7 @@ func main() {
 
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(configCmd)
+	rootCmd.AddCommand(updateCnIPCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("failed to execute command", "error", err)
@@ -127,7 +142,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
 		slog.Info("starting transparent proxy", "address", "127.0.0.1:"+cfg.ProxyPort())
 		upstreamClient := proxy.NewUpstreamClient(cfg.Upstream)
-		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient, geoIP)
+		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient)
 		if err := transparentProxy.Start(); err != nil {
 			slog.Error("failed to start transparent proxy", "error", err)
 		}
