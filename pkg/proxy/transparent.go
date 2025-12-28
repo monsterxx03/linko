@@ -6,10 +6,14 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 )
+
+type OriginalDst struct {
+	IP   net.IP
+	Port int
+}
 
 // TransparentProxy represents a transparent proxy
 type TransparentProxy struct {
@@ -135,33 +139,20 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	slog.Debug("Proxying connection", "from", clientConn.RemoteAddr(), "to", originalDst)
-
-	// Parse destination address
-	targetHost, targetPortStr, err := net.SplitHostPort(originalDst)
-	if err != nil {
-		slog.Error("Invalid destination address", "address", originalDst, "error", err)
-		return
-	}
-
-	targetPort, err := strconv.Atoi(targetPortStr)
-	if err != nil {
-		slog.Error("Invalid port", "port", targetPortStr, "error", err)
-		return
-	}
+	slog.Debug("Proxying connection", "from", clientConn.RemoteAddr(), "to", "dst", "ip", originalDst.IP, "port", originalDst.Port)
 
 	// Connect to target
 	var targetConn net.Conn
+	targetHost := originalDst.IP.String()
+	targetPort := originalDst.Port
 	if p.upstream.IsEnabled() {
-		// Connect through upstream proxy
 		targetConn, err = p.upstream.Connect(targetHost, targetPort)
 		if err != nil {
 			slog.Error("Failed to connect via upstream proxy", "target", originalDst, "error", err)
 			return
 		}
 	} else {
-		// Connect directly
-		targetConn, err = net.Dial("tcp", originalDst)
+		targetConn, err = net.DialTCP("tcp", nil, &net.TCPAddr{IP: originalDst.IP, Port: originalDst.Port})
 		if err != nil {
 			slog.Error("Failed to connect to target", "target", originalDst, "error", err)
 			return

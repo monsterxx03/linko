@@ -31,19 +31,19 @@ const (
 	DIOCNATLOOK = 3226747927
 )
 
-func (p *TransparentProxy) getOriginalDestination(conn net.Conn) (string, error) {
+func (p *TransparentProxy) getOriginalDestination(conn net.Conn) (OriginalDst, error) {
 	tcpConn, ok := conn.(*net.TCPConn)
 	if !ok {
-		return "", fmt.Errorf("connection is not TCP")
+		return OriginalDst{}, fmt.Errorf("connection is not TCP")
 	}
 
 	localAddr, ok := tcpConn.LocalAddr().(*net.TCPAddr)
 	if !ok {
-		return "", fmt.Errorf("failed to get local address")
+		return OriginalDst{}, fmt.Errorf("failed to get local address")
 	}
 	remoteAddr, ok := tcpConn.RemoteAddr().(*net.TCPAddr)
 	if !ok {
-		return "", fmt.Errorf("failed to get remote address")
+		return OriginalDst{}, fmt.Errorf("failed to get remote address")
 	}
 
 	nl := new(pfioc_natlook)
@@ -64,7 +64,7 @@ func (p *TransparentProxy) getOriginalDestination(conn net.Conn) (string, error)
 
 	pfFd, err := getPfDev()
 	if err != nil {
-		return "", fmt.Errorf("failed to open /dev/pf: %v", err)
+		return OriginalDst{}, fmt.Errorf("failed to open /dev/pf: %v", err)
 	}
 
 	_, _, errno := syscall.Syscall(
@@ -74,7 +74,7 @@ func (p *TransparentProxy) getOriginalDestination(conn net.Conn) (string, error)
 		uintptr(unsafe.Pointer(nl)),
 	)
 	if errno != 0 {
-		return "", fmt.Errorf("DIOCNATLOOK ioctl failed: %v", errno)
+		return OriginalDst{}, fmt.Errorf("DIOCNATLOOK ioctl failed: %v", errno)
 	}
 
 	var dstIP net.IP
@@ -84,10 +84,10 @@ func (p *TransparentProxy) getOriginalDestination(conn net.Conn) (string, error)
 		dstIP = net.IP(nl.rdaddr[:16])
 	}
 	if isLocalHost(dstIP.String()) {
-		return "", fmt.Errorf("original destination is localhost")
+		return OriginalDst{}, fmt.Errorf("original destination is localhost")
 	}
 
 	dstPort := int(binary.BigEndian.Uint16(nl.rdxport[:2]))
 
-	return fmt.Sprintf("%s:%d", dstIP.String(), dstPort), nil
+	return OriginalDst{IP: dstIP, Port: dstPort}, nil
 }

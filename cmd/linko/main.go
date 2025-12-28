@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -88,6 +89,12 @@ func main() {
 }
 
 func runServer(cmd *cobra.Command, args []string) {
+	if os.Geteuid() != 0 {
+		fmt.Println("Error: This command requires root privileges for firewall operations.")
+		fmt.Println("Please run with: sudo linko serve")
+		os.Exit(1)
+	}
+
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		slog.Error("failed to load config", "error", err)

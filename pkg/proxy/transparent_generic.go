@@ -6,25 +6,24 @@ package proxy
 import (
 	"fmt"
 	"net"
+	"strconv"
 )
 
 // Socket options for getting original destination
 const (
-	SO_ORIGINAL_DST      = 80  // Linux socket option number
-	SO_RECVORIGDSTADDR   = 74  // macOS/Linux socket option number
+	SO_ORIGINAL_DST    = 80 // Linux socket option number
+	SO_RECVORIGDSTADDR = 74 // macOS/Linux socket option number
 )
 
 // getOriginalDestination gets the original destination address for unsupported platforms
-func (p *TransparentProxy) getOriginalDestination(conn net.Conn) (string, error) {
-	// Fallback: try to parse from connection remote addr
-	// This works when using REDIRECT target but not all cases
+func (p *TransparentProxy) getOriginalDestination(conn net.Conn) (OriginalDst, error) {
 	addr := conn.RemoteAddr().String()
-	if host, port, err := net.SplitHostPort(addr); err == nil {
-		// If it's a local address, we can't determine the original destination
+	if host, portStr, err := net.SplitHostPort(addr); err == nil {
 		if !isLocalHost(host) {
-			return fmt.Sprintf("%s:%s", host, port), nil
+			port, _ := strconv.Atoi(portStr)
+			return OriginalDst{IP: net.ParseIP(host), Port: port}, nil
 		}
 	}
 
-	return "", fmt.Errorf("unable to determine original destination: platform not supported")
+	return OriginalDst{}, fmt.Errorf("unable to determine original destination: platform not supported")
 }
