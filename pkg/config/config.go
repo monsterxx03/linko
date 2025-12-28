@@ -13,9 +13,6 @@ type Config struct {
 	// DNS configuration
 	DNS DNSConfig `mapstructure:"dns"`
 
-	// Proxy protocols
-	Proxy ProxyConfig `mapstructure:"proxy"`
-
 	// Traffic statistics
 	Traffic TrafficConfig `mapstructure:"traffic"`
 
@@ -30,9 +27,6 @@ type Config struct {
 type ServerConfig struct {
 	// Listen address for the main proxy server
 	ListenAddr string `mapstructure:"listen_addr" yaml:"listen_addr"`
-
-	// HTTP API port for management interface
-	AdminPort int `mapstructure:"admin_port" yaml:"admin_port"`
 
 	// Log level (debug, info, warn, error)
 	LogLevel string `mapstructure:"log_level" yaml:"log_level"`
@@ -57,27 +51,6 @@ type DNSConfig struct {
 
 	// Enable DNS over TCP for foreign queries
 	TCPForForeign bool `mapstructure:"tcp_for_foreign" yaml:"tcp_for_foreign"`
-}
-
-// ProxyConfig contains proxy protocol settings
-type ProxyConfig struct {
-	// Enable SOCKS5 proxy
-	SOCKS5 bool `mapstructure:"socks5" yaml:"socks5"`
-
-	// Enable HTTP CONNECT tunnel
-	HTTPTunnel bool `mapstructure:"http_tunnel" yaml:"http_tunnel"`
-
-	// Enable Shadowsocks
-	Shadowsocks bool `mapstructure:"shadowsocks" yaml:"shadowsocks"`
-
-	// Shadowsocks configuration
-	ShadowsocksConfig *ShadowsocksConfig `mapstructure:"shadowsocks_config" yaml:"shadowsocks_config"`
-}
-
-type ShadowsocksConfig struct {
-	Method   string `mapstructure:"method" yaml:"method"`
-	Password string `mapstructure:"password" yaml:"password"`
-	Port     int    `mapstructure:"port" yaml:"port"`
 }
 
 // TrafficConfig contains traffic statistics settings
@@ -133,7 +106,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		Server: ServerConfig{
 			ListenAddr: "127.0.0.1:9890",
-			AdminPort:  8080,
 			LogLevel:   "info",
 		},
 		DNS: DNSConfig{
@@ -143,11 +115,6 @@ func DefaultConfig() *Config {
 			IPDBPath:      "data/geoip.mmdb",
 			CacheTTL:      5 * time.Minute,
 			TCPForForeign: true,
-		},
-		Proxy: ProxyConfig{
-			SOCKS5:      true,
-			HTTPTunnel:  true,
-			Shadowsocks: false,
 		},
 		Traffic: TrafficConfig{
 			EnableRealtime: true,
