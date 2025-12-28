@@ -8,28 +8,41 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+
+	"github.com/monsterxx03/linko/pkg/ipdb"
 )
 
 const ipsetName = "linko_reserved"
 
-func (f *FirewallManager) SetupTransparentProxy() error {
+type linuxFirewallManager struct {
+	fm *FirewallManager
+}
+
+func newFirewallManagerImpl(fm *FirewallManager) FirewallManagerInterface {
+	return &linuxFirewallManager{fm: fm}
+}
+
+func (l *linuxFirewallManager) SetupFirewallRules() error {
 	cmd := exec.Command("sudo", "sh", "-c", "echo 1 > /proc/sys/net/ipv4/ip_forward")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to enable IP forwarding: %w", err)
 	}
 
-	if err := f.createIPSet(); err != nil {
+	if err := l.createIPSet(); err != nil {
 		return fmt.Errorf("failed to create ipset: %w", err)
 	}
 
+	proxyPort := l.fm.proxyPort
+	dnsServerPort := l.fm.dnsServerPort
+
 	rules := []string{
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", f.dnsServerPort),
+		fmt.Sprintf("iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", dnsServerPort),
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", f.proxyPort),
+		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", proxyPort),
 		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", f.proxyPort),
-		fmt.Sprintf("iptables -A INPUT -p udp --dport %s -j ACCEPT", f.dnsServerPort),
-		fmt.Sprintf("iptables -A INPUT -p tcp --dport %s -j ACCEPT", f.proxyPort),
+		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
+		fmt.Sprintf("iptables -A INPUT -p udp --dport %s -j ACCEPT", dnsServerPort),
+		fmt.Sprintf("iptables -A INPUT -p tcp --dport %s -j ACCEPT", proxyPort),
 	}
 
 	for _, rule := range rules {
@@ -42,7 +55,7 @@ func (f *FirewallManager) SetupTransparentProxy() error {
 	return nil
 }
 
-func (f *FirewallManager) createIPSet() error {
+func (l *linuxFirewallManager) createIPSet() error {
 	cmd := exec.Command("sudo", "ipset", "list", "-n")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("ipset not available: %w", err)
@@ -56,19 +69,19 @@ func (f *FirewallManager) createIPSet() error {
 		return fmt.Errorf("failed to create ipset: %w", err)
 	}
 
-	if err := f.addReservedIPsToIPSet(); err != nil {
+	if err := l.addReservedIPsToIPSet(); err != nil {
 		return fmt.Errorf("failed to add reserved IPs: %w", err)
 	}
 
-	if err := f.addChinaIPsToIPSet(); err != nil {
+	if err := l.addChinaIPsToIPSet(); err != nil {
 		return fmt.Errorf("failed to add China IPs: %w", err)
 	}
 
 	return nil
 }
 
-func (f *FirewallManager) addReservedIPsToIPSet() error {
-	addresses := strings.Join(reservedCIDRs, "\n")
+func (l *linuxFirewallManager) addReservedIPsToIPSet() error {
+	addresses := strings.Join(ipdb.GetReservedCIDRs(), "\n")
 	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | ipset add - %s", addresses, ipsetName))
 	if err := cmd.Run(); err != nil {
 		return err
@@ -76,12 +89,12 @@ func (f *FirewallManager) addReservedIPsToIPSet() error {
 	return nil
 }
 
-func (f *FirewallManager) addChinaIPsToIPSet() error {
-	if err := LoadChinaIPRanges(); err != nil {
+func (l *linuxFirewallManager) addChinaIPsToIPSet() error {
+	if err := ipdb.LoadChinaIPRanges(); err != nil {
 		return fmt.Errorf("failed to load China IP ranges: %w", err)
 	}
 
-	chinaIPs := GetChinaCIDRs()
+	chinaIPs, _ := ipdb.GetChinaCIDRs()
 	if len(chinaIPs) == 0 {
 		return nil
 	}
@@ -94,19 +107,22 @@ func (f *FirewallManager) addChinaIPsToIPSet() error {
 	return nil
 }
 
-func (f *FirewallManager) destroyIPSet() {
+func (l *linuxFirewallManager) destroyIPSet() {
 	exec.Command("sudo", "ipset", "destroy", ipsetName).Run()
 }
 
-func (f *FirewallManager) RemoveTransparentProxy() error {
+func (l *linuxFirewallManager) CleanupFirewallRules() error {
+	proxyPort := l.fm.proxyPort
+	dnsServerPort := l.fm.dnsServerPort
+
 	rules := []string{
-		fmt.Sprintf("iptables -D INPUT -p tcp --dport %s -j ACCEPT", f.proxyPort),
-		fmt.Sprintf("iptables -D INPUT -p udp --dport %s -j ACCEPT", f.dnsServerPort),
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", f.proxyPort),
+		fmt.Sprintf("iptables -D INPUT -p tcp --dport %s -j ACCEPT", proxyPort),
+		fmt.Sprintf("iptables -D INPUT -p udp --dport %s -j ACCEPT", dnsServerPort),
+		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
 		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", f.proxyPort),
+		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", proxyPort),
 		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", f.dnsServerPort),
+		fmt.Sprintf("iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", dnsServerPort),
 	}
 
 	for _, rule := range rules {
@@ -114,12 +130,12 @@ func (f *FirewallManager) RemoveTransparentProxy() error {
 		cmd.Run()
 	}
 
-	f.destroyIPSet()
+	l.destroyIPSet()
 
 	return nil
 }
 
-func (f *FirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
+func (l *linuxFirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
 	cmd := exec.Command("sudo", "iptables", "-t", "nat", "-L", "-n", "-v")
@@ -142,7 +158,7 @@ func (f *FirewallManager) CheckFirewallStatus() (map[string]interface{}, error) 
 	return stats, nil
 }
 
-func (f *FirewallManager) GetCurrentRules() ([]FirewallRule, error) {
+func (l *linuxFirewallManager) GetCurrentRules() ([]FirewallRule, error) {
 	cmd := exec.Command("sudo", "iptables", "-t", "nat", "-L", "OUTPUT", "-n")
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -150,10 +166,10 @@ func (f *FirewallManager) GetCurrentRules() ([]FirewallRule, error) {
 		return nil, fmt.Errorf("failed to get Linux rules: %w", err)
 	}
 
-	return f.parseLinuxRules(stdout.String()), nil
+	return l.parseLinuxRules(stdout.String()), nil
 }
 
-func (f *FirewallManager) parseLinuxRules(output string) []FirewallRule {
+func (l *linuxFirewallManager) parseLinuxRules(output string) []FirewallRule {
 	var rules []FirewallRule
 	lines := strings.Split(output, "\n")
 

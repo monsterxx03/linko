@@ -62,11 +62,31 @@ var updateCnIPCmd = &cobra.Command{
 	Long:  "Fetch the latest China IP address ranges from APNIC and save to data directory",
 	Run: func(cmd *cobra.Command, args []string) {
 		slog.Info("fetching China IP ranges from APNIC...")
-		if err := proxy.FetchChinaIPRanges(); err != nil {
+		if err := ipdb.FetchChinaIPRanges(); err != nil {
 			slog.Error("failed to fetch China IP ranges", "error", err)
 			os.Exit(1)
 		}
-		slog.Info("China IP ranges updated successfully", "output_dir", "data/china_ip_ranges.json")
+		slog.Info("China IP ranges updated successfully", "output_dir", "pkg/ipdb/china_ip_ranges.go")
+	},
+}
+
+var isCnIPCmd = &cobra.Command{
+	Use:   "is-cn-ip <ip>",
+	Short: "Check if an IP is a China IP address",
+	Long:  "Check if the given IP address falls within China IP ranges",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		if err := ipdb.LoadChinaIPRanges(); err != nil {
+			slog.Error("failed to load China IP ranges", "error", err)
+			os.Exit(1)
+		}
+		ip := args[0]
+		isCN := ipdb.IsChinaIP(ip)
+		if isCN {
+			fmt.Printf("%s is a China IP address\n", ip)
+		} else {
+			fmt.Printf("%s is NOT a China IP address\n", ip)
+		}
 	},
 }
 
@@ -81,6 +101,7 @@ func main() {
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(updateCnIPCmd)
+	rootCmd.AddCommand(isCnIPCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("failed to execute command", "error", err)
@@ -166,35 +187,39 @@ func runServer(cmd *cobra.Command, args []string) {
 			cfg.Firewall.RedirectHTTP,
 			cfg.Firewall.RedirectHTTPS,
 		)
-		if err := firewallManager.SetupTransparentProxy(); err != nil {
+		if err := firewallManager.SetupFirewallRules(); err != nil {
 			slog.Warn("failed to setup firewall rules", "error", err)
 			slog.Info("please ensure you have sudo privileges")
 		} else {
 			slog.Info("firewall rules configured successfully")
 		}
-	}
 
-	slog.Info("server started successfully. press Ctrl+C to stop")
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	slog.Info("shutting down server")
-
-	if firewallManager != nil && cfg.Firewall.EnableAuto {
-		slog.Info("removing firewall rules")
-		if err := firewallManager.RemoveTransparentProxy(); err != nil {
-			slog.Warn("failed to remove firewall rules", "error", err)
-		} else {
-			slog.Info("firewall rules removed successfully")
-		}
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Error("server panicked", "panic", r)
+			}
+			slog.Info("cleaning up firewall rules")
+			if err := firewallManager.CleanupFirewallRules(); err != nil {
+				slog.Warn("failed to remove firewall rules", "error", err)
+			} else {
+				slog.Info("firewall rules removed successfully")
+			}
+		}()
 	}
 
 	if geoIP != nil {
-		geoIP.Close()
+		defer func() {
+			if err := geoIP.Close(); err != nil {
+				slog.Warn("failed to close GeoIP database", "error", err)
+			}
+		}()
 	}
 
-	slog.Info("server stopped")
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
+
+	slog.Info("shutting down server...")
 }
 
 func parseLogLevel(level string) slog.Level {

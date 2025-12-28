@@ -9,18 +9,33 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
+
+	"github.com/monsterxx03/linko/pkg/ipdb"
 )
 
 const pfAnchorName = "com.apple/linko"
 const pfTableName = "linko_reserved"
 
-func (f *FirewallManager) SetupTransparentProxy() error {
-	if err := LoadChinaIPRanges(); err != nil {
+type darwinFirewallManager struct {
+	fm *FirewallManager
+}
+
+func newFirewallManagerImpl(fm *FirewallManager) FirewallManagerInterface {
+	return &darwinFirewallManager{fm: fm}
+}
+
+func (d *darwinFirewallManager) SetupFirewallRules() error {
+	if err := ipdb.LoadChinaIPRanges(); err != nil {
 		slog.Warn("Failed to load cached China IP ranges", "error", err)
 		slog.Info("Run 'linko update-cn-ip' to download China IP data")
 	}
 
-	allCIDRs := append(reservedCIDRs, GetChinaCIDRs()...)
+	chinaCIDRs, _ := ipdb.GetChinaCIDRs()
+	reservedCIDRs := ipdb.GetReservedCIDRs()
+	allCIDRs := append(reservedCIDRs, chinaCIDRs...)
+	proxyPort := d.fm.proxyPort
+	dnsServerPort := d.fm.dnsServerPort
+
 	ruleConfig := fmt.Sprintf(`# Linko Transparent Proxy Rules
 ext_if = "en0"
 lo_if = "lo0"
@@ -39,24 +54,33 @@ rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port
 # pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
 pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 80
 pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
-`, f.proxyPort, f.dnsServerPort, pfTableName, strings.Join(allCIDRs, ", "))
+`, proxyPort, dnsServerPort, pfTableName, strings.Join(allCIDRs, ", "))
 
-	if err := f.writeMacOSRules(ruleConfig); err != nil {
+	if err := d.writeMacOSRules(ruleConfig); err != nil {
 		return fmt.Errorf("failed to write MacOS rules: %w", err)
 	}
 
-	return f.loadMacOSAnchor()
+	if err := d.loadMacOSAnchor(); err != nil {
+		return err
+	}
+
+	return d.enablePf()
 }
 
-func (f *FirewallManager) RemoveTransparentProxy() error {
+func (d *darwinFirewallManager) CleanupFirewallRules() error {
 	cmd := exec.Command("sudo", "pfctl", "-a", pfAnchorName, "-F", "all")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to flush linko anchor: %w", err)
 	}
+
+	if err := d.disablePf(); err != nil {
+		slog.Warn("failed to disable pf", "error", err)
+	}
+
 	return nil
 }
 
-func (f *FirewallManager) disablePf() error {
+func (d *darwinFirewallManager) disablePf() error {
 	cmd := exec.Command("sudo", "pfctl", "-d")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to disable pf: %w", err)
@@ -64,12 +88,12 @@ func (f *FirewallManager) disablePf() error {
 	return nil
 }
 
-func (f *FirewallManager) enablePf() error {
+func (d *darwinFirewallManager) enablePf() error {
 	cmd := exec.Command("sudo", "pfctl", "-e")
 	return cmd.Run()
 }
 
-func (f *FirewallManager) removeConfigFile() error {
+func (d *darwinFirewallManager) removeConfigFile() error {
 	cmd := exec.Command("sudo", "rm", "-f", "/etc/pf.linko.conf")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to remove config file: %w", err)
@@ -77,12 +101,12 @@ func (f *FirewallManager) removeConfigFile() error {
 	return nil
 }
 
-func (f *FirewallManager) writeMacOSRules(rules string) error {
+func (d *darwinFirewallManager) writeMacOSRules(rules string) error {
 	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("cat > /etc/pf.linko.conf << 'EOF'\n%s\nEOF", rules))
 	return cmd.Run()
 }
 
-func (f *FirewallManager) loadMacOSAnchor() error {
+func (d *darwinFirewallManager) loadMacOSAnchor() error {
 	cmd := exec.Command("sudo", "pfctl", "-f", "/etc/pf.conf")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -94,7 +118,7 @@ func (f *FirewallManager) loadMacOSAnchor() error {
 	return nil
 }
 
-func (f *FirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
+func (d *darwinFirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
 
 	cmd := exec.Command("sudo", "pfctl", "-s", "info")
@@ -123,7 +147,7 @@ func (f *FirewallManager) CheckFirewallStatus() (map[string]interface{}, error) 
 	return stats, nil
 }
 
-func (f *FirewallManager) GetCurrentRules() ([]FirewallRule, error) {
+func (d *darwinFirewallManager) GetCurrentRules() ([]FirewallRule, error) {
 	cmd := exec.Command("sudo", "pfctl", "-a", pfAnchorName, "-s", "nat")
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
@@ -131,10 +155,10 @@ func (f *FirewallManager) GetCurrentRules() ([]FirewallRule, error) {
 		return nil, fmt.Errorf("failed to get MacOS rules: %w", err)
 	}
 
-	return f.parseMacOSRules(stdout.String()), nil
+	return d.parseMacOSRules(stdout.String()), nil
 }
 
-func (f *FirewallManager) parseMacOSRules(output string) []FirewallRule {
+func (d *darwinFirewallManager) parseMacOSRules(output string) []FirewallRule {
 	var rules []FirewallRule
 	lines := strings.Split(output, "\n")
 
