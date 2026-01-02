@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
+	"text/template"
 
 	"github.com/monsterxx03/linko/pkg/ipdb"
 )
@@ -36,25 +37,10 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 	proxyPort := d.fm.proxyPort
 	dnsServerPort := d.fm.dnsServerPort
 
-	ruleConfig := fmt.Sprintf(`# Linko Transparent Proxy Rules
-ext_if = "en0"
-lo_if = "lo0"
-linko_port = "%s"
-dns_port = "%s"
-
-# Options and table definition
-table <%s> const { %s }
-
-
-# rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
-rdr pass on $lo_if inet proto tcp from $ext_if to any port 80 -> 127.0.0.1 port $linko_port
-rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port $linko_port
-
-# Filtering rules (must come after translation)
-# pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 80
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
-`, proxyPort, dnsServerPort, pfTableName, strings.Join(allCIDRs, ", "))
+	ruleConfig, err := d.renderFirewallRules(proxyPort, dnsServerPort, pfTableName, allCIDRs)
+	if err != nil {
+		return fmt.Errorf("failed to render firewall rules: %w", err)
+	}
 
 	if err := d.writeMacOSRules(ruleConfig); err != nil {
 		return fmt.Errorf("failed to write MacOS rules: %w", err)
@@ -65,6 +51,54 @@ pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
 	}
 
 	return d.enablePf()
+}
+
+type firewallRuleData struct {
+	ProxyPort string
+	DNSPort   string
+	TableName string
+	CIDRs     []string
+}
+
+func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort, tableName string, cidrs []string) (string, error) {
+	const ruleTemplate = `# Linko Transparent Proxy Rules
+ext_if = "en0"
+lo_if = "lo0"
+linko_port = "{{.ProxyPort}}"
+dns_port = "{{.DNSPort}}"
+
+# Options and table definition
+table <{{.TableName}}> const { {{range $i, $cidr := .CIDRs}}{{if $i}}, {{end}}{{$cidr}}{{end}} }
+
+# rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
+rdr pass on $lo_if inet proto tcp from $ext_if to any port 80 -> 127.0.0.1 port $linko_port
+rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port $linko_port
+
+# Filtering rules (must come after translation)
+# pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 80
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
+pass out proto { tcp, udp } from any to <{{.TableName}}>
+`
+
+	data := firewallRuleData{
+		ProxyPort: proxyPort,
+		DNSPort:   dnsPort,
+		TableName: tableName,
+		CIDRs:     cidrs,
+	}
+
+	var buf bytes.Buffer
+	tmpl, err := template.New("pfRules").Parse(ruleTemplate)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse template: %w", err)
+	}
+
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("failed to execute template: %w", err)
+	}
+
+	return buf.String(), nil
 }
 
 func (d *darwinFirewallManager) CleanupFirewallRules() error {
