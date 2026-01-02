@@ -20,15 +20,17 @@ type FirewallManager struct {
 	proxyPort     string
 	dnsServerPort string
 	redirectDNS   bool
+	cnDNS         []string
 	redirectHTTP  bool
 	redirectHTTPS bool
 	impl          FirewallManagerInterface
 }
 
-func NewFirewallManager(proxyPort string, dnsServerPort string, redirectDNS, redirectHTTP, redirectHTTPS bool) *FirewallManager {
+func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, redirectDNS bool, redirectHTTP, redirectHTTPS bool) *FirewallManager {
 	fm := &FirewallManager{
 		proxyPort:     proxyPort,
 		dnsServerPort: dnsServerPort,
+		cnDNS:         cnDNS,
 		redirectDNS:   redirectDNS,
 		redirectHTTP:  redirectHTTP,
 		redirectHTTPS: redirectHTTPS,

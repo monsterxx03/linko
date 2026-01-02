@@ -183,6 +183,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		firewallManager = proxy.NewFirewallManager(
 			cfg.ProxyPort(),
 			cfg.DNSServerPort(),
+			cfg.DNS.DomesticDNS,
 			cfg.Firewall.RedirectDNS,
 			cfg.Firewall.RedirectHTTP,
 			cfg.Firewall.RedirectHTTPS,

@@ -36,8 +36,9 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 	allCIDRs := append(reservedCIDRs, chinaCIDRs...)
 	proxyPort := d.fm.proxyPort
 	dnsServerPort := d.fm.dnsServerPort
+	cnDNS := d.fm.cnDNS
 
-	ruleConfig, err := d.renderFirewallRules(proxyPort, dnsServerPort, pfTableName, allCIDRs)
+	ruleConfig, err := d.renderFirewallRules(proxyPort, dnsServerPort, cnDNS, pfTableName, allCIDRs)
 	if err != nil {
 		return fmt.Errorf("failed to render firewall rules: %w", err)
 	}
@@ -56,11 +57,12 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 type firewallRuleData struct {
 	ProxyPort string
 	DNSPort   string
+	CNDNS     []string
 	TableName string
 	CIDRs     []string
 }
 
-func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort, tableName string, cidrs []string) (string, error) {
+func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, cnDNS []string, tableName string, cidrs []string) (string, error) {
 	const ruleTemplate = `# Linko Transparent Proxy Rules
 ext_if = "en0"
 lo_if = "lo0"
@@ -70,20 +72,20 @@ dns_port = "{{.DNSPort}}"
 # Options and table definition
 table <{{.TableName}}> const { {{range $i, $cidr := .CIDRs}}{{if $i}}, {{end}}{{$cidr}}{{end}} }
 
-# rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
-rdr pass on $lo_if inet proto tcp from $ext_if to any port 80 -> 127.0.0.1 port $linko_port
-rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port $linko_port
+rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
+rdr pass on $lo_if inet proto tcp from $ext_if to any port { 80, 443 } -> 127.0.0.1 port $linko_port
 
 # Filtering rules (must come after translation)
-# pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 80
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
-pass out proto { tcp, udp } from any to <{{.TableName}}>
+pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port { 80, 443 }
+pass out proto udp from any to { {{range $i, $ip := .CNDNS}}{{if $i}}, {{end}}{{$ip}}{{end}} } port 53 # skip cn dns
+pass out proto tcp from any to <{{.TableName}}>
 `
 
 	data := firewallRuleData{
 		ProxyPort: proxyPort,
 		DNSPort:   dnsPort,
+		CNDNS:     cnDNS,
 		TableName: tableName,
 		CIDRs:     cidrs,
 	}
