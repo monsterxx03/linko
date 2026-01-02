@@ -36,6 +36,7 @@ func NewDNSServer(addr string, splitter *DNSSplitter, cache *DNSCache) *DNSServe
 
 // Start starts the DNS server (UDP only for transparent proxy)
 func (s *DNSServer) Start() error {
+
 	// Create UDP handler
 	udpHandler := s.handleDNS
 	dns.HandleFunc(".", udpHandler)
@@ -56,6 +57,7 @@ func (s *DNSServer) Start() error {
 		}
 	}()
 
+	clearDNSCache()
 	slog.Info("DNS server started", "address", s.addr, "mode", "UDP only (transparent proxy)")
 	return nil
 }
