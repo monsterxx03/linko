@@ -21,6 +21,9 @@ type Config struct {
 
 	// Upstream proxy configuration
 	Upstream UpstreamConfig `mapstructure:"upstream"`
+
+	// Admin server configuration
+	Admin AdminConfig `mapstructure:"admin"`
 }
 
 // ServerConfig contains server-related settings
@@ -101,6 +104,15 @@ type UpstreamConfig struct {
 	Password string `mapstructure:"password" yaml:"password"`
 }
 
+// AdminConfig contains admin server settings
+type AdminConfig struct {
+	// Enable admin server
+	Enable bool `mapstructure:"enable" yaml:"enable"`
+
+	// Admin server listen address
+	ListenAddr string `mapstructure:"listen_addr" yaml:"listen_addr"`
+}
+
 // DefaultConfig returns a default configuration
 func DefaultConfig() *Config {
 	return &Config{
@@ -134,6 +146,10 @@ func DefaultConfig() *Config {
 			Addr:     "127.0.0.1:7891",
 			Username: "",
 			Password: "",
+		},
+		Admin: AdminConfig{
+			Enable:     true,
+			ListenAddr: "0.0.0.0:9810",
 		},
 	}
 }

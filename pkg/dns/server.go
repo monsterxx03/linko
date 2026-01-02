@@ -86,35 +86,56 @@ func (s *DNSServer) Stop() {
 
 // handleDNS handles DNS requests
 func (s *DNSServer) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
+	startTime := time.Now()
+
+	var queryRecord *QueryRecord
+	defer func() {
+		if queryRecord != nil {
+			queryRecord.ResponseTime = time.Since(startTime)
+			GetGlobalStatsCollector().RecordQuery(queryRecord)
+		}
+	}()
+
+	if len(r.Question) == 0 {
+		return
+	}
+
+	domain := r.Question[0].Name
+	queryType := QueryType(dns.TypeToString[r.Question[0].Qtype])
+
+	queryRecord = &QueryRecord{
+		Domain:    domain,
+		QueryType: queryType,
+		Timestamp: startTime,
+	}
+
 	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 	defer cancel()
 
-	// Check cache first
 	if cached := s.cache.Get(r); cached != nil {
 		cached.SetReply(r)
+		queryRecord.Success = true
 		w.WriteMsg(cached)
 		return
 	}
 
-	// Process query through splitter
 	resp, err := s.splitter.SplitQuery(ctx, r)
 	if err != nil {
-		slog.Error("DNS query error", "error", err)
+		slog.Error("DNS query error", "domain", domain, "error", err)
+		queryRecord.Success = false
 		dns.HandleFailed(w, r)
 		return
 	}
 
-	// Check if response is nil
 	if resp == nil {
-		slog.Warn("DNS query returned nil response")
+		slog.Warn("DNS query returned nil response", "domain", domain)
+		queryRecord.Success = false
 		dns.HandleFailed(w, r)
 		return
 	}
 
-	// Cache the response
 	s.cache.Set(r, resp)
-
-	// Send response
+	queryRecord.Success = true
 	w.WriteMsg(resp)
 }
 
@@ -153,16 +174,13 @@ func (s *DNSServer) HealthCheck() error {
 	return nil
 }
 
-// GetStats returns server statistics
-func (s *DNSServer) GetStats() map[string]interface{} {
-	stats := make(map[string]interface{})
-	stats["address"] = s.addr
-	stats["running"] = s.IsRunning()
-	stats["cache_stats"] = s.cache.GetStats()
-	return stats
-}
 
 // ServeDNS is the standard dns.HandleFunc interface
 func (s *DNSServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	s.handleDNS(w, r)
+}
+
+// GetCacheStats returns cache statistics
+func (s *DNSServer) GetCacheStats() map[string]interface{} {
+	return s.cache.GetStats()
 }

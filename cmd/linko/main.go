@@ -7,6 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/monsterxx03/linko/pkg/admin"
 	"github.com/monsterxx03/linko/pkg/config"
 	"github.com/monsterxx03/linko/pkg/dns"
 	"github.com/monsterxx03/linko/pkg/ipdb"
@@ -160,6 +161,17 @@ func runServer(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 	defer dnsServer.Stop()
+
+	var adminServer *admin.AdminServer
+	if cfg.Admin.Enable {
+		slog.Info("starting admin server", "address", cfg.Admin.ListenAddr)
+		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, dnsServer)
+		if err := adminServer.Start(); err != nil {
+			slog.Error("failed to start admin server", "error", err)
+			os.Exit(1)
+		}
+		defer adminServer.Stop()
+	}
 
 	var transparentProxy *proxy.TransparentProxy
 	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
