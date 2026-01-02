@@ -13,24 +13,26 @@ import (
 
 // DNSServer handles DNS requests with splitting and caching
 type DNSServer struct {
-	addr      string
-	splitter  *DNSSplitter
-	cache     *DNSCache
-	serverUDP *dns.Server
-	wg        sync.WaitGroup
-	ctx       context.Context
-	cancel    context.CancelFunc
+	addr           string
+	splitter       *DNSSplitter
+	cache          *DNSCache
+	serverUDP      *dns.Server
+	wg             sync.WaitGroup
+	ctx            context.Context
+	cancel         context.CancelFunc
+	statsCollector *DNSStatsCollector
 }
 
 // NewDNSServer creates a new DNS server
 func NewDNSServer(addr string, splitter *DNSSplitter, cache *DNSCache) *DNSServer {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &DNSServer{
-		addr:     addr,
-		splitter: splitter,
-		cache:    cache,
-		ctx:      ctx,
-		cancel:   cancel,
+		addr:           addr,
+		splitter:       splitter,
+		cache:          cache,
+		ctx:            ctx,
+		cancel:         cancel,
+		statsCollector: NewDNSStatsCollector(),
 	}
 }
 
@@ -70,6 +72,10 @@ func (s *DNSServer) Stop() {
 		s.serverUDP.Shutdown()
 	}
 
+	if s.statsCollector != nil {
+		s.statsCollector.Shutdown()
+	}
+
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -92,7 +98,7 @@ func (s *DNSServer) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 	defer func() {
 		if queryRecord != nil {
 			queryRecord.ResponseTime = time.Since(startTime)
-			GetGlobalStatsCollector().RecordQuery(queryRecord)
+			s.statsCollector.RecordQuery(queryRecord)
 		}
 	}()
 
@@ -174,7 +180,6 @@ func (s *DNSServer) HealthCheck() error {
 	return nil
 }
 
-
 // ServeDNS is the standard dns.HandleFunc interface
 func (s *DNSServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	s.handleDNS(w, r)
@@ -182,5 +187,25 @@ func (s *DNSServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 
 // GetCacheStats returns cache statistics
 func (s *DNSServer) GetCacheStats() map[string]interface{} {
-	return s.cache.GetStats()
+	cacheStats := s.cache.GetStats()
+	statsStats := s.statsCollector.GetStatsSummary()
+	topDomains := s.statsCollector.GetTopDomains(20, "queries")
+
+	domains := make([]map[string]interface{}, 0, len(topDomains))
+	for _, d := range topDomains {
+		domains = append(domains, FormatDomainStats(d))
+	}
+
+	return map[string]interface{}{
+		"cache": cacheStats,
+		"dns": map[string]interface{}{
+			"total_domains":     statsStats.TotalDomains,
+			"total_queries":     statsStats.TotalQueries,
+			"total_success":     statsStats.TotalSuccess,
+			"total_failed":      statsStats.TotalFailed,
+			"success_rate":      statsStats.SuccessRate,
+			"avg_response_time": statsStats.AvgResponseTime.String(),
+			"top_domains":       domains,
+		},
+	}
 }

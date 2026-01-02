@@ -44,12 +44,6 @@ type QueryRecord struct {
 	Timestamp    time.Time
 }
 
-var globalStatsCollector *DNSStatsCollector
-
-func init() {
-	globalStatsCollector = NewDNSStatsCollector()
-}
-
 func NewDNSStatsCollector() *DNSStatsCollector {
 	c := &DNSStatsCollector{
 		domains:           make(map[string]*DomainStats),
@@ -266,6 +260,34 @@ func (s *DomainStats) copy() *DomainStats {
 	return stats
 }
 
-func GetGlobalStatsCollector() *DNSStatsCollector {
-	return globalStatsCollector
+func FormatDomainStats(d *DomainStats) map[string]interface{} {
+	avgResponseTime := time.Duration(0)
+	if d.TotalQueries > 0 {
+		avgResponseTime = time.Duration(d.TotalResponseNs / d.TotalQueries)
+	}
+
+	queryTypes := make(map[string]interface{})
+	for qt, ts := range d.QueryTypes {
+		avgNs := time.Duration(0)
+		if ts.Count > 0 {
+			avgNs = time.Duration(ts.TotalNs / ts.Count)
+		}
+		queryTypes[string(qt)] = map[string]interface{}{
+			"count":         ts.Count,
+			"success_count": ts.SuccessCount,
+			"failed_count":  ts.FailedCount,
+			"avg_ns":        avgNs.String(),
+		}
+	}
+
+	return map[string]interface{}{
+		"domain":            d.Domain,
+		"total_queries":     d.TotalQueries,
+		"success_queries":   d.SuccessQueries,
+		"failed_queries":    d.FailedQueries,
+		"avg_response_time": avgResponseTime.String(),
+		"first_query":       d.FirstQueryTime,
+		"last_query":        d.LastQueryTime,
+		"query_types":       queryTypes,
+	}
 }

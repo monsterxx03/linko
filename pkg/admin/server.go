@@ -6,7 +6,6 @@ import (
 	"net"
 	"net/http"
 	"sync"
-	"time"
 
 	"github.com/monsterxx03/linko/pkg/dns"
 )
@@ -44,10 +43,7 @@ func (s *AdminServer) Start() error {
 	mux.HandleFunc("/health", s.handleHealth)
 
 	s.server = &http.Server{
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-		WriteTimeout:      10 * time.Second,
-		IdleTimeout:       30 * time.Second,
+		Handler: mux,
 	}
 
 	s.wg.Add(1)
@@ -88,68 +84,16 @@ func (s *AdminServer) handleDNSStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats := dns.GetGlobalStatsCollector().GetStatsSummary()
-	topDomains := dns.GetGlobalStatsCollector().GetTopDomains(20, "queries")
 	cacheStats := s.dnsServer.GetCacheStats()
-
-	summary := map[string]interface{}{
-		"total_domains":     stats.TotalDomains,
-		"total_queries":     stats.TotalQueries,
-		"total_success":     stats.TotalSuccess,
-		"total_failed":      stats.TotalFailed,
-		"success_rate":      stats.SuccessRate,
-		"avg_response_time": stats.AvgResponseTime.String(),
-	}
-
-	domains := make([]map[string]interface{}, 0, len(topDomains))
-	for _, d := range topDomains {
-		domains = append(domains, formatDomainStats(d))
-	}
 
 	response := StatsResponse{
 		Code:    0,
 		Message: "success",
-		Data: map[string]interface{}{
-			"summary":     summary,
-			"top_domains": domains,
-			"cache":       cacheStats,
-		},
+		Data:    cacheStats,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
-}
-
-func formatDomainStats(d *dns.DomainStats) map[string]interface{} {
-	avgResponseTime := time.Duration(0)
-	if d.TotalQueries > 0 {
-		avgResponseTime = time.Duration(d.TotalResponseNs / d.TotalQueries)
-	}
-
-	queryTypes := make(map[string]interface{})
-	for qt, ts := range d.QueryTypes {
-		avgNs := time.Duration(0)
-		if ts.Count > 0 {
-			avgNs = time.Duration(ts.TotalNs / ts.Count)
-		}
-		queryTypes[string(qt)] = map[string]interface{}{
-			"count":         ts.Count,
-			"success_count": ts.SuccessCount,
-			"failed_count":  ts.FailedCount,
-			"avg_ns":        avgNs.String(),
-		}
-	}
-
-	return map[string]interface{}{
-		"domain":            d.Domain,
-		"total_queries":     d.TotalQueries,
-		"success_queries":   d.SuccessQueries,
-		"failed_queries":    d.FailedQueries,
-		"avg_response_time": avgResponseTime.String(),
-		"first_query":       d.FirstQueryTime,
-		"last_query":        d.LastQueryTime,
-		"query_types":       queryTypes,
-	}
 }
