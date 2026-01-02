@@ -3,12 +3,14 @@ package dns
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/monsterxx03/linko/pkg/proxy"
 )
 
 // GeoIPLookup interface for IP geolocation
@@ -18,23 +20,23 @@ type GeoIPLookup interface {
 
 // DNSSplitter handles DNS query splitting based on IP geolocation
 type DNSSplitter struct {
-	geoIP      GeoIPLookup
-	domestic   []string
-	foreign    []string
+	geoIP            GeoIPLookup
+	domestic         []string
+	foreign          []string
 	useTCPForForeign bool
-	client     *dns.Client
-	clientTCP  *dns.Client
+	upstream         *proxy.UpstreamClient
+	client           *dns.Client
 }
 
 // NewDNSSplitter creates a new DNS splitter
-func NewDNSSplitter(geoIP GeoIPLookup, domesticDNS, foreignDNS []string, useTCPForForeign bool) *DNSSplitter {
+func NewDNSSplitter(geoIP GeoIPLookup, domesticDNS, foreignDNS []string, useTCPForForeign bool, upstream *proxy.UpstreamClient) *DNSSplitter {
 	return &DNSSplitter{
-		geoIP:           geoIP,
-		domestic:        domesticDNS,
-		foreign:         foreignDNS,
+		geoIP:            geoIP,
+		domestic:         domesticDNS,
+		foreign:          foreignDNS,
 		useTCPForForeign: useTCPForForeign,
-		client:          &dns.Client{Timeout: 5 * time.Second},
-		clientTCP:       &dns.Client{Timeout: 5 * time.Second, Net: "tcp"},
+		upstream:         upstream,
+		client:           &dns.Client{Timeout: 5 * time.Second},
 	}
 }
 
@@ -44,38 +46,36 @@ func (s *DNSSplitter) SplitQuery(ctx context.Context, question *dns.Msg) (*dns.M
 		return nil, fmt.Errorf("empty DNS question")
 	}
 
-	q := question.Question[0]
-	qname := q.Name
-	qtype := q.Qtype
+	qname := question.Question[0].Name
 
 	// Query domestic DNS first
-	domesticResp, domesticErr := s.queryDNS(ctx, qname, qtype, s.domestic, false)
+	domesticResp, domesticErr := s.queryDNS(ctx, question, s.domestic, false)
 	if domesticErr == nil && domesticResp != nil {
 		// Check if response IPs are domestic
 		if s.areIPsDomestic(domesticResp) {
+			slog.Debug("using domestic DNS result", "qname", qname, "dns", s.domestic)
 			return domesticResp, nil
 		}
+		slog.Debug("domestic DNS returned foreign IPs, trying foreign DNS", "qname", qname)
 	}
 
 	// Query foreign DNS
-	foreignResp, foreignErr := s.queryDNS(ctx, qname, qtype, s.foreign, s.useTCPForForeign)
+	foreignResp, foreignErr := s.queryDNS(ctx, question, s.foreign, s.useTCPForForeign)
 	if foreignErr != nil {
 		// If foreign query failed, return domestic response if available
 		if domesticResp != nil {
+			slog.Warn("foreign DNS failed, using domestic DNS result", "qname", qname, "error", foreignErr)
 			return domesticResp, nil
 		}
 		return nil, fmt.Errorf("both domestic and foreign DNS queries failed: domestic=%v, foreign=%v", domesticErr, foreignErr)
 	}
 
+	slog.Debug("using foreign DNS result", "qname", qname, "dns", s.foreign)
 	return foreignResp, nil
 }
 
 // queryDNS sends a DNS query to the specified servers
-func (s *DNSSplitter) queryDNS(ctx context.Context, qname string, qtype uint16, servers []string, useTCP bool) (*dns.Msg, error) {
-	msg := new(dns.Msg)
-	msg.SetQuestion(dns.Fqdn(qname), qtype)
-	msg.RecursionDesired = true
-
+func (s *DNSSplitter) queryDNS(ctx context.Context, msg *dns.Msg, servers []string, useTCP bool) (*dns.Msg, error) {
 	var lastErr error
 	var response *dns.Msg
 
@@ -89,8 +89,18 @@ func (s *DNSSplitter) queryDNS(ctx context.Context, qname string, qtype uint16, 
 		var resp *dns.Msg
 		var err error
 
-		if useTCP {
-			resp, _, err = s.clientTCP.Exchange(msg, net.JoinHostPort(server, "53"))
+		if useTCP && s.upstream != nil && s.upstream.IsEnabled() {
+			conn, err := s.upstream.Connect(server, 53)
+			if err != nil {
+				lastErr = err
+				continue
+			}
+			client := &dns.Client{Net: "tcp"}
+			resp, _, err = client.ExchangeWithConn(msg, &dns.Conn{Conn: conn})
+			conn.Close()
+		} else if useTCP {
+			client := &dns.Client{Net: "tcp", Timeout: 5 * time.Second}
+			resp, _, err = client.Exchange(msg, net.JoinHostPort(server, "53"))
 		} else {
 			resp, _, err = s.client.Exchange(msg, net.JoinHostPort(server, "53"))
 		}

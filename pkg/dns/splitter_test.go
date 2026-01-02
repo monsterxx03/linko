@@ -33,8 +33,8 @@ func (m *MockGeoIP) AddIP(ipStr string, isDomestic bool) {
 func TestDNSSplitter_SplitQuery(t *testing.T) {
 	// Create mock GeoIP
 	mockGeoIP := NewMockGeoIP()
-	mockGeoIP.AddIP("1.2.3.4", true)   // Domestic IP
-	mockGeoIP.AddIP("8.8.8.8", false)  // Foreign IP
+	mockGeoIP.AddIP("1.2.3.4", true)  // Domestic IP
+	mockGeoIP.AddIP("8.8.8.8", false) // Foreign IP
 
 	// Note: This test requires a real GeoIP database to work properly
 	// For now, we'll test the structure
@@ -43,6 +43,7 @@ func TestDNSSplitter_SplitQuery(t *testing.T) {
 		[]string{"114.114.114.114"},
 		[]string{"8.8.8.8"},
 		true,
+		nil,
 	)
 
 	// Create test question
@@ -74,6 +75,7 @@ func TestDNSSplitter_areIPsDomestic(t *testing.T) {
 		[]string{"114.114.114.114"},
 		[]string{"8.8.8.8"},
 		true,
+		nil,
 	)
 
 	// Test with domestic IPs
@@ -112,6 +114,7 @@ func TestDNSSplitter_IsDomainForeign(t *testing.T) {
 		[]string{"114.114.114.114"},
 		[]string{"8.8.8.8"},
 		true,
+		nil,
 	)
 
 	tests := []struct {
@@ -141,6 +144,7 @@ func TestDNSSplitter_GetPreferredDNS(t *testing.T) {
 		[]string{"114.114.114.114"},
 		[]string{"8.8.8.8"},
 		true,
+		nil,
 	)
 
 	// Currently returns foreign DNS as default
@@ -157,6 +161,7 @@ func TestDNSSplitter_BatchSplitQuery(t *testing.T) {
 		[]string{"114.114.114.114"},
 		[]string{"8.8.8.8"},
 		true,
+		nil,
 	)
 
 	// Create multiple questions

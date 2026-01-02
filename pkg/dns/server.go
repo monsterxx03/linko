@@ -103,6 +103,13 @@ func (s *DNSServer) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
+	// Check if response is nil
+	if resp == nil {
+		slog.Warn("DNS query returned nil response")
+		dns.HandleFailed(w, r)
+		return
+	}
+
 	// Cache the response
 	s.cache.Set(r, resp)
 

@@ -150,12 +150,15 @@ func runServer(cmd *cobra.Command, args []string) {
 	slog.Info("initializing DNS cache")
 	dnsCache := dns.NewDNSCache(cfg.DNS.CacheTTL, 10000)
 
+	upstreamClient := proxy.NewUpstreamClient(cfg.Upstream)
+
 	slog.Info("initializing DNS splitter")
 	dnsSplitter := dns.NewDNSSplitter(
 		geoIP,
 		cfg.DNS.DomesticDNS,
 		cfg.DNS.ForeignDNS,
 		cfg.DNS.TCPForForeign,
+		upstreamClient,
 	)
 
 	slog.Info("starting DNS server", "address", cfg.DNS.ListenAddr)
@@ -169,7 +172,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	var transparentProxy *proxy.TransparentProxy
 	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
 		slog.Info("starting transparent proxy", "address", "127.0.0.1:"+cfg.ProxyPort())
-		upstreamClient := proxy.NewUpstreamClient(cfg.Upstream)
 		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient)
 		if err := transparentProxy.Start(); err != nil {
 			slog.Error("failed to start transparent proxy", "error", err)
