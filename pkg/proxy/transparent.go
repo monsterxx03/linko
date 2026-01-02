@@ -72,7 +72,7 @@ func (p *TransparentProxy) Start() error {
 }
 
 // Stop stops the transparent proxy
-func (p *TransparentProxy) Stop() error {
+func (p *TransparentProxy) Stop() {
 	p.cancel()
 
 	if p.server != nil {
@@ -88,9 +88,8 @@ func (p *TransparentProxy) Stop() error {
 	select {
 	case <-done:
 		slog.Info("Transparent proxy stopped")
-		return nil
 	case <-time.After(10 * time.Second):
-		return fmt.Errorf("timeout waiting for proxy to stop")
+		slog.Warn("Transparent proxy stop timeout")
 	}
 }
 
@@ -199,6 +198,8 @@ func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, e
 			if err == nil {
 				err = e
 			}
+		case <-p.ctx.Done():
+			return totalBytes, p.ctx.Err()
 		}
 	}
 

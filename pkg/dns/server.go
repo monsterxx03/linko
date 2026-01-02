@@ -61,7 +61,7 @@ func (s *DNSServer) Start() error {
 }
 
 // Stop stops the DNS server
-func (s *DNSServer) Stop() error {
+func (s *DNSServer) Stop() {
 	s.cancel()
 
 	if s.serverUDP != nil {
@@ -77,9 +77,8 @@ func (s *DNSServer) Stop() error {
 	select {
 	case <-done:
 		slog.Info("DNS server stopped")
-		return nil
 	case <-time.After(10 * time.Second):
-		return fmt.Errorf("timeout waiting for DNS server to stop")
+		slog.Warn("DNS server stop timeout")
 	}
 }
 

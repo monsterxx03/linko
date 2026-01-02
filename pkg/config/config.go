@@ -110,7 +110,7 @@ func DefaultConfig() *Config {
 		},
 		DNS: DNSConfig{
 			ListenAddr:    "127.0.0.1:6363",
-			DomesticDNS:   []string{"114.114.114.114", "223.5.5.5"},
+			DomesticDNS:   []string{"223.5.5.5", "114.114.114.114"},
 			ForeignDNS:    []string{"8.8.8.8", "1.1.1.1"},
 			IPDBPath:      "data/geoip.mmdb",
 			CacheTTL:      5 * time.Minute,
@@ -123,13 +123,13 @@ func DefaultConfig() *Config {
 			DBPath:         "data/traffic.db",
 		},
 		Firewall: FirewallConfig{
-			EnableAuto:    false,
+			EnableAuto:    true,
 			RedirectDNS:   true,
 			RedirectHTTP:  true,
 			RedirectHTTPS: true,
 		},
 		Upstream: UpstreamConfig{
-			Enable:   false,
+			Enable:   true,
 			Type:     "socks5",
 			Addr:     "127.0.0.1:7891",
 			Username: "",
