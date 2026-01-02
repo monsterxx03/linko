@@ -140,13 +140,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	slog.Info("initializing GeoIP database")
-	geoIP, err := ipdb.NewGeoIPManager(cfg.DNS.IPDBPath)
-	if err != nil {
-		slog.Warn("failed to initialize GeoIP database", "error", err)
-		slog.Info("please download GeoIP database to enable IP geolocation features")
-	}
-
 	slog.Info("initializing DNS cache")
 	dnsCache := dns.NewDNSCache(cfg.DNS.CacheTTL, 10000)
 
@@ -154,7 +147,6 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	slog.Info("initializing DNS splitter")
 	dnsSplitter := dns.NewDNSSplitter(
-		geoIP,
 		cfg.DNS.DomesticDNS,
 		cfg.DNS.ForeignDNS,
 		cfg.DNS.TCPForForeign,
@@ -206,14 +198,6 @@ func runServer(cmd *cobra.Command, args []string) {
 				slog.Warn("failed to remove firewall rules", "error", err)
 			} else {
 				slog.Info("firewall rules removed successfully")
-			}
-		}()
-	}
-
-	if geoIP != nil {
-		defer func() {
-			if err := geoIP.Close(); err != nil {
-				slog.Warn("failed to close GeoIP database", "error", err)
 			}
 		}()
 	}

@@ -13,6 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+
+	"github.com/yl2chen/cidranger"
 )
 
 const apnicURL = "http://ftp.apnic.net/apnic/stats/apnic/delegated-apnic-latest"
@@ -28,9 +31,10 @@ var (
 		"240.0.0.0/4",
 	}
 
-	chinaCIDRs     []string
 	chinaIPDataDir = "pkg/ipdb"
 	chinaIPFile    = "china_ip_data.json"
+	chinaRanger    atomic.Value
+	chinaCIDRsList []string
 	chinaCIDRsOnce sync.Once
 	chinaCIDRsErr  error
 )
@@ -134,7 +138,18 @@ func loadChinaIPRangesFromEmbed() error {
 		return fmt.Errorf("failed to parse embedded China IP ranges: %w", err)
 	}
 
-	chinaCIDRs = ranges
+	ranger := cidranger.NewPCTrieRanger()
+	for _, cidr := range ranges {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		ranger.Insert(cidranger.NewBasicRangerEntry(*ipNet))
+	}
+
+	chinaRanger.Store(ranger)
+	chinaCIDRsList = ranges
+
 	return nil
 }
 
@@ -145,22 +160,29 @@ func GetChinaCIDRs() ([]string, error) {
 	if chinaCIDRsErr != nil {
 		return nil, chinaCIDRsErr
 	}
-	return chinaCIDRs, nil
+
+	return chinaCIDRsList, nil
 }
 
 func GetReservedCIDRs() []string {
 	return reservedCIDRs
 }
 
-func IsChinaIP(ip string) bool {
-	for _, cidr := range chinaCIDRs {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-		if ipNet.Contains(net.ParseIP(ip)) {
-			return true
-		}
+func IsChinaIP(ipStr string) bool {
+	GetChinaCIDRs()
+	ranger := chinaRanger.Load().(cidranger.Ranger)
+	if ranger == nil {
+		return false
 	}
-	return false
+
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+
+	contains, err := ranger.Contains(ip)
+	if err != nil {
+		return false
+	}
+	return contains
 }

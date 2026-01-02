@@ -10,17 +10,12 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"github.com/monsterxx03/linko/pkg/ipdb"
 	"github.com/monsterxx03/linko/pkg/proxy"
 )
 
-// GeoIPLookup interface for IP geolocation
-type GeoIPLookup interface {
-	IsDomesticIP(ipStr string) (bool, error)
-}
-
 // DNSSplitter handles DNS query splitting based on IP geolocation
 type DNSSplitter struct {
-	geoIP            GeoIPLookup
 	domestic         []string
 	foreign          []string
 	useTCPForForeign bool
@@ -29,9 +24,8 @@ type DNSSplitter struct {
 }
 
 // NewDNSSplitter creates a new DNS splitter
-func NewDNSSplitter(geoIP GeoIPLookup, domesticDNS, foreignDNS []string, useTCPForForeign bool, upstream *proxy.UpstreamClient) *DNSSplitter {
+func NewDNSSplitter(domesticDNS, foreignDNS []string, useTCPForForeign bool, upstream *proxy.UpstreamClient) *DNSSplitter {
 	return &DNSSplitter{
-		geoIP:            geoIP,
 		domestic:         domesticDNS,
 		foreign:          foreignDNS,
 		useTCPForForeign: useTCPForForeign,
@@ -129,26 +123,13 @@ func (s *DNSSplitter) areIPsDomestic(resp *dns.Msg) bool {
 		switch a := answer.(type) {
 		case *dns.A:
 			ipStr := a.A.String()
-			isDomestic, err := s.geoIP.IsDomesticIP(ipStr)
-			if err != nil {
-				return false
-			}
-			if !isDomestic {
-				return false
-			}
-		case *dns.AAAA:
-			ipStr := a.AAAA.String()
-			isDomestic, err := s.geoIP.IsDomesticIP(ipStr)
-			if err != nil {
-				return false
-			}
-			if !isDomestic {
-				return false
+			if ipdb.IsChinaIP(ipStr) {
+				return true
 			}
 		}
 	}
 
-	return true
+	return false
 }
 
 // SplitAndMerge splits queries and merges responses for multiple domains
