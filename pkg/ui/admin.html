@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Linko Admin | DNS Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 300: '#cbd5e1', 400: '#94a3b8', 500: '#64748b', 600: '#475569', 700: '#334155', 800: '#1e293b', 900: '#0f172a' },
+            accent: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0ea5e9', 600: '#0284c7' },
+          },
+          fontFamily: {
+            mono: ['JetBrains Mono', 'monospace'],
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.3s ease-out',
+            'slide-up': 'slideUp 0.4s ease-out',
+          },
+          keyframes: {
+            fadeIn: { '0%': { opacity: '0' }, '100%': { opacity: '1' } },
+            slideUp: { '0%': { opacity: '0', transform: 'translateY(10px)' }, '100%': { opacity: '1', transform: 'translateY(0)' } },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { scrollbar-width: thin; scrollbar-color: #e2e8f0 #f8fafc; }
+    *::-webkit-scrollbar { width: 6px; height: 6px; }
+    *::-webkit-scrollbar-track { background: #f8fafc; }
+    *::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    *::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    body { font-family: 'Inter', system-ui, sans-serif; background: #f8fafc; color: #334155; }
+    .stat-card { transition: all 0.2s ease; }
+    .stat-card:hover { transform: translateY(-1px); }
+    .domain-row { transition: background 0.15s ease; }
+    .domain-row:hover { background: #f1f5f9; }
+    .btn-action { transition: all 0.2s ease; }
+    .btn-action:hover { transform: translateY(-1px); }
+    .btn-action:active { transform: translateY(0); }
+    .stat-value { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="min-h-screen">
+  <!-- Header -->
+  <header class="bg-white border-b border-bg-200 sticky top-0 z-10">
+    <div class="max-w-6xl mx-auto px-6 py-4">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-bg-800 flex items-center justify-center">
+            <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-lg font-semibold text-bg-900">Linko</h1>
+            <p class="text-xs text-bg-500">DNS Monitor</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-4 text-sm">
+          <div class="flex items-center gap-2 text-bg-600">
+            <div class="w-2 h-2 rounded-full bg-emerald-500"></div>
+            <span>Connected</span>
+          </div>
+          <span class="text-bg-400">|</span>
+          <span class="text-bg-500">Auto refresh: <span class="text-bg-800 font-medium" id="refresh-timer">5</span>s</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-6xl mx-auto px-6 py-8">
+    <!-- Status Bar -->
+    <div class="bg-white rounded-xl border border-bg-200 p-4 mb-6">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-6">
+          <div class="flex items-center gap-2">
+            <div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+            <span class="text-sm font-medium text-bg-800">DNS Server</span>
+            <span class="text-sm text-emerald-600">Online</span>
+          </div>
+          <div class="h-5 w-px bg-bg-200"></div>
+          <div class="text-sm text-bg-600">
+            API latency: <span class="font-medium text-bg-800" id="api-latency">--ms</span>
+          </div>
+        </div>
+        <button onclick="refreshData()" class="btn-action px-4 py-2 text-sm font-medium text-bg-700 bg-bg-100 rounded-lg hover:bg-bg-200">
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <!-- Total Queries -->
+      <div class="stat-card bg-white rounded-xl border border-bg-200 p-5">
+        <p class="text-xs font-medium text-bg-500 uppercase tracking-wide mb-1">Total Queries</p>
+        <p id="total-queries" class="text-2xl font-semibold text-bg-900 stat-value">--</p>
+        <p class="text-xs text-bg-400 mt-1">Since last reset</p>
+      </div>
+
+      <!-- Success Rate -->
+      <div class="stat-card bg-white rounded-xl border border-bg-200 p-5">
+        <p class="text-xs font-medium text-bg-500 uppercase tracking-wide mb-1">Success Rate</p>
+        <p id="success-rate" class="text-2xl font-semibold text-emerald-600 stat-value">--%</p>
+        <div class="mt-2 h-1.5 bg-bg-100 rounded-full overflow-hidden">
+          <div id="success-bar" class="h-full bg-emerald-500 transition-all duration-500" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <!-- Avg Response -->
+      <div class="stat-card bg-white rounded-xl border border-bg-200 p-5">
+        <p class="text-xs font-medium text-bg-500 uppercase tracking-wide mb-1">Avg Response</p>
+        <p id="avg-response" class="text-2xl font-semibold text-bg-800 stat-value">--ms</p>
+        <p class="text-xs text-bg-400 mt-1">Last query average</p>
+      </div>
+
+      <!-- Cache Size -->
+      <div class="stat-card bg-white rounded-xl border border-bg-200 p-5">
+        <p class="text-xs font-medium text-bg-500 uppercase tracking-wide mb-1">Cache Size</p>
+        <p id="cache-size" class="text-2xl font-semibold text-bg-800 stat-value">--</p>
+        <p class="text-xs text-bg-400 mt-1">Hit rate: <span id="cache-hit-rate" class="text-emerald-600">--%</span></p>
+      </div>
+    </div>
+
+    <!-- Secondary Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div class="bg-white rounded-xl border border-bg-200 p-4 flex items-center justify-between">
+        <div>
+          <p class="text-xs text-bg-500 mb-1">Domains</p>
+          <p id="total-domains" class="text-lg font-semibold text-bg-800 stat-value">--</p>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-bg-100 flex items-center justify-center">
+          <svg class="w-4 h-4 text-bg-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-bg-200 p-4 flex items-center justify-between">
+        <div>
+          <p class="text-xs text-bg-500 mb-1">Success</p>
+          <p id="total-success" class="text-lg font-semibold text-emerald-600 stat-value">--</p>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+          <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-bg-200 p-4 flex items-center justify-between">
+        <div>
+          <p class="text-xs text-bg-500 mb-1">Failed</p>
+          <p id="total-failed" class="text-lg font-semibold text-red-500 stat-value">--</p>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
+          <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-bg-200 p-4 flex items-center justify-between">
+        <div>
+          <p class="text-xs text-bg-500 mb-1">Cache Items</p>
+          <p id="cache-count" class="text-lg font-semibold text-bg-800 stat-value">--</p>
+        </div>
+        <div class="w-8 h-8 rounded-lg bg-bg-100 flex items-center justify-center">
+          <svg class="w-4 h-4 text-bg-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Top Domains Table -->
+    <div class="bg-white rounded-xl border border-bg-200 mb-6">
+      <div class="px-5 py-4 border-b border-bg-100 flex items-center justify-between">
+        <h2 class="font-semibold text-bg-800">Top Domains</h2>
+        <span class="text-xs text-bg-400">Live</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full">
+          <thead>
+            <tr class="text-xs font-medium text-bg-500 uppercase tracking-wide border-b border-bg-100">
+              <th class="px-5 py-3 text-left">#</th>
+              <th class="px-5 py-3 text-left">Domain</th>
+              <th class="px-5 py-3 text-left">Type</th>
+              <th class="px-5 py-3 text-right">Queries</th>
+              <th class="px-5 py-3 text-right">Share</th>
+            </tr>
+          </thead>
+          <tbody id="domains-table">
+            <tr class="domain-row border-t border-bg-100">
+              <td colspan="5" class="px-5 py-8 text-center text-bg-400">
+                <div class="h-4 bg-bg-100 rounded w-48 mx-auto animate-pulse"></div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="bg-white rounded-xl border border-bg-200 p-5">
+      <h2 class="font-semibold text-bg-800 mb-4">Actions</h2>
+      <div class="flex flex-wrap gap-3">
+        <button onclick="clearStats()" class="btn-action px-4 py-2 text-sm font-medium text-bg-700 bg-bg-100 rounded-lg hover:bg-bg-200">
+          Clear Stats
+        </button>
+        <button onclick="clearCache()" class="btn-action px-4 py-2 text-sm font-medium text-bg-700 bg-bg-100 rounded-lg hover:bg-bg-200">
+          Clear Cache
+        </button>
+        <button onclick="clearBoth()" class="btn-action px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100">
+          Clear All
+        </button>
+      </div>
+      <div id="action-feedback" class="mt-3 text-sm hidden"></div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-bg-200 mt-8">
+    <div class="max-w-6xl mx-auto px-6 py-4">
+      <div class="flex items-center justify-between text-xs text-bg-400">
+        <span>Linko DNS Monitor</span>
+        <span id="last-update">Last update: --</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    const API_BASE = window.location.origin;
+    const REFRESH_INTERVAL = 5000;
+    let refreshTimer = null;
+    let countdownTimer = null;
+    let secondsLeft = 5;
+
+    function formatNumber(num) {
+      if (num == null || isNaN(num)) return '--';
+      if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+      if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+      return num.toString();
+    }
+
+    function formatPercent(value) {
+      if (value == null || isNaN(value)) return '--%';
+      return value.toFixed(1) + '%';
+    }
+
+    function showFeedback(message, type = 'success') {
+      const el = document.getElementById('action-feedback');
+      el.textContent = message;
+      el.className = `mt-3 text-sm animate-fade-in ${
+        type === 'success' ? 'text-emerald-600' : 'text-red-500'
+      }`;
+      el.classList.remove('hidden');
+      setTimeout(() => el.classList.add('hidden'), 3000);
+    }
+
+    async function fetchHealth() {
+      const start = performance.now();
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        if (res.ok) {
+          document.getElementById('api-latency').textContent = (performance.now() - start).toFixed(0) + 'ms';
+          return true;
+        }
+      } catch (e) {}
+      document.getElementById('api-latency').textContent = 'N/A';
+      return false;
+    }
+
+    async function fetchStats() {
+      try {
+        const res = await fetch(`${API_BASE}/stats/dns`);
+        const data = await res.json();
+        if (data.code !== 0) throw new Error(data.message);
+
+        const dns = data.data.dns;
+        const cache = data.data.cache;
+
+        document.getElementById('total-queries').textContent = formatNumber(dns.total_queries);
+        document.getElementById('success-rate').textContent = formatPercent(dns.success_rate);
+        document.getElementById('success-bar').style.width = (dns.success_rate || 0) + '%';
+        document.getElementById('avg-response').textContent = dns.avg_response_time ? Math.floor(parseFloat(dns.avg_response_time)) + 'ms' : '--ms';
+        document.getElementById('total-domains').textContent = formatNumber(dns.total_domains);
+        document.getElementById('total-success').textContent = formatNumber(dns.total_success);
+        document.getElementById('total-failed').textContent = formatNumber(dns.total_failed);
+
+        document.getElementById('cache-size').textContent = formatNumber(cache.size);
+        document.getElementById('cache-count').textContent = formatNumber(cache.size);
+        document.getElementById('cache-hit-rate').textContent = formatPercent(cache.hit_rate);
+
+        updateDomainsTable(dns.top_domains);
+        document.getElementById('last-update').textContent = 'Last update: ' + new Date().toLocaleTimeString();
+
+        return true;
+      } catch (e) {
+        console.error('Failed to fetch stats:', e);
+        return false;
+      }
+    }
+
+    function updateDomainsTable(domains) {
+      const tbody = document.getElementById('domains-table');
+      if (!domains || !Array.isArray(domains) || domains.length === 0) {
+        tbody.innerHTML = `<tr class="domain-row border-t border-bg-100"><td colspan="5" class="px-5 py-8 text-center text-bg-400">No data available</td></tr>`;
+        return;
+      }
+
+      const totalQueries = domains.reduce((sum, d) => sum + d.total_queries, 0);
+
+      tbody.innerHTML = domains.map((domain, index) => {
+        const percent = totalQueries > 0 ? (domain.total_queries / totalQueries * 100).toFixed(1) : 0;
+        const queryTypes = domain.query_types || {};
+        const primaryType = Object.keys(queryTypes)[0] || 'A';
+        const rankClass = index < 3 ? 'bg-bg-800 text-white' : 'bg-bg-100 text-bg-600';
+
+        return `
+          <tr class="domain-row border-t border-bg-100">
+            <td class="px-5 py-3">
+              <span class="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-medium ${rankClass}">${index + 1}</span>
+            </td>
+            <td class="px-5 py-3 text-sm text-bg-700 truncate max-w-xs" title="${domain.domain}">${domain.domain}</td>
+            <td class="px-5 py-3"><span class="inline-flex px-2 py-0.5 rounded text-xs font-medium bg-bg-100 text-bg-600">${primaryType}</span></td>
+            <td class="px-5 py-3 text-right text-sm font-medium text-bg-800">${formatNumber(domain.total_queries)}</td>
+            <td class="px-5 py-3 text-right">
+              <div class="flex items-center justify-end gap-2">
+                <div class="w-12 h-1.5 bg-bg-100 rounded-full overflow-hidden"><div class="h-full bg-bg-300 transition-all" style="width: ${percent}%"></div></div>
+                <span class="text-xs text-bg-400 w-10 text-right">${percent}%</span>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function refreshData() {
+      await fetchHealth();
+      await fetchStats();
+      secondsLeft = 5;
+    }
+
+    async function clearStats() {
+      try {
+        const res = await fetch(`${API_BASE}/stats/dns/clear`, { method: 'POST' });
+        const data = await res.json();
+        if (data.code === 0) { showFeedback('Stats cleared'); await refreshData(); }
+        else showFeedback('Failed: ' + data.message, 'error');
+      } catch (e) { showFeedback('Failed: ' + e.message, 'error'); }
+    }
+
+    async function clearCache() {
+      try {
+        const res = await fetch(`${API_BASE}/cache/dns/clear`, { method: 'POST' });
+        const data = await res.json();
+        if (data.code === 0) { showFeedback('Cache cleared'); await refreshData(); }
+        else showFeedback('Failed: ' + data.message, 'error');
+      } catch (e) { showFeedback('Failed: ' + e.message, 'error'); }
+    }
+
+    async function clearBoth() { await clearStats(); await clearCache(); }
+
+    document.addEventListener('DOMContentLoaded', () => { refreshData(); refreshTimer = setInterval(refreshData, REFRESH_INTERVAL); countdownTimer = setInterval(() => { secondsLeft = secondsLeft <= 0 ? 5 : secondsLeft - 1; document.getElementById('refresh-timer').textContent = secondsLeft; }, 1000); });
+    window.addEventListener('beforeunload', () => { if (refreshTimer) clearInterval(refreshTimer); if (countdownTimer) clearInterval(countdownTimer); });
+  </script>
+</body>
+</html>

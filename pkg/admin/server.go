@@ -8,10 +8,13 @@ import (
 	"sync"
 
 	"github.com/monsterxx03/linko/pkg/dns"
+	"github.com/monsterxx03/linko/pkg/ui"
 )
 
 type AdminServer struct {
 	addr      string
+	uiPath    string
+	uiEmbed   bool
 	server    *http.Server
 	listener  net.Listener
 	wg        sync.WaitGroup
@@ -24,9 +27,11 @@ type StatsResponse struct {
 	Data    map[string]interface{} `json:"data"`
 }
 
-func NewAdminServer(addr string, dnsServer *dns.DNSServer) *AdminServer {
+func NewAdminServer(addr string, uiPath string, uiEmbed bool, dnsServer *dns.DNSServer) *AdminServer {
 	return &AdminServer{
 		addr:      addr,
+		uiPath:    uiPath,
+		uiEmbed:   uiEmbed,
 		dnsServer: dnsServer,
 	}
 }
@@ -39,6 +44,15 @@ func (s *AdminServer) Start() error {
 	s.listener = listener
 
 	mux := http.NewServeMux()
+
+	// Serve UI files or embedded HTML
+	if s.uiEmbed {
+		mux.Handle("/", s.handleEmbed())
+	} else if s.uiPath != "" {
+		mux.Handle("/", s.handleStatic())
+	}
+
+	// API endpoints
 	mux.HandleFunc("/stats/dns", s.handleDNSStats)
 	mux.HandleFunc("/stats/dns/clear", s.handleDNSStatsClear)
 	mux.HandleFunc("/cache/dns/clear", s.handleDNSCacheClear)
@@ -65,6 +79,20 @@ func (s *AdminServer) Stop() {
 		s.server.Close()
 	}
 	s.wg.Wait()
+}
+
+// handleStatic serves static files from the UI directory
+func (s *AdminServer) handleStatic() http.Handler {
+	return http.FileServer(http.Dir(s.uiPath))
+}
+
+// handleEmbed serves the embedded HTML
+func (s *AdminServer) handleEmbed() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(ui.AdminHTML))
+	})
 }
 
 func (s *AdminServer) handleHealth(w http.ResponseWriter, r *http.Request) {

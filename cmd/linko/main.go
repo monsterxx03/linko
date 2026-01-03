@@ -165,7 +165,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	var adminServer *admin.AdminServer
 	if cfg.Admin.Enable {
 		slog.Info("starting admin server", "address", cfg.Admin.ListenAddr)
-		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, dnsServer)
+		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, dnsServer)
 		if err := adminServer.Start(); err != nil {
 			slog.Error("failed to start admin server", "error", err)
 			os.Exit(1)

@@ -108,6 +108,12 @@ type AdminConfig struct {
 
 	// Admin server listen address
 	ListenAddr string `mapstructure:"listen_addr" yaml:"listen_addr"`
+
+	// UI directory path for static files
+	UIPath string `mapstructure:"ui_path" yaml:"ui_path"`
+
+	// UI embed mode - serve embedded HTML directly
+	UIEmbed bool `mapstructure:"ui_embed" yaml:"ui_embed"`
 }
 
 // DefaultConfig returns a default configuration
@@ -146,6 +152,8 @@ func DefaultConfig() *Config {
 		Admin: AdminConfig{
 			Enable:     true,
 			ListenAddr: "0.0.0.0:9810",
+			UIPath:     "pkg/ui",
+			UIEmbed:    false,
 		},
 	}
 }

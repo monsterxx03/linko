@@ -30,3 +30,5 @@ upstream:
 admin:
     enable: true
     listen_addr: 0.0.0.0:9810
+    ui_path: pkg/ui
+    ui_embed: true
