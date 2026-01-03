@@ -8,20 +8,20 @@ import (
 
 // RateLimiter implements a token bucket rate limiter
 type RateLimiter struct {
-	capacity    int64
-	tokens      int64
-	rate        int64 // tokens per second
-	lastRefill  time.Time
-	mu          sync.Mutex
+	capacity   int64
+	tokens     int64
+	rate       int64 // tokens per second
+	lastRefill time.Time
+	mu         sync.Mutex
 }
 
 // NewRateLimiter creates a new rate limiter
 func NewRateLimiter(rate int64, burst int64) *RateLimiter {
 	return &RateLimiter{
-		capacity:    burst,
-		tokens:      burst,
-		rate:        rate,
-		lastRefill:  time.Now(),
+		capacity:   burst,
+		tokens:     burst,
+		rate:       rate,
+		lastRefill: time.Now(),
 	}
 }
 
@@ -190,7 +190,7 @@ func (b *BandwidthLimiter) AllowBytes(n int64) bool {
 // LimitReader wraps an io.Reader with bandwidth limiting
 func (b *BandwidthLimiter) LimitReader(r io.Reader) *LimitedReader {
 	return &LimitedReader{
-		r:            r,
+		r:                r,
 		bandwidthLimiter: b,
 	}
 }
@@ -198,7 +198,7 @@ func (b *BandwidthLimiter) LimitReader(r io.Reader) *LimitedReader {
 // LimitWriter wraps an io.Writer with bandwidth limiting
 func (b *BandwidthLimiter) LimitWriter(w io.Writer) *LimitedWriter {
 	return &LimitedWriter{
-		w:            w,
+		w:                w,
 		bandwidthLimiter: b,
 	}
 }

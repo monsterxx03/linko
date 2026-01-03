@@ -95,17 +95,8 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("at least one foreign DNS server is required")
 	}
 
-	if config.DNS.IPDBPath == "" {
-		config.DNS.IPDBPath = "data/geoip.mmdb"
-	}
-
 	if config.Traffic.DBPath == "" {
 		config.Traffic.DBPath = "data/traffic.db"
-	}
-
-	dataDir := filepath.Dir(config.DNS.IPDBPath)
-	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		return fmt.Errorf("failed to create data directory: %w", err)
 	}
 
 	return nil
@@ -121,7 +112,6 @@ func ConfigExists(configPath string) (bool, error) {
 
 func EnsureDirectories(config *Config) error {
 	dirs := []string{
-		filepath.Dir(config.DNS.IPDBPath),
 		filepath.Dir(config.Traffic.DBPath),
 	}
 

@@ -9,7 +9,6 @@ dns:
     foreign_dns:
         - 8.8.8.8
         - 1.1.1.1
-    ipdb_path: data/geoip.mmdb
     cache_ttl: 5m0s
     tcp_for_foreign: true
 traffic:

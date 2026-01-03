@@ -46,9 +46,6 @@ type DNSConfig struct {
 	// Foreign DNS servers (International)
 	ForeignDNS []string `mapstructure:"foreign_dns" yaml:"foreign_dns"`
 
-	// IP database file path
-	IPDBPath string `mapstructure:"ipdb_path" yaml:"ipdb_path"`
-
 	// DNS cache TTL
 	CacheTTL time.Duration `mapstructure:"cache_ttl" yaml:"cache_ttl"`
 
@@ -124,7 +121,6 @@ func DefaultConfig() *Config {
 			ListenAddr:    "127.0.0.1:6363",
 			DomesticDNS:   []string{"223.5.5.5", "114.114.114.114"},
 			ForeignDNS:    []string{"8.8.8.8", "1.1.1.1"},
-			IPDBPath:      "data/geoip.mmdb",
 			CacheTTL:      5 * time.Minute,
 			TCPForForeign: true,
 		},

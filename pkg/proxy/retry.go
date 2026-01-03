@@ -118,10 +118,10 @@ func WithRetry(fn func() error, config *RetryConfig) error {
 
 // RetryableConnection wraps a net.Conn with retry logic
 type RetryableConnection struct {
-	conn      net.Conn
-	retryCfg  *RetryConfig
-	addr      string
-	network   string
+	conn     net.Conn
+	retryCfg *RetryConfig
+	addr     string
+	network  string
 }
 
 // NewRetryableConnection creates a new retryable connection
