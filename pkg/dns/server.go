@@ -209,3 +209,13 @@ func (s *DNSServer) GetCacheStats() map[string]interface{} {
 		},
 	}
 }
+
+// ClearStats clears all DNS statistics
+func (s *DNSServer) ClearStats() {
+	s.statsCollector.ClearStats()
+}
+
+// ClearCache clears the DNS cache
+func (s *DNSServer) ClearCache() {
+	s.cache.Clear()
+}

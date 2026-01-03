@@ -11,7 +11,8 @@ BINARY_NAME=linko
 BINARY_UNIX=$(BINARY_NAME)_unix
 
 # Build flags
-LDFLAGS=-ldflags "-X github.com/monsterxx03/linko/pkg/dns.Version=0.1.0"
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS=-ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=$(VERSION) -X github.com/monsterxx03/linko/pkg/version.Commit=$$(git rev-parse --short HEAD) -X github.com/monsterxx03/linko/pkg/version.Date=$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # Default target
 all: clean deps test build

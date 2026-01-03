@@ -154,6 +154,12 @@ func (c *DNSStatsCollector) GetAllStats() map[string]*DomainStats {
 	return result
 }
 
+func (c *DNSStatsCollector) ClearStats() {
+	c.domainsMu.Lock()
+	defer c.domainsMu.Unlock()
+	c.domains = make(map[string]*DomainStats)
+}
+
 func (c *DNSStatsCollector) GetTopDomains(limit int, sortBy string) []*DomainStats {
 	c.domainsMu.RLock()
 	domains := make([]*DomainStats, 0, len(c.domains))

@@ -40,6 +40,8 @@ func (s *AdminServer) Start() error {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/stats/dns", s.handleDNSStats)
+	mux.HandleFunc("/stats/dns/clear", s.handleDNSStatsClear)
+	mux.HandleFunc("/cache/dns/clear", s.handleDNSCacheClear)
 	mux.HandleFunc("/health", s.handleHealth)
 
 	s.server = &http.Server{
@@ -94,6 +96,54 @@ func (s *AdminServer) handleDNSStats(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *AdminServer) handleDNSStatsClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(StatsResponse{
+			Code:    405,
+			Message: "Method not allowed",
+		})
+		return
+	}
+
+	s.dnsServer.ClearStats()
+
+	response := StatsResponse{
+		Code:    0,
+		Message: "success",
+		Data:    nil,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(response)
+}
+
+func (s *AdminServer) handleDNSCacheClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		json.NewEncoder(w).Encode(StatsResponse{
+			Code:    405,
+			Message: "Method not allowed",
+		})
+		return
+	}
+
+	s.dnsServer.ClearCache()
+
+	response := StatsResponse{
+		Code:    0,
+		Message: "success",
+		Data:    nil,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
 }
