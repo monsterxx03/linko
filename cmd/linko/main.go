@@ -12,6 +12,7 @@ import (
 	"github.com/monsterxx03/linko/pkg/dns"
 	"github.com/monsterxx03/linko/pkg/ipdb"
 	"github.com/monsterxx03/linko/pkg/proxy"
+	"github.com/monsterxx03/linko/pkg/traffic"
 	"github.com/spf13/cobra"
 )
 
@@ -163,9 +164,18 @@ func runServer(cmd *cobra.Command, args []string) {
 	defer dnsServer.Stop()
 
 	var adminServer *admin.AdminServer
+	var trafficStats *traffic.TrafficStatsCollector
+	var transparentProxy *proxy.TransparentProxy
+
+	// Initialize traffic stats if proxy is enabled
+	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
+		slog.Info("initializing traffic stats collector")
+		trafficStats = traffic.NewTrafficStatsCollector()
+	}
+
 	if cfg.Admin.Enable {
 		slog.Info("starting admin server", "address", cfg.Admin.ListenAddr)
-		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, dnsServer)
+		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, dnsServer, trafficStats)
 		if err := adminServer.Start(); err != nil {
 			slog.Error("failed to start admin server", "error", err)
 			os.Exit(1)
@@ -173,14 +183,18 @@ func runServer(cmd *cobra.Command, args []string) {
 		defer adminServer.Stop()
 	}
 
-	var transparentProxy *proxy.TransparentProxy
 	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
 		slog.Info("starting transparent proxy", "address", "127.0.0.1:"+cfg.ProxyPort())
-		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient)
+		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient, trafficStats)
 		if err := transparentProxy.Start(); err != nil {
 			slog.Error("failed to start transparent proxy", "error", err)
 		}
-		defer transparentProxy.Stop()
+		defer func() {
+			transparentProxy.Stop()
+			if trafficStats != nil {
+				trafficStats.Shutdown()
+			}
+		}()
 	}
 
 	var firewallManager *proxy.FirewallManager

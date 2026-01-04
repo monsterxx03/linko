@@ -1,13 +1,18 @@
 package proxy
 
 import (
+	"bufio"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/monsterxx03/linko/pkg/traffic"
 )
 
 type OriginalDst struct {
@@ -24,7 +29,8 @@ type TransparentProxy struct {
 	wg           sync.WaitGroup
 	stats        *ProxyStats
 	upstream     *UpstreamClient
-	enableDirect bool // Enable direct connection when upstream is disabled
+	enableDirect bool          // Enable direct connection when upstream is disabled
+	trafficStats *traffic.TrafficStatsCollector
 }
 
 // ProxyStats tracks proxy statistics
@@ -37,17 +43,18 @@ type ProxyStats struct {
 }
 
 // NewTransparentProxy creates a new transparent proxy
-func NewTransparentProxy(listenAddr string, upstream *UpstreamClient) *TransparentProxy {
+func NewTransparentProxy(listenAddr string, upstream *UpstreamClient, trafficStats *traffic.TrafficStatsCollector) *TransparentProxy {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &TransparentProxy{
-		listenAddr: listenAddr,
-		ctx:        ctx,
-		cancel:     cancel,
+		listenAddr:   listenAddr,
+		ctx:          ctx,
+		cancel:       cancel,
 		stats: &ProxyStats{
 			startTime: time.Now(),
 		},
 		upstream:     upstream,
 		enableDirect: !upstream.IsEnabled(),
+		trafficStats: trafficStats,
 	}
 }
 
@@ -138,7 +145,30 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	slog.Debug("Proxying connection", "from", clientConn.RemoteAddr(), "to", "dst", "ip", originalDst.IP, "port", originalDst.Port)
+	// Extract identifier (SNI or Host) based on port
+	identifier := originalDst.IP.String()
+	isDomain := false
+
+	// Create a buffered reader for identifier extraction
+	br := bufio.NewReaderSize(clientConn, 4096)
+
+	if originalDst.Port == 443 {
+		// HTTPS: Try to extract SNI from TLS ClientHello
+		sni, err := extractSNIFromReader(br)
+		if err == nil && sni != "" {
+			identifier = sni
+			isDomain = true
+		}
+	} else if originalDst.Port == 80 {
+		// HTTP: Try to extract Host header
+		host, err := extractHostFromReader(br)
+		if err == nil && host != "" {
+			identifier = host
+			isDomain = true
+		}
+	}
+
+	slog.Debug("Proxying connection", "from", clientConn.RemoteAddr(), "to", "dst", "ip", originalDst.IP, "port", originalDst.Port, "identifier", identifier, "is_domain", isDomain)
 
 	// Connect to target
 	var targetConn net.Conn
@@ -159,51 +189,71 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 	}
 	defer targetConn.Close()
 
+	// Create a wrapped connection that includes our buffered reader
+	wrappedClient := &bufferedConn{
+		Conn:   clientConn,
+		reader: br,
+	}
+
 	// Relay data
-	bytes, err := p.relayBidirectional(clientConn, targetConn)
+	upload, download, err := p.relayBidirectional(wrappedClient, targetConn)
 
 	// Update stats
 	if err == nil {
 		p.stats.mu.Lock()
-		p.stats.bytesTransferred += uint64(bytes)
+		p.stats.bytesTransferred += uint64(upload + download)
 		p.stats.mu.Unlock()
+	}
+
+	// Record traffic stats
+	if p.trafficStats != nil {
+		p.trafficStats.Record(&traffic.TrafficRecord{
+			Identifier: identifier,
+			IsDomain:   isDomain,
+			Upload:     upload,
+			Download:   download,
+			Timestamp:  time.Now(),
+		})
 	}
 }
 
 // relayBidirectional relays data between client and target
-func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, error) {
+func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, int64, error) {
 	errChan := make(chan error, 2)
-	bytesChan := make(chan int64, 2)
+	uploadChan := make(chan int64, 1)
+	downloadChan := make(chan int64, 1)
 
 	go func() {
 		n, err := io.Copy(target, client)
-		bytesChan <- n
+		uploadChan <- n
 		errChan <- err
 	}()
 
 	go func() {
 		n, err := io.Copy(client, target)
-		bytesChan <- n
+		downloadChan <- n
 		errChan <- err
 	}()
 
-	var totalBytes int64
+	var upload, download int64
 	var err error
 
 	for i := 0; i < 2; i++ {
 		select {
-		case n := <-bytesChan:
-			totalBytes += n
+		case n := <-uploadChan:
+			upload = n
+		case n := <-downloadChan:
+			download = n
 		case e := <-errChan:
 			if err == nil {
 				err = e
 			}
 		case <-p.ctx.Done():
-			return totalBytes, p.ctx.Err()
+			return upload, download, p.ctx.Err()
 		}
 	}
 
-	return totalBytes, err
+	return upload, download, err
 }
 
 // isLocalHost checks if an IP address is localhost
@@ -248,4 +298,173 @@ func (p *TransparentProxy) GetListenAddr() string {
 // GetTargetAddr returns the listen address (no fixed target in transparent mode)
 func (p *TransparentProxy) GetTargetAddr() string {
 	return "dynamic (from original destination)"
+}
+
+// bufferedConn wraps a net.Conn with a bufio.Reader for SNI/Host extraction
+type bufferedConn struct {
+	net.Conn
+	reader *bufio.Reader
+}
+
+// Read reads from the underlying connection, using buffered data first
+func (c *bufferedConn) Read(p []byte) (n int, err error) {
+	return c.reader.Read(p)
+}
+
+// extractSNIFromReader extracts SNI from a buffered reader
+func extractSNIFromReader(reader *bufio.Reader) (string, error) {
+	// Read the first byte to check if this is a TLS record
+	firstByte, err := reader.ReadByte()
+	if err != nil {
+		return "", err
+	}
+
+	// TLS record type: 0x16 = handshake
+	if firstByte != 0x16 {
+		// Not a TLS handshake, put the byte back
+		return "", reader.UnreadByte()
+	}
+
+	// Read TLS record header (5 bytes)
+	header := make([]byte, 5)
+	if _, err := io.ReadFull(reader, header); err != nil {
+		return "", reader.UnreadByte()
+	}
+
+	// Check if this is a handshake message (type 22)
+	if header[0] != 0x16 {
+		return "", nil
+	}
+
+	// Handshake type: 0x01 = ClientHello
+	handshakeType, err := reader.ReadByte()
+	if err != nil {
+		return "", nil
+	}
+	if handshakeType != 0x01 {
+		return "", nil
+	}
+
+	// Read handshake length (3 bytes)
+	handshakeLenBytes := make([]byte, 3)
+	if _, err := io.ReadFull(reader, handshakeLenBytes); err != nil {
+		return "", nil
+	}
+	handshakeLength := int(handshakeLenBytes[0])<<16 | int(handshakeLenBytes[1])<<8 | int(handshakeLenBytes[2])
+
+	// Read ClientHello body
+	clientHello := make([]byte, handshakeLength)
+	if _, err := io.ReadFull(reader, clientHello); err != nil {
+		return "", nil
+	}
+
+	pos := 0
+
+	// Skip LegacyVersion (2 bytes) and Random (32 bytes)
+	pos += 34
+
+	// Skip LegacySessionID
+	if pos < len(clientHello) {
+		sessionIDLen := int(clientHello[pos])
+		pos += 1 + sessionIDLen
+	}
+
+	// Skip CipherSuites
+	if pos+2 <= len(clientHello) {
+		cipherSuiteLen := int(binary.BigEndian.Uint16(clientHello[pos : pos+2]))
+		pos += 2 + cipherSuiteLen
+	}
+
+	// Skip CompressionMethods
+	if pos < len(clientHello) {
+		compressionLen := int(clientHello[pos])
+		pos += 1 + compressionLen
+	}
+
+	// Extensions
+	if pos+2 > len(clientHello) {
+		return "", nil
+	}
+	extensionsLen := int(binary.BigEndian.Uint16(clientHello[pos : pos+2]))
+	pos += 2
+
+	extensionsEnd := pos + extensionsLen
+
+	for pos+4 <= extensionsEnd && pos < len(clientHello) {
+		extType := binary.BigEndian.Uint16(clientHello[pos : pos+2])
+		extLen := int(binary.BigEndian.Uint16(clientHello[pos+2 : pos+4]))
+		pos += 4
+
+		if extType == 0x0000 { // Server Name extension
+			if pos+2 > len(clientHello) {
+				break
+			}
+			sniListLen := int(binary.BigEndian.Uint16(clientHello[pos : pos+2]))
+			pos += 2
+
+			for pos+2 <= pos+sniListLen && pos < len(clientHello) {
+				nameType := clientHello[pos]
+				nameLen := int(binary.BigEndian.Uint16(clientHello[pos+1 : pos+3]))
+				pos += 3
+
+				if nameType == 0 && pos+nameLen <= len(clientHello) {
+					return strings.ToLower(string(clientHello[pos : pos+nameLen])), nil
+				}
+				pos += nameLen
+			}
+			break
+		}
+
+		pos += extLen
+	}
+
+	return "", nil
+}
+
+// extractHostFromReader extracts Host header from a buffered reader
+func extractHostFromReader(reader *bufio.Reader) (string, error) {
+	// Read the request line
+	_, err := reader.ReadString('\n')
+	if err != nil {
+		return "", err
+	}
+
+	// Read headers until we find Host or reach the end
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return "", nil
+		}
+
+		line = strings.TrimSpace(line)
+
+		// End of headers
+		if line == "" {
+			break
+		}
+
+		// Check for Host header
+		if strings.HasPrefix(strings.ToLower(line), "host:") {
+			host := strings.TrimSpace(line[5:])
+			// Remove port if present
+			if idx := strings.LastIndex(host, ":"); idx != -1 {
+				portPart := host[idx+1:]
+				if len(portPart) > 0 && len(portPart) < 6 {
+					allDigits := true
+					for _, c := range portPart {
+						if c < '0' || c > '9' {
+							allDigits = false
+							break
+						}
+					}
+					if allDigits {
+						host = host[:idx]
+					}
+				}
+			}
+			return host, nil
+		}
+	}
+
+	return "", nil
 }
