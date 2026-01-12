@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"log/slog"
+	"os"
 	"os/exec"
 	"strings"
 	"text/template"
@@ -16,6 +17,7 @@ import (
 
 const pfAnchorName = "com.apple/linko"
 const pfTableName = "linko_reserved"
+const pfConfPath = "/etc/pf.linko.conf"
 
 type darwinFirewallManager struct {
 	fm *FirewallManager
@@ -45,6 +47,10 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 
 	if err := d.writeMacOSRules(ruleConfig); err != nil {
 		return fmt.Errorf("failed to write MacOS rules: %w", err)
+	}
+
+	if err := d.ensurePfAnchorLine(); err != nil {
+		return fmt.Errorf("failed to ensure pf anchor line: %w", err)
 	}
 
 	if err := d.loadMacOSAnchor(); err != nil {
@@ -130,7 +136,7 @@ func (d *darwinFirewallManager) enablePf() error {
 }
 
 func (d *darwinFirewallManager) removeConfigFile() error {
-	cmd := exec.Command("sudo", "rm", "-f", "/etc/pf.linko.conf")
+	cmd := exec.Command("sudo", "rm", "-f", pfConfPath)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to remove config file: %w", err)
 	}
@@ -138,7 +144,7 @@ func (d *darwinFirewallManager) removeConfigFile() error {
 }
 
 func (d *darwinFirewallManager) writeMacOSRules(rules string) error {
-	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("cat > /etc/pf.linko.conf << 'EOF'\n%s\nEOF", rules))
+	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("cat > %s << 'EOF'\n%s\nEOF", pfConfPath, rules))
 	return cmd.Run()
 }
 
@@ -152,6 +158,22 @@ func (d *darwinFirewallManager) loadMacOSAnchor() error {
 	}
 
 	return nil
+}
+
+func (d *darwinFirewallManager) ensurePfAnchorLine() error {
+	anchorLine := fmt.Sprintf(`load anchor "%s" from "%s"`, pfAnchorName, pfConfPath)
+
+	data, err := os.ReadFile("/etc/pf.conf")
+	if err != nil {
+		return fmt.Errorf("failed to read /etc/pf.conf: %w", err)
+	}
+
+	if strings.Contains(string(data), anchorLine) {
+		return nil
+	}
+
+	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo '%s' >> /etc/pf.conf", anchorLine))
+	return cmd.Run()
 }
 
 func (d *darwinFirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
