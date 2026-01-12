@@ -61,11 +61,14 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 }
 
 type firewallRuleData struct {
-	ProxyPort string
-	DNSPort   string
-	CNDNS     []string
-	TableName string
-	CIDRs     []string
+	ProxyPort     string
+	DNSPort       string
+	CNDNS         []string
+	TableName     string
+	CIDRs         []string
+	RedirectDNS   bool
+	RedirectHTTP  bool
+	RedirectHTTPS bool
 }
 
 func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, cnDNS []string, tableName string, cidrs []string) (string, error) {
@@ -78,22 +81,44 @@ dns_port = "{{.DNSPort}}"
 # Options and table definition
 table <{{.TableName}}> const { {{range $i, $cidr := .CIDRs}}{{if $i}}, {{end}}{{$cidr}}{{end}} }
 
+{{if .RedirectDNS}}
 rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
-rdr pass on $lo_if inet proto tcp from $ext_if to any port { 80, 443 } -> 127.0.0.1 port $linko_port
+{{end}}
+
+{{if .RedirectHTTP}}
+rdr pass on $lo_if inet proto tcp from $ext_if to any port 80 -> 127.0.0.1 port $linko_port
+{{end}}
+
+{{if .RedirectHTTPS}}
+rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port $linko_port
+{{end}}
 
 # Filtering rules (must come after translation)
+{{if .RedirectDNS}}
 pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port { 80, 443 }
+{{end}}
+
+{{if .RedirectHTTP}}
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 80
+{{end}}
+
+{{if .RedirectHTTPS}}
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
+{{end}}
+
 pass out proto udp from any to { {{range $i, $ip := .CNDNS}}{{if $i}}, {{end}}{{$ip}}{{end}} } port 53 # skip cn dns
 pass out proto tcp from any to <{{.TableName}}>
 `
 
 	data := firewallRuleData{
-		ProxyPort: proxyPort,
-		DNSPort:   dnsPort,
-		CNDNS:     cnDNS,
-		TableName: tableName,
-		CIDRs:     cidrs,
+		ProxyPort:     proxyPort,
+		DNSPort:       dnsPort,
+		CNDNS:         cnDNS,
+		TableName:     tableName,
+		CIDRs:         cidrs,
+		RedirectDNS:   d.fm.redirectOpt.RedirectDNS,
+		RedirectHTTP:  d.fm.redirectOpt.RedirectHTTP,
+		RedirectHTTPS: d.fm.redirectOpt.RedirectHTTPS,
 	}
 
 	var buf bytes.Buffer

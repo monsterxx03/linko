@@ -16,24 +16,32 @@ type FirewallRule struct {
 	Target   string
 }
 
+// RedirectOption contains redirect-related settings
+type RedirectOption struct {
+	// Enable DNS redirect (UDP 53 -> local DNS server)
+	RedirectDNS bool
+
+	// Enable HTTP redirect (TCP 80 -> proxy)
+	RedirectHTTP bool
+
+	// Enable HTTPS redirect (TCP 443 -> proxy)
+	RedirectHTTPS bool
+}
+
 type FirewallManager struct {
 	proxyPort     string
 	dnsServerPort string
-	redirectDNS   bool
+	redirectOpt   RedirectOption
 	cnDNS         []string
-	redirectHTTP  bool
-	redirectHTTPS bool
 	impl          FirewallManagerInterface
 }
 
-func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, redirectDNS bool, redirectHTTP, redirectHTTPS bool) *FirewallManager {
+func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, redirectOpt RedirectOption) *FirewallManager {
 	fm := &FirewallManager{
 		proxyPort:     proxyPort,
 		dnsServerPort: dnsServerPort,
 		cnDNS:         cnDNS,
-		redirectDNS:   redirectDNS,
-		redirectHTTP:  redirectHTTP,
-		redirectHTTPS: redirectHTTPS,
+		redirectOpt:   redirectOpt,
 	}
 	fm.impl = newFirewallManagerImpl(fm)
 	return fm

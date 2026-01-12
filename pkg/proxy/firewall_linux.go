@@ -35,14 +35,31 @@ func (l *linuxFirewallManager) SetupFirewallRules() error {
 	proxyPort := l.fm.proxyPort
 	dnsServerPort := l.fm.dnsServerPort
 
-	rules := []string{
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", dnsServerPort),
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", proxyPort),
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
+	var rules []string
+
+	// Always add input rules
+	rules = append(rules,
 		fmt.Sprintf("iptables -A INPUT -p udp --dport %s -j ACCEPT", dnsServerPort),
 		fmt.Sprintf("iptables -A INPUT -p tcp --dport %s -j ACCEPT", proxyPort),
+	)
+
+	// Conditionally add redirect rules based on configuration
+	if l.fm.redirectOpt.RedirectDNS {
+		rules = append(rules, fmt.Sprintf("iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", dnsServerPort))
+	}
+
+	if l.fm.redirectOpt.RedirectHTTP {
+		rules = append(rules,
+			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
+			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", proxyPort),
+		)
+	}
+
+	if l.fm.redirectOpt.RedirectHTTPS {
+		rules = append(rules,
+			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
+			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
+		)
 	}
 
 	for _, rule := range rules {
@@ -115,14 +132,31 @@ func (l *linuxFirewallManager) CleanupFirewallRules() error {
 	proxyPort := l.fm.proxyPort
 	dnsServerPort := l.fm.dnsServerPort
 
-	rules := []string{
+	var rules []string
+
+	// Always clean up input rules
+	rules = append(rules,
 		fmt.Sprintf("iptables -D INPUT -p tcp --dport %s -j ACCEPT", proxyPort),
 		fmt.Sprintf("iptables -D INPUT -p udp --dport %s -j ACCEPT", dnsServerPort),
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", proxyPort),
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		fmt.Sprintf("iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", dnsServerPort),
+	)
+
+	// Conditionally clean up redirect rules based on configuration
+	if l.fm.redirectOpt.RedirectHTTPS {
+		rules = append(rules,
+			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
+			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
+		)
+	}
+
+	if l.fm.redirectOpt.RedirectHTTP {
+		rules = append(rules,
+			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", proxyPort),
+			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
+		)
+	}
+
+	if l.fm.redirectOpt.RedirectDNS {
+		rules = append(rules, fmt.Sprintf("iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", dnsServerPort))
 	}
 
 	for _, rule := range rules {

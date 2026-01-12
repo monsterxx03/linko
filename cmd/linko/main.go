@@ -190,9 +190,11 @@ func runServer(cmd *cobra.Command, args []string) {
 			cfg.ProxyPort(),
 			cfg.DNSServerPort(),
 			cfg.DNS.DomesticDNS,
-			cfg.Firewall.RedirectDNS,
-			cfg.Firewall.RedirectHTTP,
-			cfg.Firewall.RedirectHTTPS,
+			proxy.RedirectOption{
+				RedirectDNS:   cfg.Firewall.RedirectDNS,
+				RedirectHTTP:  cfg.Firewall.RedirectHTTP,
+				RedirectHTTPS: cfg.Firewall.RedirectHTTPS,
+			},
 		)
 		if err := firewallManager.SetupFirewallRules(); err != nil {
 			slog.Warn("failed to setup firewall rules", "error", err)
