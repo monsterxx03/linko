@@ -26,6 +26,9 @@ type RedirectOption struct {
 
 	// Enable HTTPS redirect (TCP 443 -> proxy)
 	RedirectHTTPS bool
+
+	// Enable SSH redirect (TCP 22 -> proxy)
+	RedirectSSH bool
 }
 
 type FirewallManager struct {

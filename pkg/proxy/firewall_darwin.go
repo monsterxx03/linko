@@ -69,6 +69,7 @@ type firewallRuleData struct {
 	RedirectDNS   bool
 	RedirectHTTP  bool
 	RedirectHTTPS bool
+	RedirectSSH   bool
 }
 
 func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, cnDNS []string, tableName string, cidrs []string) (string, error) {
@@ -93,6 +94,10 @@ rdr pass on $lo_if inet proto tcp from $ext_if to any port 80 -> 127.0.0.1 port 
 rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port $linko_port
 {{end}}
 
+{{if .RedirectSSH}}
+rdr pass on $lo_if inet proto tcp from $ext_if to any port 22 -> 127.0.0.1 port $linko_port
+{{end}}
+
 # Filtering rules (must come after translation)
 {{if .RedirectDNS}}
 pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
@@ -104,6 +109,10 @@ pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 80
 
 {{if .RedirectHTTPS}}
 pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
+{{end}}
+
+{{if .RedirectSSH}}
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 22
 {{end}}
 
 pass out proto udp from any to { {{range $i, $ip := .CNDNS}}{{if $i}}, {{end}}{{$ip}}{{end}} } port 53 # skip cn dns
@@ -119,6 +128,7 @@ pass out proto tcp from any to <{{.TableName}}>
 		RedirectDNS:   d.fm.redirectOpt.RedirectDNS,
 		RedirectHTTP:  d.fm.redirectOpt.RedirectHTTP,
 		RedirectHTTPS: d.fm.redirectOpt.RedirectHTTPS,
+		RedirectSSH:   d.fm.redirectOpt.RedirectSSH,
 	}
 
 	var buf bytes.Buffer

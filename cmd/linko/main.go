@@ -174,7 +174,7 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 
 	var transparentProxy *proxy.TransparentProxy
-	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS {
+	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS || cfg.Firewall.RedirectSSH {
 		slog.Info("starting transparent proxy", "address", "127.0.0.1:"+cfg.ProxyPort())
 		transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient)
 		if err := transparentProxy.Start(); err != nil {
@@ -194,6 +194,7 @@ func runServer(cmd *cobra.Command, args []string) {
 				RedirectDNS:   cfg.Firewall.RedirectDNS,
 				RedirectHTTP:  cfg.Firewall.RedirectHTTP,
 				RedirectHTTPS: cfg.Firewall.RedirectHTTPS,
+				RedirectSSH:   cfg.Firewall.RedirectSSH,
 			},
 		)
 		if err := firewallManager.SetupFirewallRules(); err != nil {

@@ -21,6 +21,7 @@ firewall:
     redirect_dns: true
     redirect_http: true
     redirect_https: true
+    redirect_ssh: false
 upstream:
     enable: true
     type: socks5
@@ -31,4 +32,4 @@ admin:
     enable: true
     listen_addr: 0.0.0.0:9810
     ui_path: pkg/ui
-    ui_embed: true
+    ui_embed: false

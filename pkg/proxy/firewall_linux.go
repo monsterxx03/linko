@@ -62,6 +62,13 @@ func (l *linuxFirewallManager) SetupFirewallRules() error {
 		)
 	}
 
+	if l.fm.redirectOpt.RedirectSSH {
+		rules = append(rules,
+			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 22 -m set --match-set %s dst -j ACCEPT", ipsetName),
+			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 22 -j REDIRECT --to-port %s", proxyPort),
+		)
+	}
+
 	for _, rule := range rules {
 		cmd := exec.Command("sudo", "sh", "-c", rule)
 		if err := cmd.Run(); err != nil {
@@ -145,6 +152,13 @@ func (l *linuxFirewallManager) CleanupFirewallRules() error {
 		rules = append(rules,
 			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
 			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
+		)
+	}
+
+	if l.fm.redirectOpt.RedirectSSH {
+		rules = append(rules,
+			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 22 -j REDIRECT --to-port %s", proxyPort),
+			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 22 -m set --match-set %s dst -j ACCEPT", ipsetName),
 		)
 	}
 

@@ -81,6 +81,9 @@ type FirewallConfig struct {
 
 	// Enable HTTPS redirect
 	RedirectHTTPS bool `mapstructure:"redirect_https" yaml:"redirect_https"`
+
+	// Enable SSH redirect (TCP 22 -> proxy)
+	RedirectSSH bool `mapstructure:"redirect_ssh" yaml:"redirect_ssh"`
 }
 
 // UpstreamConfig contains upstream proxy settings
@@ -141,6 +144,7 @@ func DefaultConfig() *Config {
 			RedirectDNS:   true,
 			RedirectHTTP:  true,
 			RedirectHTTPS: true,
+			RedirectSSH:   false,
 		},
 		Upstream: UpstreamConfig{
 			Enable:   true,
