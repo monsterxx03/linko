@@ -24,7 +24,9 @@ type TransparentProxy struct {
 	wg           sync.WaitGroup
 	stats        *ProxyStats
 	upstream     *UpstreamClient
-	enableDirect bool // Enable direct connection when upstream is disabled
+	enableDirect bool           // Enable direct connection when upstream is disabled
+	mitmHandler  *MITMHandler   // MITM handler for HTTPS traffic
+	mitmEnabled  bool           // Whether MITM is enabled
 }
 
 // ProxyStats tracks proxy statistics
@@ -140,6 +142,14 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 
 	slog.Debug("Proxying connection", "from", clientConn.RemoteAddr(), "to", "dst", "ip", originalDst.IP, "port", originalDst.Port)
 
+	// For HTTPS (443) traffic, check if MITM is enabled
+	if originalDst.Port == 443 && p.mitmEnabled && p.mitmHandler != nil {
+		if err := p.mitmHandler.HandleConnection(clientConn, originalDst); err != nil {
+			slog.Error("MITM handler error", "target", originalDst, "error", err)
+		}
+		return
+	}
+
 	// Connect to target
 	var targetConn net.Conn
 	targetHost := originalDst.IP.String()
@@ -248,4 +258,20 @@ func (p *TransparentProxy) GetListenAddr() string {
 // GetTargetAddr returns the listen address (no fixed target in transparent mode)
 func (p *TransparentProxy) GetTargetAddr() string {
 	return "dynamic (from original destination)"
+}
+
+// SetMITMHandler sets the MITM handler for HTTPS traffic
+func (p *TransparentProxy) SetMITMHandler(handler *MITMHandler) {
+	p.mitmHandler = handler
+	p.mitmEnabled = handler != nil && handler.IsEnabled()
+}
+
+// SetMITMEnabled enables or disables MITM
+func (p *TransparentProxy) SetMITMEnabled(enabled bool) {
+	p.mitmEnabled = enabled
+}
+
+// IsMITMEnabled returns whether MITM is enabled
+func (p *TransparentProxy) IsMITMEnabled() bool {
+	return p.mitmEnabled
 }

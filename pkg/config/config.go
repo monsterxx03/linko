@@ -24,6 +24,9 @@ type Config struct {
 
 	// Admin server configuration
 	Admin AdminConfig `mapstructure:"admin"`
+
+	// MITM configuration
+	MITM MITMConfig `mapstructure:"mitm"`
 }
 
 // ServerConfig contains server-related settings
@@ -119,6 +122,24 @@ type AdminConfig struct {
 	UIEmbed bool `mapstructure:"ui_embed" yaml:"ui_embed"`
 }
 
+// MITMConfig contains MITM proxy settings
+type MITMConfig struct {
+	// Enable MITM functionality
+	Enable bool `mapstructure:"enable" yaml:"enable"`
+
+	// CA certificate path
+	CACertPath string `mapstructure:"ca_cert_path" yaml:"ca_cert_path"`
+
+	// CA private key path
+	CAKeyPath string `mapstructure:"ca_key_path" yaml:"ca_key_path"`
+
+	// Site certificate cache directory
+	CertCacheDir string `mapstructure:"cert_cache_dir" yaml:"cert_cache_dir"`
+
+	// Site certificate validity duration
+	SiteCertValidity time.Duration `mapstructure:"site_cert_validity" yaml:"site_cert_validity"`
+}
+
 // DefaultConfig returns a default configuration
 func DefaultConfig() *Config {
 	return &Config{
@@ -158,6 +179,13 @@ func DefaultConfig() *Config {
 			ListenAddr: "0.0.0.0:9810",
 			UIPath:     "pkg/ui",
 			UIEmbed:    false,
+		},
+		MITM: MITMConfig{
+			Enable:           false,
+			CACertPath:       "certs/ca.crt",
+			CAKeyPath:        "certs/ca.key",
+			CertCacheDir:     "certs/sites",
+			SiteCertValidity: 168 * time.Hour, // 7 days
 		},
 	}
 }

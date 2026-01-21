@@ -11,6 +11,7 @@ import (
 	"github.com/monsterxx03/linko/pkg/config"
 	"github.com/monsterxx03/linko/pkg/dns"
 	"github.com/monsterxx03/linko/pkg/ipdb"
+	"github.com/monsterxx03/linko/pkg/mitm"
 	"github.com/monsterxx03/linko/pkg/proxy"
 	"github.com/spf13/cobra"
 )
@@ -181,6 +182,34 @@ func runServer(cmd *cobra.Command, args []string) {
 			slog.Error("failed to start transparent proxy", "error", err)
 		}
 		defer transparentProxy.Stop()
+	}
+
+	// Initialize MITM if enabled
+	var mitmManager *mitm.Manager
+	if cfg.MITM.Enable {
+		slog.Info("initializing MITM manager",
+			"ca_cert", cfg.MITM.CACertPath,
+			"cert_cache_dir", cfg.MITM.CertCacheDir,
+		)
+
+		mitmManager, err = mitm.NewManager(mitm.ManagerConfig{
+			CACertPath:       cfg.MITM.CACertPath,
+			CAKeyPath:        cfg.MITM.CAKeyPath,
+			CertCacheDir:     cfg.MITM.CertCacheDir,
+			SiteCertValidity: cfg.MITM.SiteCertValidity,
+			Enabled:          true,
+		}, logger)
+		if err != nil {
+			slog.Error("failed to initialize MITM manager", "error", err)
+		} else {
+			slog.Info("MITM enabled", "ca_certificate", mitmManager.GetCACertificatePath())
+
+			// Set up MITM handler for transparent proxy
+			if transparentProxy != nil {
+				mitmHandler := proxy.NewMITMHandler(transparentProxy, mitmManager, logger)
+				transparentProxy.SetMITMHandler(mitmHandler)
+			}
+		}
 	}
 
 	var firewallManager *proxy.FirewallManager
