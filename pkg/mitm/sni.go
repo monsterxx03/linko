@@ -208,3 +208,25 @@ func ExtractHostnameFromTarget(host string, port int) string {
 	}
 	return host
 }
+
+// ExtractSNIFromConnReader reads from a net.Conn and extracts SNI
+// This consumes data from the connection, so should only be used for checking
+func ExtractSNIFromConnReader(conn net.Conn) (string, error) {
+	// Read enough data for TLS ClientHello
+	buf := make([]byte, 4096)
+	n, err := conn.Read(buf)
+	if err != nil {
+		return "", err
+	}
+
+	sniInfo, err := parseSNI(buf[:n])
+	if err != nil {
+		return "", err
+	}
+
+	if sniInfo.IsValid && sniInfo.Hostname != "" {
+		return sniInfo.Hostname, nil
+	}
+
+	return "", errors.New("SNI not found")
+}

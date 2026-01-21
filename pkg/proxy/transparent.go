@@ -144,10 +144,19 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 
 	// For HTTPS (443) traffic, check if MITM is enabled
 	if originalDst.Port == 443 && p.mitmEnabled && p.mitmHandler != nil {
-		if err := p.mitmHandler.HandleConnection(clientConn, originalDst); err != nil {
-			slog.Error("MITM handler error", "target", originalDst, "error", err)
+		// Try MITM, if it fails (e.g., not in whitelist), continue with normal TCP proxy
+		mitmConn, err := p.mitmHandler.HandleConnection(clientConn, originalDst)
+		if err != nil {
+			slog.Debug("MITM skipped, using normal TCP proxy", "target", originalDst, "error", err)
+			// Continue to normal TCP proxy below
+		} else if mitmConn == nil {
+			// MITM succeeded, connection handled
+			return
+		} else {
+			// MITM skipped but returned a wrapped connection with buffered data
+			// Use this connection for normal TCP proxy
+			clientConn = mitmConn
 		}
-		return
 	}
 
 	// Connect to target

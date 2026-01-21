@@ -16,6 +16,7 @@ type ConnectionHandler struct {
 	logger          *slog.Logger
 	upstream        UpstreamClient
 	inspector       *InspectorChain
+	peekReader      *PeekReader // Optional pre-wrapped connection for whitelist check
 	ctx             interface{}
 }
 
@@ -49,8 +50,11 @@ func (h *ConnectionHandler) SetInspector(inspector Inspector) {
 func (h *ConnectionHandler) HandleConnection(clientConn net.Conn, targetIP net.IP, targetPort int) error {
 	defer clientConn.Close()
 
-	// Wrap connection with PeekReader to preserve data for TLS handshake
-	peekReader := NewPeekReader(clientConn)
+	// Use provided peekReader or create a new one
+	peekReader := h.peekReader
+	if peekReader == nil {
+		peekReader = NewPeekReader(clientConn)
+	}
 
 	// First, peek at the ClientHello to extract SNI
 	hostname, err := h.peekSNI(peekReader, targetIP)
@@ -211,4 +215,9 @@ func (p *PeekReader) Peek(n int) ([]byte, error) {
 // Read consumes bytes from the buffered data
 func (p *PeekReader) Read(b []byte) (n int, err error) {
 	return p.reader.Read(b)
+}
+
+// Buffered returns the number of bytes currently buffered
+func (p *PeekReader) Buffered() int {
+	return p.reader.Buffered()
 }

@@ -111,6 +111,13 @@ func (m *Manager) ConnectionHandler(upstream UpstreamClient) *ConnectionHandler 
 	return NewConnectionHandler(m.siteCertManager, m.logger, upstream)
 }
 
+// ConnectionHandlerWithPeekReader returns a connection handler that uses the provided PeekReader
+func (m *Manager) ConnectionHandlerWithPeekReader(upstream UpstreamClient, peekReader *PeekReader) *ConnectionHandler {
+	handler := NewConnectionHandler(m.siteCertManager, m.logger, upstream)
+	handler.peekReader = peekReader
+	return handler
+}
+
 // Statistics holds MITM statistics
 type Statistics struct {
 	TotalConnections  uint64

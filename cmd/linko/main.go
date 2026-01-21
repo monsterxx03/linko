@@ -206,8 +206,11 @@ func runServer(cmd *cobra.Command, args []string) {
 
 			// Set up MITM handler for transparent proxy
 			if transparentProxy != nil {
-				mitmHandler := proxy.NewMITMHandler(transparentProxy, mitmManager, logger)
+				mitmHandler := proxy.NewMITMHandler(transparentProxy, mitmManager, cfg.MITM.Whitelist, logger)
 				transparentProxy.SetMITMHandler(mitmHandler)
+				if len(cfg.MITM.Whitelist) > 0 {
+					slog.Info("MITM whitelist configured", "domains", cfg.MITM.Whitelist)
+				}
 			}
 		}
 	}

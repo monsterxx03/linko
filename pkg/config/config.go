@@ -138,6 +138,11 @@ type MITMConfig struct {
 
 	// Site certificate validity duration
 	SiteCertValidity time.Duration `mapstructure:"site_cert_validity" yaml:"site_cert_validity"`
+
+	// Whitelist of domains to perform MITM on
+	// If empty, MITM is performed on all HTTPS traffic
+	// If specified, only traffic to these domains will be MITM'd
+	Whitelist []string `mapstructure:"whitelist" yaml:"whitelist"`
 }
 
 // DefaultConfig returns a default configuration
