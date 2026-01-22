@@ -99,30 +99,14 @@ func (m *Manager) GetCACertificatePath() string {
 	return m.certManager.GetCACertPath()
 }
 
-// AddInspector adds an inspector to the chain
-func (m *Manager) AddInspector(inspector Inspector) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.inspector.Add(inspector)
-}
-
-// GetInspector returns the inspector chain
-func (m *Manager) GetInspector() *InspectorChain {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.inspector
-}
-
 // ConnectionHandler returns a new connection handler
 func (m *Manager) ConnectionHandler(upstream UpstreamClient) *ConnectionHandler {
-	return NewConnectionHandler(m.siteCertManager, m.logger, upstream)
+	return NewConnectionHandler(m.siteCertManager, m.logger, upstream, m.inspector, nil)
 }
 
 // ConnectionHandlerWithPeekReader returns a connection handler that uses the provided PeekReader
 func (m *Manager) ConnectionHandlerWithPeekReader(upstream UpstreamClient, peekReader *PeekReader) *ConnectionHandler {
-	handler := NewConnectionHandler(m.siteCertManager, m.logger, upstream)
-	handler.peekReader = peekReader
-	return handler
+	return NewConnectionHandler(m.siteCertManager, m.logger, upstream, m.inspector, peekReader)
 }
 
 // Statistics holds MITM statistics

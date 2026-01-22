@@ -15,8 +15,8 @@ type ConnectionHandler struct {
 	siteCertManager *SiteCertManager
 	logger          *slog.Logger
 	upstream        UpstreamClient
-	inspector       *InspectorChain
 	peekReader      *PeekReader // Optional pre-wrapped connection for whitelist check
+	inspector       *InspectorChain
 	ctx             interface{}
 }
 
@@ -31,19 +31,16 @@ func NewConnectionHandler(
 	siteCertManager *SiteCertManager,
 	logger *slog.Logger,
 	upstream UpstreamClient,
+	inspector *InspectorChain,
+	peekReader *PeekReader,
 ) *ConnectionHandler {
 	return &ConnectionHandler{
 		siteCertManager: siteCertManager,
 		logger:          logger,
 		upstream:        upstream,
-		inspector:       NewInspectorChain(),
+		inspector:       inspector,
+		peekReader:      peekReader,
 	}
-}
-
-// SetInspector sets the traffic inspector
-func (h *ConnectionHandler) SetInspector(inspector Inspector) {
-	h.inspector = NewInspectorChain()
-	h.inspector.Add(inspector)
 }
 
 // HandleConnection handles a MITM connection
