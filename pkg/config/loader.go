@@ -113,9 +113,15 @@ func ConfigExists(configPath string) (bool, error) {
 func EnsureDirectories(config *Config) error {
 	dirs := []string{
 		filepath.Dir(config.Traffic.DBPath),
+		filepath.Dir(config.MITM.CACertPath),
+		filepath.Dir(config.MITM.CAKeyPath),
+		config.MITM.CertCacheDir,
 	}
 
 	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("failed to create directory %s: %w", dir, err)
 		}
