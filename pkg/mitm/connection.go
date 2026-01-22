@@ -166,10 +166,10 @@ func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname strin
 	var serverReader, serverWriter io.ReadWriter = server, server
 
 	if h.inspector.ShouldInspect(hostname) {
-		clientReader = NewReadWriter(client, h.inspector, hostname, DirectionServerToClient, h.logger)
-		clientWriter = NewReadWriter(client, h.inspector, hostname, DirectionClientToServer, h.logger)
-		serverReader = NewReadWriter(server, h.inspector, hostname, DirectionClientToServer, h.logger)
-		serverWriter = NewReadWriter(server, h.inspector, hostname, DirectionServerToClient, h.logger)
+		clientReader = NewReadWriter(client, h.inspector, hostname, DirectionClientToServer, h.logger)
+		clientWriter = NewReadWriter(client, h.inspector, hostname, DirectionServerToClient, h.logger)
+		serverReader = NewReadWriter(server, h.inspector, hostname, DirectionServerToClient, h.logger)
+		serverWriter = NewReadWriter(server, h.inspector, hostname, DirectionClientToServer, h.logger)
 	}
 
 	// Client -> Server
