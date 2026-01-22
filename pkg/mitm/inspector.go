@@ -183,8 +183,7 @@ type LogInspector struct {
 
 // LogInspectorOptions configures the log inspector
 type LogInspectorOptions struct {
-	MaxBodySize int64  // Maximum body size to log (0 = unlimited)
-	RedactSensitive bool // Redact sensitive headers like Authorization
+	MaxBodySize int64 // Maximum body size to log (0 = unlimited)
 }
 
 // NewLogInspector creates a new log inspector
@@ -211,8 +210,7 @@ func (l *LogInspector) Inspect(direction Direction, data []byte) ([]byte, error)
 		displayData = displayData[:l.opts.MaxBodySize]
 	}
 
-	// Try to extract readable text
-	text := extractReadableText(displayData)
+	text := string(data)
 	if text != "" {
 		if len(text) > int(l.opts.MaxBodySize) {
 			text = text[:l.opts.MaxBodySize]
@@ -289,11 +287,11 @@ func (c *InspectorChain) ShouldInspect(hostname string) bool {
 
 // ReadWriter is an io.ReadWriter that can be inspected
 type ReadWriter struct {
-	rw         io.ReadWriter
-	inspector  *InspectorChain
-	hostname   string
-	direction  Direction
-	logger     *slog.Logger
+	rw        io.ReadWriter
+	inspector *InspectorChain
+	hostname  string
+	direction Direction
+	logger    *slog.Logger
 }
 
 // NewReadWriter creates a new inspectable ReadWriter

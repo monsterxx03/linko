@@ -66,6 +66,7 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		enabled:         config.Enabled,
 		inspector:       NewInspectorChain(),
 	}
+	m.inspector.Add(NewHTTPInspector(logger, ""))
 
 	return m, nil
 }
