@@ -23,19 +23,26 @@ type ManagerConfig struct {
 	CAKeyPath        string
 	CertCacheDir     string
 	SiteCertValidity time.Duration
+	CACertValidity   time.Duration
 	Enabled          bool
 }
 
 // NewManager creates a new MITM manager
 func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
-	// Default validity is 7 days
-	validity := 168 * time.Hour
+	// Default site certificate validity is 7 days
+	siteValidity := 168 * time.Hour
 	if config.SiteCertValidity > 0 {
-		validity = config.SiteCertValidity
+		siteValidity = config.SiteCertValidity
+	}
+
+	// Default CA certificate validity is 365 days
+	caValidity := 365 * 24 * time.Hour
+	if config.CACertValidity > 0 {
+		caValidity = config.CACertValidity
 	}
 
 	// Create certificate manager (loads or creates CA)
-	certManager, err := NewCertManager(config.CACertPath, config.CAKeyPath)
+	certManager, err := NewCertManager(config.CACertPath, config.CAKeyPath, caValidity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create certificate manager: %w", err)
 	}
@@ -46,7 +53,7 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		certManager.GetCACertificate(),
 		certManager.GetCAPrivateKey(), // Use CA's actual private key
 		config.CertCacheDir,
-		validity,
+		siteValidity,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create site certificate manager: %w", err)

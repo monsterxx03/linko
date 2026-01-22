@@ -197,6 +197,7 @@ func runServer(cmd *cobra.Command, args []string) {
 			CAKeyPath:        cfg.MITM.CAKeyPath,
 			CertCacheDir:     cfg.MITM.CertCacheDir,
 			SiteCertValidity: cfg.MITM.SiteCertValidity,
+			CACertValidity:   cfg.MITM.CACertValidity,
 			Enabled:          true,
 		}, logger)
 		if err != nil {

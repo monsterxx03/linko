@@ -20,13 +20,15 @@ type CertManager struct {
 	caKeyPath  string
 	caCert     *x509.Certificate
 	caKey      *rsa.PrivateKey
+	caValidity time.Duration
 }
 
 // NewCertManager creates a new certificate manager
-func NewCertManager(caCertPath, caKeyPath string) (*CertManager, error) {
+func NewCertManager(caCertPath, caKeyPath string, caValidity time.Duration) (*CertManager, error) {
 	cm := &CertManager{
 		caCertPath: caCertPath,
 		caKeyPath:  caKeyPath,
+		caValidity: caValidity,
 	}
 
 	if err := cm.LoadOrCreateCA(); err != nil {
@@ -97,7 +99,7 @@ func (cm *CertManager) CreateCA() error {
 			CommonName:    "Linko MITM CA",
 		},
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
+		NotAfter:              time.Now().Add(cm.caValidity),
 		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,

@@ -139,6 +139,9 @@ type MITMConfig struct {
 	// Site certificate validity duration
 	SiteCertValidity time.Duration `mapstructure:"site_cert_validity" yaml:"site_cert_validity"`
 
+	// CA certificate validity duration (default: 365 days)
+	CACertValidity time.Duration `mapstructure:"ca_cert_validity" yaml:"ca_cert_validity"`
+
 	// Whitelist of domains to perform MITM on
 	// If empty, MITM is performed on all HTTPS traffic
 	// If specified, only traffic to these domains will be MITM'd
@@ -190,7 +193,8 @@ func DefaultConfig() *Config {
 			CACertPath:       "certs/ca.crt",
 			CAKeyPath:        "certs/ca.key",
 			CertCacheDir:     "certs/sites",
-			SiteCertValidity: 168 * time.Hour, // 7 days
+			SiteCertValidity: 168 * time.Hour,      // 7 days
+			CACertValidity:   365 * 24 * time.Hour, // 365 days
 		},
 	}
 }
