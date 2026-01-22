@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // Direction represents the direction of traffic
@@ -148,6 +149,153 @@ func (h *HTTPInspector) inspectResponse(data []byte) ([]byte, error) {
 		"content-type", resp.Header.Get("Content-Type"),
 		"content-length", resp.ContentLength,
 	)
+
+	return data, nil
+}
+
+// SSEInspector inspects HTTP traffic and publishes events to an event bus
+type SSEInspector struct {
+	*HTTPInspector
+	eventBus *EventBus
+}
+
+// NewSSEInspector creates a new SSE inspector
+func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string) *SSEInspector {
+	return &SSEInspector{
+		HTTPInspector: NewHTTPInspector(logger, hostname),
+		eventBus:      eventBus,
+	}
+}
+
+// Inspect processes HTTP traffic and publishes events to the event bus
+func (s *SSEInspector) Inspect(direction Direction, data []byte) ([]byte, error) {
+	if len(data) == 0 {
+		return data, nil
+	}
+
+	// Try to parse as HTTP request (client to server)
+	if direction == DirectionClientToServer {
+		return s.inspectRequest(data)
+	}
+
+	// Try to parse as HTTP response (server to client)
+	return s.inspectResponse(data)
+}
+
+func (s *SSEInspector) inspectRequest(data []byte) ([]byte, error) {
+	// Check if it looks like an HTTP request
+	if !isHTTPPrefix(data) {
+		return data, nil
+	}
+
+	// Parse HTTP request
+	reader := bufio.NewReader(bytes.NewReader(data))
+	req, err := http.ReadRequest(reader)
+	if err != nil {
+		// Not a valid HTTP request, pass through
+		return data, nil
+	}
+	defer req.Body.Close()
+
+	// Create headers map
+	headers := make(map[string]string)
+	for k, v := range req.Header {
+		if len(v) > 0 {
+			headers[k] = v[0]
+		}
+	}
+
+	// Read body (truncated to 16KB)
+	body := make([]byte, 16*1024)
+	n, _ := req.Body.Read(body)
+	bodyStr := string(body[:n])
+
+	// Create HTTPRequest struct
+	httpReq := &HTTPRequest{
+		Method:        req.Method,
+		URL:           req.URL.String(),
+		Host:          req.Host,
+		Headers:       headers,
+		Body:          bodyStr,
+		ContentType:   req.Header.Get("Content-Type"),
+		ContentLength: req.ContentLength,
+	}
+
+	// Create traffic event
+	event := &TrafficEvent{
+		ID:           time.Now().Format("20060102150405.000000") + "-req-" + req.Host,
+		Hostname:     req.Host,
+		Timestamp:    time.Now(),
+		Direction:    DirectionClientToServer.String(),
+		ConnectionID: "", // TODO: Add connection ID tracking
+		Request:      httpReq,
+	}
+
+	// Publish event to bus
+	s.eventBus.Publish(event)
+
+	return data, nil
+}
+
+func (s *SSEInspector) inspectResponse(data []byte) ([]byte, error) {
+	// Check if it looks like an HTTP response
+	if !isHTTPResponsePrefix(data) {
+		return data, nil
+	}
+
+	// Parse HTTP response
+	reader := bufio.NewReader(bytes.NewReader(data))
+	resp, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		// Not a valid HTTP response, pass through
+		return data, nil
+	}
+	defer resp.Body.Close()
+
+	// Create headers map
+	headers := make(map[string]string)
+	for k, v := range resp.Header {
+		if len(v) > 0 {
+			headers[k] = v[0]
+		}
+	}
+
+	// Read body (truncated to 16KB)
+	body := make([]byte, 16*1024)
+	n, _ := resp.Body.Read(body)
+	bodyStr := string(body[:n])
+
+	// Create HTTPResponse struct
+	httpResp := &HTTPResponse{
+		Status:        resp.Status,
+		StatusCode:    resp.StatusCode,
+		Headers:       headers,
+		Body:          bodyStr,
+		ContentType:   resp.Header.Get("Content-Type"),
+		ContentLength: resp.ContentLength,
+		Latency:       0, // TODO: Add latency tracking
+	}
+
+	// Get hostname from response or use default
+	hostname := "unknown"
+	if resp.Request != nil && resp.Request.Host != "" {
+		hostname = resp.Request.Host
+	} else if resp.Header.Get("Host") != "" {
+		hostname = resp.Header.Get("Host")
+	}
+
+	// Create traffic event
+	event := &TrafficEvent{
+		ID:           time.Now().Format("20060102150405.000000") + "-resp-" + hostname,
+		Hostname:     hostname,
+		Timestamp:    time.Now(),
+		Direction:    DirectionServerToClient.String(),
+		ConnectionID: "", // TODO: Add connection ID tracking
+		Response:     httpResp,
+	}
+
+	// Publish event to bus
+	s.eventBus.Publish(event)
 
 	return data, nil
 }
