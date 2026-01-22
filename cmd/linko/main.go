@@ -163,17 +163,6 @@ func runServer(cmd *cobra.Command, args []string) {
 	}
 	defer dnsServer.Stop()
 
-	var adminServer *admin.AdminServer
-	if cfg.Admin.Enable {
-		slog.Info("starting admin server", "address", cfg.Admin.ListenAddr)
-		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, dnsServer)
-		if err := adminServer.Start(); err != nil {
-			slog.Error("failed to start admin server", "error", err)
-			os.Exit(1)
-		}
-		defer adminServer.Stop()
-	}
-
 	var transparentProxy *proxy.TransparentProxy
 	if cfg.Firewall.RedirectHTTP || cfg.Firewall.RedirectHTTPS || cfg.Firewall.RedirectSSH {
 		slog.Info("starting transparent proxy", "address", "127.0.0.1:"+cfg.ProxyPort())
@@ -214,6 +203,23 @@ func runServer(cmd *cobra.Command, args []string) {
 				}
 			}
 		}
+	}
+
+	// Initialize AdminServer after MITM Manager
+	var adminServer *admin.AdminServer
+	var eventBus *mitm.EventBus
+	if cfg.Admin.Enable {
+		// Get event bus from mitmManager if available
+		if mitmManager != nil {
+			eventBus = mitmManager.GetEventBus()
+		}
+		slog.Info("starting admin server", "address", cfg.Admin.ListenAddr)
+		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, dnsServer, eventBus)
+		if err := adminServer.Start(); err != nil {
+			slog.Error("failed to start admin server", "error", err)
+			os.Exit(1)
+		}
+		defer adminServer.Stop()
 	}
 
 	var firewallManager *proxy.FirewallManager

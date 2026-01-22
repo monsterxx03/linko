@@ -14,6 +14,7 @@ type Manager struct {
 	logger          *slog.Logger
 	enabled         bool
 	inspector       *InspectorChain
+	eventBus        *EventBus
 	mu              sync.RWMutex
 }
 
@@ -65,8 +66,11 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		logger:          logger,
 		enabled:         config.Enabled,
 		inspector:       NewInspectorChain(),
+		eventBus:        NewEventBus(1000), // Create event bus with buffer size 1000
 	}
+
 	m.inspector.Add(NewHTTPInspector(logger, ""))
+	m.inspector.Add(NewSSEInspector(logger, m.eventBus, ""))
 
 	return m, nil
 }
@@ -123,4 +127,9 @@ func (m *Manager) GetStatistics() Statistics {
 	return Statistics{
 		CertsGenerated: 0, // TODO: Add atomic counter
 	}
+}
+
+// GetEventBus returns the event bus for traffic events
+func (m *Manager) GetEventBus() *EventBus {
+	return m.eventBus
 }
