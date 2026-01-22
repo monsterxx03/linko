@@ -10,6 +10,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -20,18 +21,18 @@ import (
 
 // SiteCertManager handles dynamic site certificate generation and caching
 type SiteCertManager struct {
-	caCert      *x509.Certificate
-	caKey       crypto.Signer
-	cacheDir    string
-	cache       *CertCache
-	validity    time.Duration
-	validityMut sync.RWMutex
+	caCert   *x509.Certificate
+	caKey    crypto.Signer
+	cacheDir string
+	cache    *CertCache
+	validity time.Duration
+	mu       sync.Mutex // protects certificate generation
 }
 
 // CertCache stores cached certificates in memory
 type CertCache struct {
-	mu     sync.RWMutex
-	certs  map[string]*CachedCert
+	mu    sync.RWMutex
+	certs map[string]*CachedCert
 }
 
 // CachedCert represents a cached certificate with its key
@@ -60,20 +61,6 @@ func NewSiteCertManager(caCert *x509.Certificate, caKey crypto.Signer, cacheDir 
 	return scm, nil
 }
 
-// SetValidity sets the certificate validity duration
-func (scm *SiteCertManager) SetValidity(d time.Duration) {
-	scm.validityMut.Lock()
-	defer scm.validityMut.Unlock()
-	scm.validity = d
-}
-
-// GetValidity gets the certificate validity duration
-func (scm *SiteCertManager) GetValidity() time.Duration {
-	scm.validityMut.RLock()
-	defer scm.validityMut.RUnlock()
-	return scm.validity
-}
-
 // GetCertificate obtains a certificate for the given hostname
 func (scm *SiteCertManager) GetCertificate(hostname string) (*tls.Certificate, error) {
 	// Normalize hostname
@@ -93,6 +80,22 @@ func (scm *SiteCertManager) GetCertificate(hostname string) (*tls.Certificate, e
 		return cert, nil
 	}
 
+	// Use mutex to ensure only one goroutine generates the certificate
+	scm.mu.Lock()
+	defer scm.mu.Unlock()
+
+	// Double-check cache after acquiring lock
+	cert = scm.getFromCache(hostname)
+	if cert != nil {
+		return cert, nil
+	}
+
+	cert, err = scm.loadFromDisk(hostname)
+	if err == nil && cert != nil {
+		scm.addToCache(hostname, cert)
+		return cert, nil
+	}
+
 	// Generate new certificate
 	cert, err = scm.generateCertificate(hostname)
 	if err != nil {
@@ -101,8 +104,7 @@ func (scm *SiteCertManager) GetCertificate(hostname string) (*tls.Certificate, e
 
 	// Save to disk
 	if err := scm.saveToDisk(hostname, cert); err != nil {
-		// Log error but don't fail - we have the cert in memory
-		fmt.Printf("Warning: failed to save certificate to disk: %v\n", err)
+		slog.Warn("Failed to save certificate to disk", "hostname", hostname, "error", err)
 	}
 
 	// Add to memory cache
@@ -114,18 +116,24 @@ func (scm *SiteCertManager) GetCertificate(hostname string) (*tls.Certificate, e
 // getFromCache retrieves a certificate from memory cache
 func (scm *SiteCertManager) getFromCache(hostname string) *tls.Certificate {
 	scm.cache.mu.RLock()
-	defer scm.cache.mu.RUnlock()
 
 	cached, ok := scm.cache.certs[hostname]
 	if !ok {
+		scm.cache.mu.RUnlock()
 		return nil
 	}
 
 	if time.Now().After(cached.ExpiresAt) {
+		scm.cache.mu.RUnlock()
+		scm.cache.mu.Lock()
+		delete(scm.cache.certs, hostname)
+		scm.cache.mu.Unlock()
 		return nil
 	}
 
-	return cached.Cert
+	cert := cached.Cert
+	scm.cache.mu.RUnlock()
+	return cert
 }
 
 // addToCache adds a certificate to memory cache
@@ -170,32 +178,41 @@ func (scm *SiteCertManager) saveToDisk(hostname string, cert *tls.Certificate) e
 	certPath := filepath.Join(scm.cacheDir, hostname+".crt")
 	keyPath := filepath.Join(scm.cacheDir, hostname+".key")
 
-	// Save certificate
 	certFile, err := os.Create(certPath)
 	if err != nil {
 		return err
 	}
-	defer certFile.Close()
 
-	if err := pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Certificate[0]}); err != nil {
-		return err
+	for _, certBytes := range cert.Certificate {
+		if err := pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certBytes}); err != nil {
+			certFile.Close()
+			os.Remove(certPath)
+			return err
+		}
 	}
+	certFile.Close()
 
-	// Save private key
 	keyFile, err := os.Create(keyPath)
 	if err != nil {
+		os.Remove(certPath)
 		return err
 	}
-	defer keyFile.Close()
 
 	keyBytes, err := x509.MarshalPKCS8PrivateKey(cert.PrivateKey)
 	if err != nil {
+		keyFile.Close()
+		os.Remove(keyPath)
+		os.Remove(certPath)
 		return err
 	}
 
 	if err := pem.Encode(keyFile, &pem.Block{Type: "PRIVATE KEY", Bytes: keyBytes}); err != nil {
+		keyFile.Close()
+		os.Remove(keyPath)
+		os.Remove(certPath)
 		return err
 	}
+	keyFile.Close()
 
 	return nil
 }
@@ -268,16 +285,24 @@ func (scm *SiteCertManager) ClearDiskCache() error {
 		return err
 	}
 
+	var errs []error
 	for _, entry := range entries {
 		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".crt") {
 			hostname := strings.TrimSuffix(entry.Name(), ".crt")
 			certPath := filepath.Join(scm.cacheDir, entry.Name())
 			keyPath := filepath.Join(scm.cacheDir, hostname+".key")
 
-			os.Remove(certPath)
-			os.Remove(keyPath)
+			if err := os.Remove(certPath); err != nil {
+				errs = append(errs, fmt.Errorf("failed to remove %s: %w", certPath, err))
+			}
+			if err := os.Remove(keyPath); err != nil {
+				errs = append(errs, fmt.Errorf("failed to remove %s: %w", keyPath, err))
+			}
 		}
 	}
 
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to clear disk cache: %v", errs)
+	}
 	return nil
 }
