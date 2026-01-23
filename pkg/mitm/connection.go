@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 // ConnectionHandler handles MITM connections
@@ -161,15 +163,18 @@ func (h *ConnectionHandler) peekSNI(peekReader *PeekReader, targetIP net.IP) (st
 func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname string) error {
 	var wg sync.WaitGroup
 
+	// Generate unique connection ID using UUID
+	connectionID := uuid.New().String()
+
 	// Create inspectable ReadWriters if inspector is active
 	var clientReader, clientWriter io.ReadWriter = client, client
 	var serverReader, serverWriter io.ReadWriter = server, server
 
 	if h.inspector.ShouldInspect(hostname) {
-		clientReader = NewReadWriter(client, h.inspector, hostname, DirectionClientToServer, h.logger)
-		clientWriter = NewReadWriter(client, h.inspector, hostname, DirectionServerToClient, h.logger)
-		serverReader = NewReadWriter(server, h.inspector, hostname, DirectionServerToClient, h.logger)
-		serverWriter = NewReadWriter(server, h.inspector, hostname, DirectionClientToServer, h.logger)
+		clientReader = NewReadWriter(client, h.inspector, hostname, DirectionClientToServer, h.logger, connectionID)
+		clientWriter = NewReadWriter(client, h.inspector, hostname, DirectionServerToClient, h.logger, connectionID)
+		serverReader = NewReadWriter(server, h.inspector, hostname, DirectionServerToClient, h.logger, connectionID)
+		serverWriter = NewReadWriter(server, h.inspector, hostname, DirectionClientToServer, h.logger, connectionID)
 	}
 
 	// Client -> Server

@@ -529,17 +529,69 @@
 
     // Create traffic item HTML
     function createTrafficItem(event) {
-      const isRequest = event.direction === 'client->server';
+      const hasRequest = event.request !== undefined;
+      const hasResponse = event.response !== undefined;
+      const isComplete = event.direction === 'complete' || (hasRequest && hasResponse);
       const itemId = `traffic-${event.id}`;
       
       let content = '';
-      if (isRequest) {
+      if (isComplete) {
+        // Combined request and response view
+        content = `
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-3">
+              <div class="flex items-center gap-2">
+                ${event.request ? formatMethod(event.request.method) : ''}
+                <span class="text-sm font-medium text-bg-800 truncate max-w-xs">${event.request ? event.request.url : event.hostname}</span>
+              </div>
+              ${event.response ? formatStatusCode(event.response.status_code) : ''}
+              <span class="text-xs text-bg-400">${event.hostname}</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-bg-400">${formatTime(event.timestamp)}</span>
+              ${event.response ? `<span class="text-xs text-bg-400">${event.response.latency}ms</span>` : ''}
+              <button onclick="toggleTrafficDetails('${itemId}')" class="text-xs text-bg-400 hover:text-bg-600 focus:outline-none">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div id="${itemId}-details" class="traffic-details hidden mt-3 space-y-3">
+            ${event.request ? `
+            <div class="p-3 bg-bg-50 rounded-lg">
+              <h4 class="text-xs font-medium text-bg-600 mb-2">Request Headers</h4>
+              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatHeaders(event.request.headers)}</pre>
+            </div>
+            ${event.request.body ? `
+            <div class="p-3 bg-bg-50 rounded-lg">
+              <h4 class="text-xs font-medium text-bg-600 mb-2">Request Body</h4>
+              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.request.body)}</pre>
+            </div>
+            ` : ''}
+            ` : ''}
+            ${event.response ? `
+            <div class="p-3 bg-bg-50 rounded-lg">
+              <h4 class="text-xs font-medium text-bg-600 mb-2">Response Headers</h4>
+              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatHeaders(event.response.headers)}</pre>
+            </div>
+            ${event.response.body ? `
+            <div class="p-3 bg-bg-50 rounded-lg">
+              <h4 class="text-xs font-medium text-bg-600 mb-2">Response Body</h4>
+              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.response.body)}</pre>
+            </div>
+            ` : ''}
+            ` : ''}
+          </div>
+        `;
+      } else if (hasRequest) {
+        // Request only view
         content = `
           <div class="flex items-center justify-between mb-2">
             <div class="flex items-center gap-3">
               <div class="flex items-center gap-2">
                 ${formatMethod(event.request.method)}
-                <span class="text-sm font-medium text-bg-800">${event.request.url}</span>
+                <span class="text-sm font-medium text-bg-800 truncate max-w-xs">${event.request.url}</span>
               </div>
               <span class="text-xs text-bg-400">${event.hostname}</span>
             </div>
@@ -565,7 +617,8 @@
             ` : ''}
           </div>
         `;
-      } else {
+      } else if (hasResponse) {
+        // Response only view
         content = `
           <div class="flex items-center justify-between mb-2">
             <div class="flex items-center gap-3">
@@ -656,11 +709,19 @@
         return;
       }
       
+      // Save current scroll position
+      const currentScrollTop = container.scrollTop;
+      const currentScrollHeight = container.scrollHeight;
+      
       const trafficHTML = events.map(createTrafficItem).join('');
       container.innerHTML = trafficHTML;
       
-      // Auto scroll to bottom if enabled
-      if (isAutoScroll) {
+      // Restore scroll position if auto-scroll is disabled
+      if (!isAutoScroll && currentScrollTop > 0) {
+        // Try to restore to similar position
+        container.scrollTop = Math.min(currentScrollTop, container.scrollHeight - container.clientHeight);
+      } else if (isAutoScroll) {
+        // Auto scroll to bottom if enabled
         container.scrollTop = container.scrollHeight;
       }
     }

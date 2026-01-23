@@ -6,13 +6,17 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 )
 
 type SSEInspector struct {
 	*HTTPInspector
-	eventBus    *EventBus
-	maxBodySize int64
+	eventBus     *EventBus
+	maxBodySize  int64
+	requestCache map[string]*HTTPRequest // 缓存待处理的请求
+	mutex        sync.Mutex              // 保护 requestCache 的并发访问
+	connCounter  uint64                  // 连接计数器，用于生成唯一 ID
 }
 
 func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string, maxBodySize int64) *SSEInspector {
@@ -23,22 +27,25 @@ func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string, m
 		HTTPInspector: NewHTTPInspector(logger, hostname),
 		eventBus:      eventBus,
 		maxBodySize:   maxBodySize,
+		requestCache:  make(map[string]*HTTPRequest),
+		mutex:         sync.Mutex{},
+		connCounter:   0,
 	}
 }
 
-func (s *SSEInspector) Inspect(direction Direction, data []byte, hostname string) ([]byte, error) {
+func (s *SSEInspector) Inspect(direction Direction, data []byte, hostname string, connectionID string) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
 	}
 
 	if direction == DirectionClientToServer {
-		return s.inspectRequest(data)
+		return s.inspectRequest(data, hostname, connectionID)
 	}
 
-	return s.inspectResponse(data, hostname)
+	return s.inspectResponse(data, hostname, connectionID)
 }
 
-func (s *SSEInspector) inspectRequest(data []byte) ([]byte, error) {
+func (s *SSEInspector) inspectRequest(data []byte, hostname string, connectionID string) ([]byte, error) {
 	if !isHTTPPrefix(data) {
 		return data, nil
 	}
@@ -74,21 +81,17 @@ func (s *SSEInspector) inspectRequest(data []byte) ([]byte, error) {
 		ContentLength: req.ContentLength,
 	}
 
-	event := &TrafficEvent{
-		ID:           time.Now().Format("20060102150405.000000") + "-req-" + req.Host,
-		Hostname:     req.Host,
-		Timestamp:    time.Now(),
-		Direction:    DirectionClientToServer.String(),
-		ConnectionID: "",
-		Request:      httpReq,
-	}
+	// Store request in cache using connection ID as key
+	s.mutex.Lock()
+	s.requestCache[connectionID] = httpReq
+	s.mutex.Unlock()
 
-	s.eventBus.Publish(event)
+	// Don't send separate request event - wait for response to send combined event
 
 	return data, nil
 }
 
-func (s *SSEInspector) inspectResponse(data []byte, hostname string) ([]byte, error) {
+func (s *SSEInspector) inspectResponse(data []byte, hostname string, connectionID string) ([]byte, error) {
 	if !isHTTPResponsePrefix(data) {
 		return data, nil
 	}
@@ -124,21 +127,46 @@ func (s *SSEInspector) inspectResponse(data []byte, hostname string) ([]byte, er
 		Latency:       0,
 	}
 
-	// Use the provided hostname
-	if hostname == "" {
-		hostname = "unknown"
-	}
+	// Try to find corresponding request in cache using connection ID
+	var httpReq *HTTPRequest
+	var requestID string
 
-	event := &TrafficEvent{
-		ID:           time.Now().Format("20060102150405.000000") + "-resp-" + hostname,
-		Hostname:     hostname,
-		Timestamp:    time.Now(),
-		Direction:    DirectionServerToClient.String(),
-		ConnectionID: "",
-		Response:     httpResp,
+	s.mutex.Lock()
+	if req, exists := s.requestCache[connectionID]; exists {
+		httpReq = req
+		// Generate request ID using connection ID and timestamp
+		requestID = connectionID + "-" + time.Now().Format("20060102150405.000000") + "-" + req.Method
+		// Remove from cache
+		delete(s.requestCache, connectionID)
 	}
+	s.mutex.Unlock()
 
-	s.eventBus.Publish(event)
+	if httpReq != nil {
+		// Create combined event with both request and response
+		event := &TrafficEvent{
+			ID:           requestID,
+			Hostname:     hostname,
+			Timestamp:    time.Now(),
+			Direction:    "complete", // Indicate complete request-response cycle
+			ConnectionID: connectionID,
+			Request:      httpReq,
+			Response:     httpResp,
+		}
+
+		s.eventBus.Publish(event)
+	} else {
+		// Fallback: send separate response event if no matching request found
+		event := &TrafficEvent{
+			ID:           connectionID + "-" + time.Now().Format("20060102150405.000000") + "-resp",
+			Hostname:     hostname,
+			Timestamp:    time.Now(),
+			Direction:    DirectionServerToClient.String(),
+			ConnectionID: connectionID,
+			Response:     httpResp,
+		}
+
+		s.eventBus.Publish(event)
+	}
 
 	return data, nil
 }

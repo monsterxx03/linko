@@ -19,7 +19,7 @@ func NewHTTPInspector(logger *slog.Logger, hostname string) *HTTPInspector {
 	}
 }
 
-func (h *HTTPInspector) Inspect(direction Direction, data []byte, hostname string) ([]byte, error) {
+func (h *HTTPInspector) Inspect(direction Direction, data []byte, hostname string, connectionID string) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
 	}

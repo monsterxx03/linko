@@ -25,7 +25,7 @@ func NewLogInspector(logger *slog.Logger, hostname string, opts LogInspectorOpti
 	}
 }
 
-func (l *LogInspector) Inspect(direction Direction, data []byte, hostname string) ([]byte, error) {
+func (l *LogInspector) Inspect(direction Direction, data []byte, hostname string, connectionID string) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
 	}
@@ -43,6 +43,7 @@ func (l *LogInspector) Inspect(direction Direction, data []byte, hostname string
 		l.logger.Debug("MITM traffic",
 			"direction", direction,
 			"hostname", hostname,
+			"connection_id", connectionID,
 			"preview", text,
 		)
 	}
