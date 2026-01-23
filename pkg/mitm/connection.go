@@ -171,10 +171,14 @@ func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname strin
 	var serverReader, serverWriter io.ReadWriter = server, server
 
 	if h.inspector.ShouldInspect(hostname) {
+		// Only inspect on read operations to avoid duplicate inspection
+		// Client -> Server: inspect when reading from client
 		clientReader = NewReadWriter(client, h.inspector, hostname, DirectionClientToServer, h.logger, connectionID)
-		clientWriter = NewReadWriter(client, h.inspector, hostname, DirectionServerToClient, h.logger, connectionID)
+		// Server -> Client: inspect when reading from server
 		serverReader = NewReadWriter(server, h.inspector, hostname, DirectionServerToClient, h.logger, connectionID)
-		serverWriter = NewReadWriter(server, h.inspector, hostname, DirectionClientToServer, h.logger, connectionID)
+		// Use original connections for write operations
+		clientWriter = client
+		serverWriter = server
 	}
 
 	// Client -> Server

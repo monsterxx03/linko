@@ -9,13 +9,13 @@ import (
 
 type HTTPInspector struct {
 	*BaseInspector
-	logger *slog.Logger
+	Logger *slog.Logger
 }
 
 func NewHTTPInspector(logger *slog.Logger, hostname string) *HTTPInspector {
 	return &HTTPInspector{
 		BaseInspector: NewBaseInspector("http-inspector", hostname),
-		logger:        logger,
+		Logger:        logger,
 	}
 }
 
@@ -43,7 +43,7 @@ func (h *HTTPInspector) inspectRequest(data []byte) ([]byte, error) {
 	}
 	defer req.Body.Close()
 
-	h.logger.Debug("HTTP request",
+	h.Logger.Debug("HTTP request",
 		"method", req.Method,
 		"url", req.URL.String(),
 		"host", req.Host,
@@ -65,7 +65,7 @@ func (h *HTTPInspector) inspectResponse(data []byte, hostname string) ([]byte, e
 	}
 	defer resp.Body.Close()
 
-	h.logger.Debug("HTTP response",
+	h.Logger.Debug("HTTP response",
 		"status", resp.Status,
 		"content-type", resp.Header.Get("Content-Type"),
 		"content-length", resp.ContentLength,
