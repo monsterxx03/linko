@@ -16,7 +16,7 @@ type LogInspectorOptions struct {
 
 func NewLogInspector(logger *slog.Logger, hostname string, opts LogInspectorOptions) *LogInspector {
 	if opts.MaxBodySize == 0 {
-		opts.MaxBodySize = 16 * 1024
+		opts.MaxBodySize = DefaultMaxBodySize
 	}
 	return &LogInspector{
 		BaseInspector: NewBaseInspector("log-inspector", hostname),

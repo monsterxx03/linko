@@ -134,8 +134,8 @@ func (h *ConnectionHandler) peekSNI(peekReader *PeekReader, targetIP net.IP) (st
 	totalLen := 5 + recordLen
 
 	// Peek at the complete TLS record
-	if totalLen > 16384 {
-		totalLen = 16384 // Cap at buffer size
+	if totalLen > DefaultBufferSize {
+		totalLen = DefaultBufferSize // Cap at buffer size
 	}
 
 	peekData, err := peekReader.Peek(totalLen)
@@ -200,7 +200,7 @@ type PeekReader struct {
 func NewPeekReader(conn net.Conn) *PeekReader {
 	return &PeekReader{
 		Conn:   conn,
-		reader: bufio.NewReaderSize(conn, 16384),
+		reader: bufio.NewReaderSize(conn, DefaultBufferSize),
 	}
 }
 

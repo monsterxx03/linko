@@ -17,7 +17,7 @@ type SSEInspector struct {
 
 func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string, maxBodySize int64) *SSEInspector {
 	if maxBodySize == 0 {
-		maxBodySize = 16 * 1024
+		maxBodySize = DefaultMaxBodySize
 	}
 	return &SSEInspector{
 		HTTPInspector: NewHTTPInspector(logger, hostname),
