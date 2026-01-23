@@ -26,6 +26,7 @@ type ManagerConfig struct {
 	SiteCertValidity time.Duration
 	CACertValidity   time.Duration
 	Enabled          bool
+	MaxBodySize      int64
 }
 
 // NewManager creates a new MITM manager
@@ -70,7 +71,7 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 	}
 
 	m.inspector.Add(NewHTTPInspector(logger, ""))
-	m.inspector.Add(NewSSEInspector(logger, m.eventBus, ""))
+	m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))
 
 	return m, nil
 }

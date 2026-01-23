@@ -188,6 +188,7 @@ func runServer(cmd *cobra.Command, args []string) {
 			SiteCertValidity: cfg.MITM.SiteCertValidity,
 			CACertValidity:   cfg.MITM.CACertValidity,
 			Enabled:          true,
+			MaxBodySize:      cfg.MITM.MaxBodySize,
 		}, logger)
 		if err != nil {
 			slog.Error("failed to initialize MITM manager", "error", err)

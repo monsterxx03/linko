@@ -146,6 +146,9 @@ type MITMConfig struct {
 	// If empty, MITM is performed on all HTTPS traffic
 	// If specified, only traffic to these domains will be MITM'd
 	Whitelist []string `mapstructure:"whitelist" yaml:"whitelist"`
+
+	// MaxBodySize is the maximum body size to capture for inspection (0 = unlimited)
+	MaxBodySize int64 `mapstructure:"max_body_size" yaml:"max_body_size"`
 }
 
 // DefaultConfig returns a default configuration
@@ -195,6 +198,7 @@ func DefaultConfig() *Config {
 			CertCacheDir:     "certs/sites",
 			SiteCertValidity: 168 * time.Hour,      // 7 days
 			CACertValidity:   365 * 24 * time.Hour, // 365 days
+			MaxBodySize:      16 * 1024,            // 16KB default
 		},
 	}
 }

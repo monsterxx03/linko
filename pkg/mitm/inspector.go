@@ -3,12 +3,16 @@ package mitm
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/andybalholm/brotli"
 )
 
 // Direction represents the direction of traffic
@@ -156,14 +160,19 @@ func (h *HTTPInspector) inspectResponse(data []byte) ([]byte, error) {
 // SSEInspector inspects HTTP traffic and publishes events to an event bus
 type SSEInspector struct {
 	*HTTPInspector
-	eventBus *EventBus
+	eventBus     *EventBus
+	maxBodySize  int64
 }
 
 // NewSSEInspector creates a new SSE inspector
-func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string) *SSEInspector {
+func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string, maxBodySize int64) *SSEInspector {
+	if maxBodySize == 0 {
+		maxBodySize = 16 * 1024 // Default 16KB
+	}
 	return &SSEInspector{
 		HTTPInspector: NewHTTPInspector(logger, hostname),
 		eventBus:      eventBus,
+		maxBodySize:   maxBodySize,
 	}
 }
 
@@ -205,10 +214,14 @@ func (s *SSEInspector) inspectRequest(data []byte) ([]byte, error) {
 		}
 	}
 
-	// Read body (truncated to 16KB)
-	body := make([]byte, 16*1024)
-	n, _ := req.Body.Read(body)
-	bodyStr := string(body[:n])
+	// Read body (truncated to maxBodySize)
+	bodyBytes, _ := io.ReadAll(req.Body)
+	bodyStr := string(bodyBytes)
+	// Decompress if Content-Encoding is set
+	bodyStr = decompressBody(bodyStr, req.Header.Get("Content-Encoding"))
+	if s.maxBodySize > 0 && len(bodyStr) > int(s.maxBodySize) {
+		bodyStr = bodyStr[:s.maxBodySize]
+	}
 
 	// Create HTTPRequest struct
 	httpReq := &HTTPRequest{
@@ -260,10 +273,14 @@ func (s *SSEInspector) inspectResponse(data []byte) ([]byte, error) {
 		}
 	}
 
-	// Read body (truncated to 16KB)
-	body := make([]byte, 16*1024)
-	n, _ := resp.Body.Read(body)
-	bodyStr := string(body[:n])
+	// Read body (truncated to maxBodySize)
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	bodyStr := string(bodyBytes)
+	// Decompress if Content-Encoding is set
+	bodyStr = decompressBody(bodyStr, resp.Header.Get("Content-Encoding"))
+	if s.maxBodySize > 0 && len(bodyStr) > int(s.maxBodySize) {
+		bodyStr = bodyStr[:s.maxBodySize]
+	}
 
 	// Create HTTPResponse struct
 	httpResp := &HTTPResponse{
@@ -386,6 +403,41 @@ func extractReadableText(data []byte) string {
 		}
 	}
 	return strings.TrimSpace(result.String())
+}
+
+// decompressBody decompresses a body based on the Content-Encoding header
+func decompressBody(body string, contentEncoding string) string {
+	if contentEncoding == "" {
+		return body
+	}
+
+	var decompressed []byte
+	var err error
+
+	switch strings.ToLower(contentEncoding) {
+	case "gzip":
+		var reader io.ReadCloser
+		reader, err = gzip.NewReader(strings.NewReader(body))
+		if err != nil {
+			return body
+		}
+		defer reader.Close()
+		decompressed, err = io.ReadAll(reader)
+	case "deflate":
+		reader := flate.NewReader(strings.NewReader(body))
+		defer reader.Close()
+		decompressed, err = io.ReadAll(reader)
+	case "br":
+		reader := brotli.NewReader(strings.NewReader(body))
+		decompressed, err = io.ReadAll(reader)
+	default:
+		return body // 不支持的压缩格式，直接返回
+	}
+
+	if err != nil {
+		return body
+	}
+	return string(decompressed)
 }
 
 // InspectorChain allows multiple inspectors to be chained
