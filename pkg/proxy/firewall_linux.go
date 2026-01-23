@@ -13,6 +13,7 @@ import (
 )
 
 const ipsetName = "linko_reserved"
+const ipsetForceName = "linko_force"
 
 type linuxFirewallManager struct {
 	fm *FirewallManager
@@ -30,6 +31,10 @@ func (l *linuxFirewallManager) SetupFirewallRules() error {
 
 	if err := l.createIPSet(); err != nil {
 		return fmt.Errorf("failed to create ipset: %w", err)
+	}
+
+	if err := l.createForceIPSet(); err != nil {
+		return fmt.Errorf("failed to create force ipset: %w", err)
 	}
 
 	proxyPort := l.fm.proxyPort
@@ -50,6 +55,7 @@ func (l *linuxFirewallManager) SetupFirewallRules() error {
 
 	if l.fm.redirectOpt.RedirectHTTP {
 		rules = append(rules,
+			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetForceName),
 			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
 			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", proxyPort),
 		)
@@ -57,6 +63,7 @@ func (l *linuxFirewallManager) SetupFirewallRules() error {
 
 	if l.fm.redirectOpt.RedirectHTTPS {
 		rules = append(rules,
+			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetForceName),
 			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
 			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
 		)
@@ -64,6 +71,7 @@ func (l *linuxFirewallManager) SetupFirewallRules() error {
 
 	if l.fm.redirectOpt.RedirectSSH {
 		rules = append(rules,
+			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 22 -m set --match-set %s dst -j ACCEPT", ipsetForceName),
 			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 22 -m set --match-set %s dst -j ACCEPT", ipsetName),
 			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 22 -j REDIRECT --to-port %s", proxyPort),
 		)
@@ -131,8 +139,40 @@ func (l *linuxFirewallManager) addChinaIPsToIPSet() error {
 	return nil
 }
 
+func (l *linuxFirewallManager) createForceIPSet() error {
+	// Destroy existing force ipset if it exists
+	cmd := exec.Command("sudo", "ipset", "destroy", ipsetForceName)
+	cmd.Run()
+
+	cmd = exec.Command("sudo", "ipset", "create", ipsetForceName, "hash:net", "family", "inet")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to create force ipset: %w", err)
+	}
+
+	if err := l.addForceProxyIPsToIPSet(); err != nil {
+		return fmt.Errorf("failed to add force proxy IPs: %w", err)
+	}
+
+	return nil
+}
+
+func (l *linuxFirewallManager) addForceProxyIPsToIPSet() error {
+	forceProxyIPs := l.fm.forceProxyIPs
+	if len(forceProxyIPs) == 0 {
+		return nil
+	}
+
+	addresses := strings.Join(forceProxyIPs, "\n")
+	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | ipset add - %s", addresses, ipsetForceName))
+	if err := cmd.Run(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (l *linuxFirewallManager) destroyIPSet() {
 	exec.Command("sudo", "ipset", "destroy", ipsetName).Run()
+	exec.Command("sudo", "ipset", "destroy", ipsetForceName).Run()
 }
 
 func (l *linuxFirewallManager) CleanupFirewallRules() error {

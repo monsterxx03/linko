@@ -226,6 +226,15 @@ func runServer(cmd *cobra.Command, args []string) {
 	var firewallManager *proxy.FirewallManager
 	if cfg.Firewall.EnableAuto {
 		slog.Info("setting up firewall rules")
+
+		// Resolve force proxy hosts to IPs
+		forceProxyIPs, err := proxy.ResolveHosts(cfg.Firewall.ForceProxyHosts, cfg.DNS.DomesticDNS)
+		if err != nil {
+			slog.Warn("failed to resolve force proxy hosts", "error", err)
+		} else if len(forceProxyIPs) > 0 {
+			slog.Info("resolved force proxy hosts to IPs", "ips", forceProxyIPs)
+		}
+
 		firewallManager = proxy.NewFirewallManager(
 			cfg.ProxyPort(),
 			cfg.DNSServerPort(),
@@ -236,6 +245,7 @@ func runServer(cmd *cobra.Command, args []string) {
 				RedirectHTTPS: cfg.Firewall.RedirectHTTPS,
 				RedirectSSH:   cfg.Firewall.RedirectSSH,
 			},
+			forceProxyIPs,
 		)
 		if err := firewallManager.SetupFirewallRules(); err != nil {
 			slog.Warn("failed to setup firewall rules", "error", err)

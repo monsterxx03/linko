@@ -17,6 +17,7 @@ import (
 
 const pfAnchorName = "com.apple/linko"
 const pfTableName = "linko_reserved"
+const pfForceTableName = "linko_force"
 const pfConfPath = "/etc/pf.linko.conf"
 
 type darwinFirewallManager struct {
@@ -39,8 +40,9 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 	proxyPort := d.fm.proxyPort
 	dnsServerPort := d.fm.dnsServerPort
 	cnDNS := d.fm.cnDNS
+	forceProxyIPs := d.fm.forceProxyIPs
 
-	ruleConfig, err := d.renderFirewallRules(proxyPort, dnsServerPort, cnDNS, pfTableName, allCIDRs)
+	ruleConfig, err := d.renderFirewallRules(proxyPort, dnsServerPort, cnDNS, pfTableName, pfForceTableName, allCIDRs, forceProxyIPs)
 	if err != nil {
 		return fmt.Errorf("failed to render firewall rules: %w", err)
 	}
@@ -61,18 +63,20 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 }
 
 type firewallRuleData struct {
-	ProxyPort     string
-	DNSPort       string
-	CNDNS         []string
-	TableName     string
-	CIDRs         []string
-	RedirectDNS   bool
-	RedirectHTTP  bool
-	RedirectHTTPS bool
-	RedirectSSH   bool
+	ProxyPort      string
+	DNSPort        string
+	CNDNS          []string
+	TableName      string
+	ForceTableName string
+	CIDRs          []string
+	ForceProxyIPs  []string
+	RedirectDNS    bool
+	RedirectHTTP   bool
+	RedirectHTTPS  bool
+	RedirectSSH    bool
 }
 
-func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, cnDNS []string, tableName string, cidrs []string) (string, error) {
+func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, cnDNS []string, tableName string, forceTableName string, cidrs []string, forceProxyIPs []string) (string, error) {
 	const ruleTemplate = `# Linko Transparent Proxy Rules
 ext_if = "en0"
 lo_if = "lo0"
@@ -81,6 +85,7 @@ dns_port = "{{.DNSPort}}"
 
 # Options and table definition
 table <{{.TableName}}> const { {{range $i, $cidr := .CIDRs}}{{if $i}}, {{end}}{{$cidr}}{{end}} }
+table <{{.ForceTableName}}> { {{range $i, $ip := .ForceProxyIPs}}{{if $i}}, {{end}}{{$ip}}{{end}} }
 
 {{if .RedirectDNS}}
 rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
@@ -97,6 +102,8 @@ rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port
 {{if .RedirectSSH}}
 rdr pass on $lo_if inet proto tcp from $ext_if to any port 22 -> 127.0.0.1 port $linko_port
 {{end}}
+
+pass out proto tcp from any to <{{.ForceTableName}}> tag FORCE_PROXY
 
 # Filtering rules (must come after translation)
 {{if .RedirectDNS}}
@@ -116,19 +123,21 @@ pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 22
 {{end}}
 
 pass out proto udp from any to { {{range $i, $ip := .CNDNS}}{{if $i}}, {{end}}{{$ip}}{{end}} } port 53 # skip cn dns
-pass out proto tcp from any to <{{.TableName}}>
+pass out quick proto tcp from any to <{{.TableName}}> ! tagged FORCE_PROXY
 `
 
 	data := firewallRuleData{
-		ProxyPort:     proxyPort,
-		DNSPort:       dnsPort,
-		CNDNS:         cnDNS,
-		TableName:     tableName,
-		CIDRs:         cidrs,
-		RedirectDNS:   d.fm.redirectOpt.RedirectDNS,
-		RedirectHTTP:  d.fm.redirectOpt.RedirectHTTP,
-		RedirectHTTPS: d.fm.redirectOpt.RedirectHTTPS,
-		RedirectSSH:   d.fm.redirectOpt.RedirectSSH,
+		ProxyPort:      proxyPort,
+		DNSPort:        dnsPort,
+		CNDNS:          cnDNS,
+		TableName:      tableName,
+		ForceTableName: forceTableName,
+		CIDRs:          cidrs,
+		ForceProxyIPs:  forceProxyIPs,
+		RedirectDNS:    d.fm.redirectOpt.RedirectDNS,
+		RedirectHTTP:   d.fm.redirectOpt.RedirectHTTP,
+		RedirectHTTPS:  d.fm.redirectOpt.RedirectHTTPS,
+		RedirectSSH:    d.fm.redirectOpt.RedirectSSH,
 	}
 
 	var buf bytes.Buffer

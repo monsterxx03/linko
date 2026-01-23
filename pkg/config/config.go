@@ -87,6 +87,10 @@ type FirewallConfig struct {
 
 	// Enable SSH redirect (TCP 22 -> proxy)
 	RedirectSSH bool `mapstructure:"redirect_ssh" yaml:"redirect_ssh"`
+
+	// ForceProxyHosts is a list of domains or IPs that should always be proxied
+	// These hosts will not be added to the reserved list and will always be redirected
+	ForceProxyHosts []string `mapstructure:"force_proxy_hosts" yaml:"force_proxy_hosts"`
 }
 
 // UpstreamConfig contains upstream proxy settings
