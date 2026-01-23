@@ -26,7 +26,7 @@ func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string, m
 	}
 }
 
-func (s *SSEInspector) Inspect(direction Direction, data []byte) ([]byte, error) {
+func (s *SSEInspector) Inspect(direction Direction, data []byte, hostname string) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
 	}
@@ -35,7 +35,7 @@ func (s *SSEInspector) Inspect(direction Direction, data []byte) ([]byte, error)
 		return s.inspectRequest(data)
 	}
 
-	return s.inspectResponse(data)
+	return s.inspectResponse(data, hostname)
 }
 
 func (s *SSEInspector) inspectRequest(data []byte) ([]byte, error) {
@@ -88,7 +88,7 @@ func (s *SSEInspector) inspectRequest(data []byte) ([]byte, error) {
 	return data, nil
 }
 
-func (s *SSEInspector) inspectResponse(data []byte) ([]byte, error) {
+func (s *SSEInspector) inspectResponse(data []byte, hostname string) ([]byte, error) {
 	if !isHTTPResponsePrefix(data) {
 		return data, nil
 	}
@@ -124,11 +124,9 @@ func (s *SSEInspector) inspectResponse(data []byte) ([]byte, error) {
 		Latency:       0,
 	}
 
-	hostname := "unknown"
-	if resp.Request != nil && resp.Request.Host != "" {
-		hostname = resp.Request.Host
-	} else if resp.Header.Get("Host") != "" {
-		hostname = resp.Header.Get("Host")
+	// Use the provided hostname
+	if hostname == "" {
+		hostname = "unknown"
 	}
 
 	event := &TrafficEvent{

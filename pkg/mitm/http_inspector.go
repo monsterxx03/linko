@@ -19,7 +19,7 @@ func NewHTTPInspector(logger *slog.Logger, hostname string) *HTTPInspector {
 	}
 }
 
-func (h *HTTPInspector) Inspect(direction Direction, data []byte) ([]byte, error) {
+func (h *HTTPInspector) Inspect(direction Direction, data []byte, hostname string) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
 	}
@@ -28,7 +28,7 @@ func (h *HTTPInspector) Inspect(direction Direction, data []byte) ([]byte, error
 		return h.inspectRequest(data)
 	}
 
-	return h.inspectResponse(data)
+	return h.inspectResponse(data, hostname)
 }
 
 func (h *HTTPInspector) inspectRequest(data []byte) ([]byte, error) {
@@ -53,7 +53,7 @@ func (h *HTTPInspector) inspectRequest(data []byte) ([]byte, error) {
 	return data, nil
 }
 
-func (h *HTTPInspector) inspectResponse(data []byte) ([]byte, error) {
+func (h *HTTPInspector) inspectResponse(data []byte, hostname string) ([]byte, error) {
 	if !isHTTPResponsePrefix(data) {
 		return data, nil
 	}
@@ -69,6 +69,7 @@ func (h *HTTPInspector) inspectResponse(data []byte) ([]byte, error) {
 		"status", resp.Status,
 		"content-type", resp.Header.Get("Content-Type"),
 		"content-length", resp.ContentLength,
+		"hostname", hostname,
 	)
 
 	return data, nil

@@ -20,12 +20,12 @@ func (c *InspectorChain) Add(inspector Inspector) {
 	c.inspectors = append(c.inspectors, inspector)
 }
 
-func (c *InspectorChain) Inspect(direction Direction, data []byte) ([]byte, error) {
+func (c *InspectorChain) Inspect(direction Direction, data []byte, hostname string) ([]byte, error) {
 	var err error
 	result := data
 
 	for _, inspector := range c.inspectors {
-		result, err = inspector.Inspect(direction, result)
+		result, err = inspector.Inspect(direction, result, hostname)
 		if err != nil {
 			return nil, fmt.Errorf("inspector %s failed: %w", inspector.Name(), err)
 		}
@@ -69,7 +69,7 @@ func (rw *ReadWriter) Read(p []byte) (n int, err error) {
 	if n > 0 && rw.inspector.ShouldInspect(rw.hostname) {
 		data := make([]byte, n)
 		copy(data, p[:n])
-		modified, inspectErr := rw.inspector.Inspect(rw.direction, data)
+		modified, inspectErr := rw.inspector.Inspect(rw.direction, data, rw.hostname)
 		if inspectErr != nil {
 			rw.logger.Debug("inspect error", "error", inspectErr)
 		}
@@ -82,7 +82,7 @@ func (rw *ReadWriter) Read(p []byte) (n int, err error) {
 
 func (rw *ReadWriter) Write(p []byte) (n int, err error) {
 	if rw.inspector.ShouldInspect(rw.hostname) {
-		modified, inspectErr := rw.inspector.Inspect(rw.direction, p)
+		modified, inspectErr := rw.inspector.Inspect(rw.direction, p, rw.hostname)
 		if inspectErr != nil {
 			rw.logger.Debug("inspect error", "error", inspectErr)
 		}

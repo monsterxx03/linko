@@ -70,7 +70,6 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		eventBus:        NewEventBus(1000), // Create event bus with buffer size 1000
 	}
 
-	m.inspector.Add(NewHTTPInspector(logger, ""))
 	m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))
 
 	return m, nil
