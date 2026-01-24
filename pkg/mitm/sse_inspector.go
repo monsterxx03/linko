@@ -65,8 +65,8 @@ func (s *SSEInspector) inspectRequest(data []byte, hostname string, connectionID
 	}
 
 	bodyBytes, _ := io.ReadAll(req.Body)
-	bodyStr := string(bodyBytes)
-	bodyStr = decompressBody(bodyStr, req.Header.Get("Content-Encoding"), req.Header.Get("Content-Type"), s.HTTPInspector.Logger)
+	decompressedBody := decompressBody(bodyBytes, req.Header.Get("Content-Encoding"), req.Header.Get("Content-Type"), s.HTTPInspector.Logger)
+	bodyStr := string(decompressedBody)
 	if s.maxBodySize > 0 && len(bodyStr) > int(s.maxBodySize) {
 		bodyStr = bodyStr[:s.maxBodySize]
 	}
@@ -111,8 +111,8 @@ func (s *SSEInspector) inspectResponse(data []byte, hostname string, connectionI
 	}
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
-	bodyStr := string(bodyBytes)
-	bodyStr = decompressBody(bodyStr, resp.Header.Get("Content-Encoding"), resp.Header.Get("Content-Type"), s.HTTPInspector.Logger)
+	decompressedBody := decompressBody(bodyBytes, resp.Header.Get("Content-Encoding"), resp.Header.Get("Content-Type"), s.HTTPInspector.Logger)
+	bodyStr := string(decompressedBody)
 	if s.maxBodySize > 0 && len(bodyStr) > int(s.maxBodySize) {
 		bodyStr = bodyStr[:s.maxBodySize]
 	}

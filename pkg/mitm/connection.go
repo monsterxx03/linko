@@ -12,6 +12,14 @@ import (
 	"github.com/google/uuid"
 )
 
+// bufferPool is a sync.Pool for managing buffers used in io.CopyBuffer
+var bufferPool = &sync.Pool{
+	New: func() interface{} {
+		// Create a new buffer with CopyBufferSize
+		return make([]byte, CopyBufferSize)
+	},
+}
+
 // ConnectionHandler handles MITM connections
 type ConnectionHandler struct {
 	siteCertManager *SiteCertManager
@@ -184,18 +192,22 @@ func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname strin
 	}
 
 	// Client -> Server
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		defer wg.Done()
-		_, _ = io.Copy(serverWriter, clientReader)
-	}()
+		// Get buffer from pool
+		buffer := bufferPool.Get().([]byte)
+		defer bufferPool.Put(buffer)
+		_, _ = io.CopyBuffer(serverWriter, clientReader, buffer)
+	})
 
 	// Server -> Client
-	wg.Add(1)
-	go func() {
+	wg.Go(func() {
 		defer wg.Done()
-		_, _ = io.Copy(clientWriter, serverReader)
-	}()
+		// Get buffer from pool
+		buffer := bufferPool.Get().([]byte)
+		defer bufferPool.Put(buffer)
+		_, _ = io.CopyBuffer(clientWriter, serverReader, buffer)
+	})
 
 	wg.Wait()
 	return nil

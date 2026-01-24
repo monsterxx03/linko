@@ -215,21 +215,6 @@ data: {"message":"Connected to MITM traffic stream"}
 	w.Write([]byte(welcomeMsg))
 	flusher.Flush()
 
-	// Send historical data
-	history := s.eventBus.GetHistory()
-	for _, event := range history {
-		eventData, err := json.Marshal(event)
-		if err != nil {
-			continue
-		}
-		eventMsg := `event: traffic
-data: ` + string(eventData) + `
-
-`
-		w.Write([]byte(eventMsg))
-	}
-	flusher.Flush()
-
 	// Set up connection close handling
 	notify := w.(http.CloseNotifier).CloseNotify()
 

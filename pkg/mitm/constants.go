@@ -6,4 +6,7 @@ const (
 
 	// DefaultBufferSize 默认缓冲区大小 (16KB)
 	DefaultBufferSize = 16 * 1024
+
+	// CopyBufferSize 用于io.CopyBuffer的缓冲区大小 (256KB)
+	CopyBufferSize = 256 * 1024
 )

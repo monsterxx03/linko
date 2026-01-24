@@ -32,7 +32,7 @@ func isHTTPResponsePrefix(data []byte) bool {
 		bytes.HasPrefix(data, []byte("HTTP/2 "))
 }
 
-func decompressBody(body string, contentEncoding string, contentType string, logger *slog.Logger) string {
+func decompressBody(body []byte, contentEncoding string, contentType string, logger *slog.Logger) []byte {
 	if contentEncoding == "" {
 		return body
 	}
@@ -45,7 +45,7 @@ func decompressBody(body string, contentEncoding string, contentType string, log
 
 	switch strings.ToLower(contentEncoding) {
 	case "gzip":
-		reader, err := gzip.NewReader(strings.NewReader(body))
+		reader, err := gzip.NewReader(bytes.NewReader(body))
 		if err != nil {
 			logger.Warn("Failed to create gzip reader", "error", err)
 			return body
@@ -53,11 +53,11 @@ func decompressBody(body string, contentEncoding string, contentType string, log
 		defer reader.Close()
 		decompressed, err = io.ReadAll(reader)
 	case "deflate":
-		reader := flate.NewReader(strings.NewReader(body))
+		reader := flate.NewReader(bytes.NewReader(body))
 		defer reader.Close()
 		decompressed, err = io.ReadAll(reader)
 	case "br":
-		reader := brotli.NewReader(strings.NewReader(body))
+		reader := brotli.NewReader(bytes.NewReader(body))
 		decompressed, err = io.ReadAll(reader)
 	default:
 		return body
@@ -71,7 +71,7 @@ func decompressBody(body string, contentEncoding string, contentType string, log
 				if !errors.Is(err, io.EOF) {
 					logger.Warn("Partial decompression for SSE", "contentEncoding", contentEncoding, "error", err)
 				}
-				return string(decompressed)
+				return decompressed
 			}
 			// No decompressed data, return original
 			return body
@@ -80,5 +80,5 @@ func decompressBody(body string, contentEncoding string, contentType string, log
 		logger.Warn("Failed to decompress body", "contentEncoding", contentEncoding, "error", err)
 		return body
 	}
-	return string(decompressed)
+	return decompressed
 }

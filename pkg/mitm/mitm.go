@@ -67,7 +67,7 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		logger:          logger,
 		enabled:         config.Enabled,
 		inspector:       NewInspectorChain(),
-		eventBus:        NewEventBus(1000), // Create event bus with buffer size 1000
+		eventBus:        NewEventBus(logger), // Create event bus
 	}
 
 	m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))

@@ -1,67 +1,62 @@
 package mitm
 
 import (
+	"log/slog"
 	"sync"
 	"time"
 )
 
 // TrafficEvent represents a single MITM traffic event
 type TrafficEvent struct {
-	ID           string       `json:"id"`            // Unique event ID
-	Hostname     string       `json:"hostname"`      // Target hostname
-	Timestamp    time.Time    `json:"timestamp"`     // Event timestamp
-	Direction    string       `json:"direction"`     // Traffic direction
-	ConnectionID string       `json:"connection_id"` // Unique connection ID
-	Request      *HTTPRequest `json:"request,omitempty"`  // Request details if available
+	ID           string        `json:"id"`                 // Unique event ID
+	Hostname     string        `json:"hostname"`           // Target hostname
+	Timestamp    time.Time     `json:"timestamp"`          // Event timestamp
+	Direction    string        `json:"direction"`          // Traffic direction
+	ConnectionID string        `json:"connection_id"`      // Unique connection ID
+	Request      *HTTPRequest  `json:"request,omitempty"`  // Request details if available
 	Response     *HTTPResponse `json:"response,omitempty"` // Response details if available
 }
 
 // HTTPRequest represents an HTTP request
 type HTTPRequest struct {
-	Method      string            `json:"method"`      // HTTP method
-	URL         string            `json:"url"`         // Request URL
-	Host        string            `json:"host"`        // Request host
-	Headers     map[string]string `json:"headers"`     // Request headers
-	Body        string            `json:"body"`        // Request body (truncated)
-	ContentType string            `json:"content_type"` // Content-Type header
-	ContentLength int64          `json:"content_length"` // Content-Length header
+	Method        string            `json:"method"`         // HTTP method
+	URL           string            `json:"url"`            // Request URL
+	Host          string            `json:"host"`           // Request host
+	Headers       map[string]string `json:"headers"`        // Request headers
+	Body          string            `json:"body"`           // Request body (truncated)
+	ContentType   string            `json:"content_type"`   // Content-Type header
+	ContentLength int64             `json:"content_length"` // Content-Length header
 }
 
 // HTTPResponse represents an HTTP response
 type HTTPResponse struct {
-	Status        string            `json:"status"`        // Status line
-	StatusCode    int               `json:"status_code"`   // Status code
-	Headers       map[string]string `json:"headers"`       // Response headers
-	Body          string            `json:"body"`          // Response body (truncated)
-	ContentType   string            `json:"content_type"`  // Content-Type header
+	Status        string            `json:"status"`         // Status line
+	StatusCode    int               `json:"status_code"`    // Status code
+	Headers       map[string]string `json:"headers"`        // Response headers
+	Body          string            `json:"body"`           // Response body (truncated)
+	ContentType   string            `json:"content_type"`   // Content-Type header
 	ContentLength int64             `json:"content_length"` // Content-Length header
-	Latency       int64             `json:"latency"`       // Response latency in milliseconds
+	Latency       int64             `json:"latency"`        // Response latency in milliseconds
 }
 
 // Subscriber represents an event subscriber
 type Subscriber struct {
-	ID      string                // Unique subscriber ID
-	Channel chan *TrafficEvent    // Channel for receiving events
+	ID      string             // Unique subscriber ID
+	Channel chan *TrafficEvent // Channel for receiving events
 }
 
 // EventBus manages the publishing and subscribing of traffic events
 type EventBus struct {
 	subscribers map[*Subscriber]bool // Active subscribers
 	mu          sync.RWMutex         // Mutex for thread safety
-	buffer      []*TrafficEvent      // Historical events buffer
-	bufferSize  int                  // Maximum buffer size
+	logger      *slog.Logger         // Logger for error and warning messages
 }
 
-// NewEventBus creates a new EventBus with the given buffer size
-func NewEventBus(bufferSize int) *EventBus {
-	if bufferSize <= 0 {
-		bufferSize = 100 // Default buffer size
-	}
-
+// NewEventBus creates a new EventBus
+func NewEventBus(logger *slog.Logger) *EventBus {
 	return &EventBus{
 		subscribers: make(map[*Subscriber]bool),
-		buffer:      make([]*TrafficEvent, 0, bufferSize),
-		bufferSize:  bufferSize,
+		logger:      logger,
 	}
 }
 
@@ -81,20 +76,16 @@ func (eb *EventBus) Publish(event *TrafficEvent) {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
 
-	// Add to buffer
-	eb.buffer = append(eb.buffer, event)
-	// Trim buffer if it exceeds size
-	if len(eb.buffer) > eb.bufferSize {
-		eb.buffer = eb.buffer[len(eb.buffer)-eb.bufferSize:]
-	}
-
 	// Publish to all subscribers
 	for subscriber := range eb.subscribers {
 		select {
 		case subscriber.Channel <- event:
 			// Event sent successfully
 		default:
-			// Subscriber channel is full, skip
+			eb.logger.Warn("Subscriber channel is full, skipping event",
+				"subscriber_id", subscriber.ID,
+				"event_id", event.ID,
+				"hostname", event.Hostname)
 		}
 	}
 }
@@ -121,17 +112,6 @@ func (eb *EventBus) Unsubscribe(subscriber *Subscriber) {
 		close(subscriber.Channel)
 	}
 	eb.mu.Unlock()
-}
-
-// GetHistory returns the recent traffic events
-func (eb *EventBus) GetHistory() []*TrafficEvent {
-	eb.mu.RLock()
-	defer eb.mu.RUnlock()
-
-	// Return a copy of the buffer
-	history := make([]*TrafficEvent, len(eb.buffer))
-	copy(history, eb.buffer)
-	return history
 }
 
 // GetSubscriberCount returns the number of active subscribers
