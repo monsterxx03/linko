@@ -71,12 +71,9 @@ func (ir *InspectReader) Read(p []byte) (n int, err error) {
 	if n > 0 && ir.inspector.ShouldInspect(ir.hostname) {
 		data := make([]byte, n)
 		copy(data, p[:n])
-		modified, inspectErr := ir.inspector.Inspect(ir.direction, data, ir.hostname, ir.connectionID)
-		if inspectErr != nil {
-			ir.logger.Debug("inspect error", "error", inspectErr)
-		}
-		if modified != nil {
-			copy(p[:n], modified)
+		_, err := ir.inspector.Inspect(ir.direction, data, ir.hostname, ir.connectionID)
+		if err != nil {
+			ir.logger.Debug("inspect error", "error", err)
 		}
 	}
 	return n, err

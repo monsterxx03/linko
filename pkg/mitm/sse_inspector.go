@@ -10,13 +10,19 @@ import (
 	"time"
 )
 
+type PendingMessage struct {
+	Data          bytes.Buffer
+	ContentLength int64
+	Headers       []byte
+}
+
 type SSEInspector struct {
 	*HTTPInspector
 	eventBus     *EventBus
 	maxBodySize  int64
-	requestCache map[string]*HTTPRequest // 缓存待处理的请求
-	mutex        sync.Mutex              // 保护 requestCache 的并发访问
-	connCounter  uint64                  // 连接计数器，用于生成唯一 ID
+	pendingReqs  sync.Map
+	pendingResps sync.Map
+	requestCache sync.Map
 }
 
 func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string, maxBodySize int64) *SSEInspector {
@@ -27,9 +33,6 @@ func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string, m
 		HTTPInspector: NewHTTPInspector(logger, hostname),
 		eventBus:      eventBus,
 		maxBodySize:   maxBodySize,
-		requestCache:  make(map[string]*HTTPRequest),
-		mutex:         sync.Mutex{},
-		connCounter:   0,
 	}
 }
 
@@ -39,17 +42,166 @@ func (s *SSEInspector) Inspect(direction Direction, data []byte, hostname string
 	}
 
 	if direction == DirectionClientToServer {
-		return s.inspectRequest(data, hostname, connectionID)
+		return s.inspectRequestIncremental(data, hostname, connectionID)
 	}
 
-	return s.inspectResponse(data, hostname, connectionID)
+	return s.inspectResponseIncremental(data, hostname, connectionID)
 }
 
-func (s *SSEInspector) inspectRequest(data []byte, hostname string, connectionID string) ([]byte, error) {
-	if !isHTTPPrefix(data) {
-		return data, nil
+func (s *SSEInspector) inspectRequestIncremental(data []byte, hostname string, connectionID string) ([]byte, error) {
+	var pending *PendingMessage
+	if val, exists := s.pendingReqs.Load(connectionID); exists {
+		pending = val.(*PendingMessage)
 	}
 
+	if pending == nil {
+		if !isHTTPPrefix(data) {
+			return data, nil
+		}
+
+		pending = &PendingMessage{
+			Data:          bytes.Buffer{},
+			ContentLength: -2,
+		}
+		pending.Data.Write(data)
+
+		idx := bytes.Index(data, []byte("\r\n\r\n"))
+		if idx >= 0 {
+			headerData := make([]byte, idx+4)
+			copy(headerData, data[:idx+4])
+			pending.Headers = headerData
+
+			reader := bytes.NewReader(headerData)
+			req, err := http.ReadRequest(bufio.NewReader(reader))
+			if err != nil {
+				return data, nil
+			}
+
+			if req.ContentLength > 0 {
+				pending.ContentLength = req.ContentLength
+			} else if req.Header.Get("Transfer-Encoding") == "chunked" {
+				pending.ContentLength = -1
+			} else {
+				pending.ContentLength = 0
+			}
+
+			req.Body.Close()
+		}
+
+		s.pendingReqs.Store(connectionID, pending)
+	} else {
+		pending.Data.Write(data)
+	}
+
+	if pending.ContentLength == 0 && pending.Headers != nil {
+		s.pendingReqs.Delete(connectionID)
+		return s.processCompleteRequest(pending.Data.Bytes(), hostname, connectionID)
+	}
+
+	if pending.ContentLength > 0 && pending.Headers != nil {
+		needed := int(pending.ContentLength) + len(pending.Headers)
+		if pending.Data.Len() >= needed {
+			fullData := make([]byte, needed)
+			copy(fullData, pending.Data.Bytes()[:needed])
+
+			s.pendingReqs.Delete(connectionID)
+			return s.processCompleteRequest(fullData, hostname, connectionID)
+		}
+	}
+
+	if pending.ContentLength < 0 && pending.Headers != nil {
+		fullData := pending.Data.Bytes()
+		// find chunked body end
+		bodyEnd := bytes.Index(fullData, []byte("\r\n0\r\n"))
+		if bodyEnd >= 0 {
+			fullData = make([]byte, bodyEnd+5)
+			copy(fullData, pending.Data.Bytes()[:bodyEnd+5])
+
+			s.pendingReqs.Delete(connectionID)
+			return s.processCompleteRequest(fullData, hostname, connectionID)
+		}
+	}
+
+	return data, nil
+}
+
+func (s *SSEInspector) inspectResponseIncremental(data []byte, hostname string, connectionID string) ([]byte, error) {
+	var pending *PendingMessage
+	if val, exists := s.pendingResps.Load(connectionID); exists {
+		pending = val.(*PendingMessage)
+	}
+
+	if pending == nil {
+		if !isHTTPResponsePrefix(data) {
+			return data, nil
+		}
+
+		pending = &PendingMessage{
+			Data:          bytes.Buffer{},
+			ContentLength: -2,
+		}
+		pending.Data.Write(data)
+
+		idx := bytes.Index(data, []byte("\r\n\r\n"))
+		if idx >= 0 {
+			headerData := make([]byte, idx+4)
+			copy(headerData, data[:idx+4])
+			pending.Headers = headerData
+
+			reader := bytes.NewReader(headerData)
+			resp, err := http.ReadResponse(bufio.NewReader(reader), nil)
+			if err != nil {
+				return data, nil
+			}
+
+			if resp.ContentLength > 0 {
+				pending.ContentLength = resp.ContentLength
+			} else if resp.Header.Get("Transfer-Encoding") == "chunked" {
+				pending.ContentLength = -1
+			} else {
+				pending.ContentLength = 0
+			}
+
+			resp.Body.Close()
+		}
+
+		s.pendingResps.Store(connectionID, pending)
+	} else {
+		pending.Data.Write(data)
+	}
+
+	if pending.ContentLength == 0 && pending.Headers != nil {
+		s.pendingResps.Delete(connectionID)
+		return s.processCompleteResponse(pending.Data.Bytes(), hostname, connectionID)
+	}
+
+	if pending.ContentLength > 0 && pending.Headers != nil {
+		needed := int(pending.ContentLength) + len(pending.Headers)
+		if pending.Data.Len() >= needed {
+			fullData := make([]byte, needed)
+			copy(fullData, pending.Data.Bytes()[:needed])
+
+			s.pendingResps.Delete(connectionID)
+			return s.processCompleteResponse(fullData, hostname, connectionID)
+		}
+	}
+
+	if pending.ContentLength < 0 && pending.Headers != nil {
+		fullData := pending.Data.Bytes()
+		bodyEnd := bytes.Index(fullData, []byte("\r\n0\r\n"))
+		if bodyEnd >= 0 {
+			fullData = make([]byte, bodyEnd+5)
+			copy(fullData, pending.Data.Bytes()[:bodyEnd+5])
+
+			s.pendingResps.Delete(connectionID)
+			return s.processCompleteResponse(fullData, hostname, connectionID)
+		}
+	}
+
+	return data, nil
+}
+
+func (s *SSEInspector) processCompleteRequest(data []byte, hostname string, connectionID string) ([]byte, error) {
 	reader := bufio.NewReader(bytes.NewReader(data))
 	req, err := http.ReadRequest(reader)
 	if err != nil {
@@ -57,18 +209,18 @@ func (s *SSEInspector) inspectRequest(data []byte, hostname string, connectionID
 	}
 	defer req.Body.Close()
 
-	headers := make(map[string]string)
-	for k, v := range req.Header {
-		if len(v) > 0 {
-			headers[k] = v[0]
-		}
-	}
-
 	bodyBytes, _ := io.ReadAll(req.Body)
 	decompressedBody := decompressBody(bodyBytes, req.Header.Get("Content-Encoding"), req.Header.Get("Content-Type"), s.HTTPInspector.Logger)
 	bodyStr := string(decompressedBody)
 	if s.maxBodySize > 0 && len(bodyStr) > int(s.maxBodySize) {
 		bodyStr = bodyStr[:s.maxBodySize]
+	}
+
+	headers := make(map[string]string)
+	for k, v := range req.Header {
+		if len(v) > 0 {
+			headers[k] = v[0]
+		}
 	}
 
 	httpReq := &HTTPRequest{
@@ -81,21 +233,12 @@ func (s *SSEInspector) inspectRequest(data []byte, hostname string, connectionID
 		ContentLength: req.ContentLength,
 	}
 
-	// Store request in cache using connection ID as key
-	s.mutex.Lock()
-	s.requestCache[connectionID] = httpReq
-	s.mutex.Unlock()
-
-	// Don't send separate request event - wait for response to send combined event
+	s.requestCache.Store(connectionID, httpReq)
 
 	return data, nil
 }
 
-func (s *SSEInspector) inspectResponse(data []byte, hostname string, connectionID string) ([]byte, error) {
-	if !isHTTPResponsePrefix(data) {
-		return data, nil
-	}
-
+func (s *SSEInspector) processCompleteResponse(data []byte, hostname string, connectionID string) ([]byte, error) {
 	reader := bufio.NewReader(bytes.NewReader(data))
 	resp, err := http.ReadResponse(reader, nil)
 	if err != nil {
@@ -103,18 +246,18 @@ func (s *SSEInspector) inspectResponse(data []byte, hostname string, connectionI
 	}
 	defer resp.Body.Close()
 
-	headers := make(map[string]string)
-	for k, v := range resp.Header {
-		if len(v) > 0 {
-			headers[k] = v[0]
-		}
-	}
-
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	decompressedBody := decompressBody(bodyBytes, resp.Header.Get("Content-Encoding"), resp.Header.Get("Content-Type"), s.HTTPInspector.Logger)
 	bodyStr := string(decompressedBody)
 	if s.maxBodySize > 0 && len(bodyStr) > int(s.maxBodySize) {
 		bodyStr = bodyStr[:s.maxBodySize]
+	}
+
+	headers := make(map[string]string)
+	for k, v := range resp.Header {
+		if len(v) > 0 {
+			headers[k] = v[0]
+		}
 	}
 
 	httpResp := &HTTPResponse{
@@ -127,35 +270,27 @@ func (s *SSEInspector) inspectResponse(data []byte, hostname string, connectionI
 		Latency:       0,
 	}
 
-	// Try to find corresponding request in cache using connection ID
 	var httpReq *HTTPRequest
 	var requestID string
 
-	s.mutex.Lock()
-	if req, exists := s.requestCache[connectionID]; exists {
-		httpReq = req
-		// Generate request ID using connection ID and timestamp
-		requestID = connectionID + "-" + time.Now().Format("20060102150405.000000") + "-" + req.Method
-		// Remove from cache
-		delete(s.requestCache, connectionID)
+	if val, exists := s.requestCache.Load(connectionID); exists {
+		httpReq = val.(*HTTPRequest)
+		requestID = connectionID + "-" + time.Now().Format("20060102150405.000000") + "-" + httpReq.Method
+		s.requestCache.Delete(connectionID)
 	}
-	s.mutex.Unlock()
 
 	if httpReq != nil {
-		// Create combined event with both request and response
 		event := &TrafficEvent{
 			ID:           requestID,
 			Hostname:     hostname,
 			Timestamp:    time.Now(),
-			Direction:    "complete", // Indicate complete request-response cycle
+			Direction:    "complete",
 			ConnectionID: connectionID,
 			Request:      httpReq,
 			Response:     httpResp,
 		}
-
 		s.eventBus.Publish(event)
 	} else {
-		// Fallback: send separate response event if no matching request found
 		event := &TrafficEvent{
 			ID:           connectionID + "-" + time.Now().Format("20060102150405.000000") + "-resp",
 			Hostname:     hostname,
@@ -164,9 +299,14 @@ func (s *SSEInspector) inspectResponse(data []byte, hostname string, connectionI
 			ConnectionID: connectionID,
 			Response:     httpResp,
 		}
-
 		s.eventBus.Publish(event)
 	}
 
 	return data, nil
+}
+
+func (s *SSEInspector) ClearPending(connectionID string) {
+	s.pendingReqs.Delete(connectionID)
+	s.pendingResps.Delete(connectionID)
+	s.requestCache.Delete(connectionID)
 }

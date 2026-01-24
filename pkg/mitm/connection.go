@@ -15,8 +15,7 @@ import (
 // bufferPool is a sync.Pool for managing buffers used in io.CopyBuffer
 var bufferPool = &sync.Pool{
 	New: func() interface{} {
-		// Create a new buffer with CopyBufferSize
-		return make([]byte, CopyBufferSize)
+		return make([]byte, DefaultBufferSize)
 	},
 }
 
