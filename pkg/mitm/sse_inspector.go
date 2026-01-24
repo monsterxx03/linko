@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -14,6 +15,7 @@ type PendingMessage struct {
 	Data          bytes.Buffer
 	ContentLength int64
 	Headers       []byte
+	IsSSE         bool // 是否为 SSE 响应
 }
 
 type SSEInspector struct {
@@ -154,7 +156,11 @@ func (s *SSEInspector) inspectResponseIncremental(data []byte, hostname string, 
 				return data, nil
 			}
 
-			if resp.ContentLength > 0 {
+			// 检测 SSE 响应
+			if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream") {
+				pending.IsSSE = true
+				pending.ContentLength = -1 // SSE 是流式响应，无明确结束
+			} else if resp.ContentLength > 0 {
 				pending.ContentLength = resp.ContentLength
 			} else if resp.Header.Get("Transfer-Encoding") == "chunked" {
 				pending.ContentLength = -1
@@ -188,13 +194,19 @@ func (s *SSEInspector) inspectResponseIncremental(data []byte, hostname string, 
 
 	if pending.ContentLength < 0 && pending.Headers != nil {
 		fullData := pending.Data.Bytes()
-		bodyEnd := bytes.Index(fullData, []byte("\r\n0\r\n"))
-		if bodyEnd >= 0 {
-			fullData = make([]byte, bodyEnd+5)
-			copy(fullData, pending.Data.Bytes()[:bodyEnd+5])
+		// 对于非 SSE 的 chunked 响应，检查是否结束
+		if !pending.IsSSE {
+			bodyEnd := bytes.Index(fullData, []byte("\r\n0\r\n"))
+			if bodyEnd >= 0 {
+				fullData = make([]byte, bodyEnd+5)
+				copy(fullData, pending.Data.Bytes()[:bodyEnd+5])
 
-			s.pendingResps.Delete(connectionID)
-			return s.processCompleteResponse(fullData, hostname, connectionID)
+				s.pendingResps.Delete(connectionID)
+				return s.processCompleteResponse(fullData, hostname, connectionID)
+			}
+		} else {
+			// SSE 响应：增量处理事件
+			return s.processSSEStream(fullData, hostname, connectionID)
 		}
 	}
 
@@ -271,17 +283,15 @@ func (s *SSEInspector) processCompleteResponse(data []byte, hostname string, con
 	}
 
 	var httpReq *HTTPRequest
-	var requestID string
 
 	if val, exists := s.requestCache.Load(connectionID); exists {
 		httpReq = val.(*HTTPRequest)
-		requestID = connectionID + "-" + time.Now().Format("20060102150405.000000") + "-" + httpReq.Method
 		s.requestCache.Delete(connectionID)
 	}
 
 	if httpReq != nil {
 		event := &TrafficEvent{
-			ID:           requestID,
+			ID:           connectionID,
 			Hostname:     hostname,
 			Timestamp:    time.Now(),
 			Direction:    "complete",
@@ -292,7 +302,7 @@ func (s *SSEInspector) processCompleteResponse(data []byte, hostname string, con
 		s.eventBus.Publish(event)
 	} else {
 		event := &TrafficEvent{
-			ID:           connectionID + "-" + time.Now().Format("20060102150405.000000") + "-resp",
+			ID:           connectionID,
 			Hostname:     hostname,
 			Timestamp:    time.Now(),
 			Direction:    DirectionServerToClient.String(),
@@ -303,6 +313,77 @@ func (s *SSEInspector) processCompleteResponse(data []byte, hostname string, con
 	}
 
 	return data, nil
+}
+
+// processSSEStream 处理 SSE 流式响应，直接返回累积数据并发布，不解压不解析
+func (s *SSEInspector) processSSEStream(fullData []byte, hostname string, connectionID string) ([]byte, error) {
+	// 发布原始 HTTP 响应到 eventBus（不解压不解析）
+	s.publishOriginalResponse(fullData, hostname, connectionID)
+
+	// 返回完整响应数据（不解压）
+	return fullData, nil
+}
+
+// publishOriginalResponse 发布原始 HTTP 响应到 eventBus
+func (s *SSEInspector) publishOriginalResponse(fullData []byte, hostname string, connectionID string) {
+	reader := bufio.NewReader(bytes.NewReader(fullData))
+	resp, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	decompressedBody := decompressBody(bodyBytes, resp.Header.Get("Content-Encoding"), resp.Header.Get("Content-Type"), s.HTTPInspector.Logger)
+	bodyStr := string(decompressedBody)
+	if s.maxBodySize > 0 && len(bodyStr) > int(s.maxBodySize) {
+		bodyStr = bodyStr[:s.maxBodySize]
+	}
+
+	headers := make(map[string]string)
+	for k, v := range resp.Header {
+		if len(v) > 0 {
+			headers[k] = v[0]
+		}
+	}
+
+	httpResp := &HTTPResponse{
+		Status:        resp.Status,
+		StatusCode:    resp.StatusCode,
+		Headers:       headers,
+		Body:          bodyStr,
+		ContentType:   resp.Header.Get("Content-Type"),
+		ContentLength: resp.ContentLength,
+	}
+
+	var httpReq *HTTPRequest
+	if val, exists := s.requestCache.Load(connectionID); exists {
+		httpReq = val.(*HTTPRequest)
+		s.requestCache.Delete(connectionID)
+	}
+
+	if httpReq != nil {
+		event := &TrafficEvent{
+			ID:           connectionID,
+			Hostname:     hostname,
+			Timestamp:    time.Now(),
+			Direction:    "complete",
+			ConnectionID: connectionID,
+			Request:      httpReq,
+			Response:     httpResp,
+		}
+		s.eventBus.Publish(event)
+	} else {
+		event := &TrafficEvent{
+			ID:           connectionID,
+			Hostname:     hostname,
+			Timestamp:    time.Now(),
+			Direction:    DirectionServerToClient.String(),
+			ConnectionID: connectionID,
+			Response:     httpResp,
+		}
+		s.eventBus.Publish(event)
+	}
 }
 
 func (s *SSEInspector) ClearPending(connectionID string) {

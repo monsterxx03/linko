@@ -474,8 +474,10 @@
 
     async function clearBoth() { await clearStats(); await clearCache(); }
 
-    // MITM Traffic functionality
-    let trafficEvents = [];
+    // MITM Traffic functionality - 基于唯一 ID 的增量更新
+    const trafficMap = new Map(); // id -> event data
+    const trafficOrder = []; // 保持插入顺序，用于渲染
+    const MAX_EVENTS = 100;
     let eventSource = null;
     let isAutoScroll = true;
 
@@ -524,7 +526,7 @@
     // Format body for display (full content)
     function formatBody(body, contentType) {
       if (!body) return '';
-      
+
       // Check if content type is JSON
       if (contentType && contentType.includes('application/json')) {
         try {
@@ -536,141 +538,159 @@
           return body;
         }
       }
-      
+
       return body;
     }
 
-    // Create traffic item HTML
-    function createTrafficItem(event) {
+    // 生成请求/响应概览区域的 HTML
+    function renderSummary(event, isExpanded = false) {
       const hasRequest = event.request !== undefined;
       const hasResponse = event.response !== undefined;
       const isComplete = event.direction === 'complete' || (hasRequest && hasResponse);
-      const itemId = `traffic-${event.id}`;
-      
-      let content = '';
-      if (isComplete) {
-        // Combined request and response view
-        content = `
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-3">
-              <div class="flex items-center gap-2">
-                ${event.request ? formatMethod(event.request.method) : ''}
-                <span class="text-sm font-medium text-bg-800 truncate max-w-xs">${event.request ? event.request.url : event.hostname}</span>
-              </div>
-              ${event.response ? formatStatusCode(event.response.status_code) : ''}
-              <span class="text-xs text-bg-400">${event.hostname}</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-bg-400">${formatTime(event.timestamp)}</span>
-              ${event.response ? `<span class="text-xs text-bg-400">${event.response.latency}ms</span>` : ''}
-              <button onclick="toggleTrafficDetails('${itemId}')" class="text-xs text-bg-400 hover:text-bg-600 focus:outline-none">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                </svg>
-              </button>
-            </div>
+      const expandIcon = isExpanded
+        ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>'
+        : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>';
+
+      let leftSection = '';
+      let rightSection = '';
+
+      if (isComplete && hasRequest && hasResponse) {
+        // 完整请求+响应
+        leftSection = `
+          <div class="flex items-center gap-2">
+            ${formatMethod(event.request.method)}
+            <span class="text-sm font-medium text-bg-800 truncate max-w-xs">${event.request.url || event.hostname}</span>
+            ${formatStatusCode(event.response.status_code)}
           </div>
-          <div id="${itemId}-details" class="traffic-details hidden mt-3 space-y-3">
-            ${event.request ? `
-            <div class="p-3 bg-bg-50 rounded-lg">
-              <h4 class="text-xs font-medium text-bg-600 mb-2">Request Headers</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatHeaders(event.request.headers)}</pre>
-            </div>
-            ${event.request.body ? `
-            <div class="p-3 bg-bg-50 rounded-lg">
-              <h4 class="text-xs font-medium text-bg-600 mb-2">Request Body</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.request.body, event.request.content_type)}</pre>
-            </div>
-            ` : ''}
-            ` : ''}
-            ${event.response ? `
-            <div class="p-3 bg-bg-50 rounded-lg">
-              <h4 class="text-xs font-medium text-bg-600 mb-2">Response Headers</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatHeaders(event.response.headers)}</pre>
-            </div>
-            ${event.response.body ? `
-            <div class="p-3 bg-bg-50 rounded-lg">
-              <h4 class="text-xs font-medium text-bg-600 mb-2">Response Body</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.response.body, event.response.content_type)}</pre>
-            </div>
-            ` : ''}
-            ` : ''}
-          </div>
+        `;
+        rightSection = `
+          <span class="text-xs text-bg-400">${formatTime(event.timestamp)}</span>
+          <span class="text-xs text-bg-400">${event.hostname}</span>
+          ${event.response.latency !== undefined ? `<span class="text-xs text-bg-400">${event.response.latency}ms</span>` : ''}
         `;
       } else if (hasRequest) {
-        // Request only view
-        content = `
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-3">
-              <div class="flex items-center gap-2">
-                ${formatMethod(event.request.method)}
-                <span class="text-sm font-medium text-bg-800 truncate max-w-xs">${event.request.url}</span>
-              </div>
-              <span class="text-xs text-bg-400">${event.hostname}</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-bg-400">${formatTime(event.timestamp)}</span>
-              <button onclick="toggleTrafficDetails('${itemId}')" class="text-xs text-bg-400 hover:text-bg-600 focus:outline-none">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                </svg>
-              </button>
-            </div>
+        // 只有请求
+        leftSection = `
+          <div class="flex items-center gap-2">
+            ${formatMethod(event.request.method)}
+            <span class="text-sm font-medium text-bg-800 truncate max-w-xs">${event.request.url}</span>
           </div>
-          <div id="${itemId}-details" class="traffic-details hidden mt-3 space-y-3">
-            <div class="p-3 bg-bg-50 rounded-lg">
-              <h4 class="text-xs font-medium text-bg-600 mb-2">Request Headers</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatHeaders(event.request.headers)}</pre>
-            </div>
-            ${event.request.body ? `
-            <div class="p-3 bg-bg-50 rounded-lg">
-              <h4 class="text-xs font-medium text-bg-600 mb-2">Request Body</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.request.body, event.request.content_type)}</pre>
-            </div>
-            ` : ''}
-          </div>
+        `;
+        rightSection = `
+          <span class="text-xs text-bg-400">${formatTime(event.timestamp)}</span>
+          <span class="text-xs text-bg-400">${event.hostname}</span>
         `;
       } else if (hasResponse) {
-        // Response only view
-        content = `
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-3">
-              <div class="flex items-center gap-2">
-                ${formatStatusCode(event.response.status_code)}
-                <span class="text-sm font-medium text-bg-800">${event.response.status}</span>
-              </div>
-              <span class="text-xs text-bg-400">${event.hostname}</span>
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-bg-400">${formatTime(event.timestamp)}</span>
-              <span class="text-xs text-bg-400">${event.response.latency}ms</span>
-              <button onclick="toggleTrafficDetails('${itemId}')" class="text-xs text-bg-400 hover:text-bg-600 focus:outline-none">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div id="${itemId}-details" class="traffic-details hidden mt-3 space-y-3">
-            <div class="p-3 bg-bg-50 rounded-lg">
-              <h4 class="text-xs font-medium text-bg-600 mb-2">Response Headers</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatHeaders(event.response.headers)}</pre>
-            </div>
-            ${event.response.body ? `
-            <div class="p-3 bg-bg-50 rounded-lg">
-              <h4 class="text-xs font-medium text-bg-600 mb-2">Response Body</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.response.body, event.response.content_type)}</pre>
-            </div>
-            ` : ''}
+        // 只有响应（可能更新已有的请求）
+        leftSection = `
+          <div class="flex items-center gap-2">
+            ${formatStatusCode(event.response.status_code)}
+            <span class="text-sm font-medium text-bg-800">${event.response.status}</span>
           </div>
         `;
+        rightSection = `
+          <span class="text-xs text-bg-400">${formatTime(event.timestamp)}</span>
+          <span class="text-xs text-bg-400">${event.hostname}</span>
+          ${event.response.latency !== undefined ? `<span class="text-xs text-bg-400">${event.response.latency}ms</span>` : ''}
+        `;
+      } else {
+        // 只有方向信息
+        leftSection = `<span class="text-sm font-medium text-bg-800">${event.direction}</span>`;
+        rightSection = `
+          <span class="text-xs text-bg-400">${formatTime(event.timestamp)}</span>
+          <span class="text-xs text-bg-400">${event.hostname}</span>
+        `;
       }
-      
+
       return `
-        <div id="${itemId}" class="traffic-item bg-white rounded-xl border border-bg-200 p-4 mb-3 animate-fade-in">
-          ${content}
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-3">
+            ${leftSection}
+          </div>
+          <div class="flex items-center gap-2">
+            ${rightSection}
+            <button onclick="toggleTrafficDetails('traffic-${event.id}')" class="text-xs text-bg-400 hover:text-bg-600 focus:outline-none">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">${expandIcon}</svg>
+            </button>
+          </div>
         </div>
       `;
+    }
+
+    // 生成可折叠的 section HTML
+    function createCollapsibleSection(title, content, sectionId) {
+      return `
+        <div class="p-3 bg-bg-50 rounded-lg">
+          <button onclick="toggleSection('${sectionId}')" class="flex items-center justify-between w-full text-left hover:bg-bg-100 rounded px-2 py-1 -mx-2 -mt-1 transition-colors">
+            <h4 class="text-xs font-medium text-bg-600">${title}</h4>
+            <svg id="${sectionId}-icon" class="w-4 h-4 text-bg-400 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </button>
+          <div id="${sectionId}" class="mt-2">${content}</div>
+        </div>
+      `;
+    }
+
+    // 切换 section 展开/折叠
+    function toggleSection(sectionId) {
+      const section = document.getElementById(sectionId);
+      const icon = document.getElementById(`${sectionId}-icon`);
+      section.classList.toggle('hidden');
+      icon.classList.toggle('rotate-180');
+    }
+
+    // 生成详情区域的 HTML（部分更新）
+    function renderDetails(event) {
+      const hasRequest = event.request !== undefined;
+      const hasResponse = event.response !== undefined;
+
+      let requestHtml = '';
+      let responseHtml = '';
+
+      if (hasRequest) {
+        const headersContent = `<pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatHeaders(event.request.headers)}</pre>`;
+        requestHtml += createCollapsibleSection('Request Headers', headersContent, `traffic-${event.id}-req-headers`);
+
+        if (event.request.body) {
+          const bodyContent = `<pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.request.body, event.request.content_type)}</pre>`;
+          requestHtml += createCollapsibleSection('Request Body', bodyContent, `traffic-${event.id}-req-body`);
+        }
+      }
+
+      if (hasResponse) {
+        const headersContent = `<pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatHeaders(event.response.headers)}</pre>`;
+        responseHtml += createCollapsibleSection('Response Headers', headersContent, `traffic-${event.id}-resp-headers`);
+
+        if (event.response.body) {
+          const bodyContent = `<pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.response.body, event.response.content_type)}</pre>`;
+          responseHtml += createCollapsibleSection('Response Body', bodyContent, `traffic-${event.id}-resp-body`);
+        }
+      }
+
+      return `
+        <div id="traffic-${event.id}-details" class="traffic-details mt-3 space-y-3">
+          ${requestHtml}
+          ${responseHtml}
+        </div>
+      `;
+    }
+
+    // 创建完整的 traffic item HTML
+    function createTrafficItem(event) {
+      const isExpanded = !document.getElementById(`traffic-${event.id}-details`)?.classList.contains('hidden');
+      return `
+        <div id="traffic-${event.id}" class="traffic-item bg-white rounded-xl border border-bg-200 p-4 mb-3 animate-fade-in">
+          ${renderSummary(event, isExpanded)}
+          ${renderDetails(event)}
+        </div>
+      `;
+    }
+
+    // 检查详情是否展开
+    function isDetailsExpanded(itemId) {
+      const details = document.getElementById(`${itemId}-details`);
+      return details && !details.classList.contains('hidden');
     }
 
     // Toggle traffic details visibility
@@ -687,62 +707,173 @@
       }
     }
 
-    // Filter traffic events
-    function filterTraffic() {
-      const filter = document.getElementById('mitm-filter').value;
-      const search = document.getElementById('mitm-search').value.toLowerCase();
-      
-      const filtered = trafficEvents.filter(event => {
-        // Apply filter
-        if (filter === 'requests' && event.direction !== 'client->server') {
-          return false;
-        }
-        if (filter === 'responses' && event.direction !== 'server->client') {
-          return false;
-        }
-        
-        // Apply search
-        if (search) {
-          const eventStr = JSON.stringify(event).toLowerCase();
-          return eventStr.includes(search);
-        }
-        
-        return true;
-      });
-      
-      renderTraffic(filtered);
+    // 合并事件数据 - 保留已有字段，只更新新收到的字段
+    function mergeEvent(existing, incoming) {
+      if (!existing) return incoming;
+
+      // 浅拷贝以避免修改原对象
+      const merged = {
+        ...existing,
+        ...incoming,
+        request: { ...existing.request, ...incoming.request },
+        response: { ...existing.response, ...incoming.response }
+      };
+
+      // 如果 request 为空对象，设置为 undefined
+      if (Object.keys(merged.request).length === 0) {
+        merged.request = existing.request;
+      }
+      // 如果 response 为空对象，设置为 undefined
+      if (Object.keys(merged.response).length === 0) {
+        merged.response = existing.response;
+      }
+
+      return merged;
     }
 
-    // Render traffic events
-    function renderTraffic(events) {
+    // 处理接收到的 traffic event
+    function handleTrafficEvent(trafficEvent) {
+      const eventId = trafficEvent.id;
+      if (!eventId) return;
+
+      // 检查是否已存在该 ID 的记录
+      const existing = trafficMap.get(eventId);
+      const isNew = !existing;
+
+      // 合并事件数据
+      const mergedEvent = mergeEvent(existing, trafficEvent);
+      trafficMap.set(eventId, mergedEvent);
+
+      if (isNew) {
+        // 新事件：添加到列表头部
+        trafficOrder.unshift(eventId);
+
+        // 限制数量
+        if (trafficOrder.length > MAX_EVENTS) {
+          const removedId = trafficOrder.pop();
+          trafficMap.delete(removedId);
+        }
+      }
+
+      // 更新界面
+      updateTrafficUI(eventId, isNew);
+    }
+
+    // 更新 traffic 界面
+    function updateTrafficUI(eventId, isNew) {
+      const event = trafficMap.get(eventId);
+      if (!event) return;
+
       const container = document.getElementById('mitm-traffic-list');
-      
-      if (events.length === 0) {
+      const existingElement = document.getElementById(`traffic-${eventId}`);
+
+      if (isNew) {
+        // 新事件：插入到列表头部
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = createTrafficItem(event);
+        const newElement = tempDiv.firstElementChild;
+        container.insertBefore(newElement, container.firstChild);
+
+        // 处理空状态
+        const emptyState = container.querySelector('.text-center');
+        if (emptyState) {
+          emptyState.remove();
+        }
+
+        // 自动滚动
+        if (isAutoScroll) {
+          container.scrollTop = 0;
+        }
+      } else {
+        // 更新现有事件
+        if (existingElement) {
+          const wasExpanded = isDetailsExpanded(`traffic-${eventId}`);
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = createTrafficItem(event);
+          const newElement = tempDiv.firstElementChild;
+
+          // 保持展开状态
+          if (wasExpanded) {
+            const newDetails = newElement.querySelector('.traffic-details');
+            if (newDetails) {
+              newDetails.classList.remove('hidden');
+            }
+            const button = newElement.querySelector('button');
+            const svg = button.querySelector('svg');
+            svg.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>';
+          }
+
+          existingElement.replaceWith(newElement);
+        }
+      }
+
+      // 应用筛选（如果需要）
+      applyFilterIfNeeded(eventId);
+    }
+
+    // 筛选相关逻辑
+    let currentFilter = 'all';
+    let currentSearch = '';
+
+    function applyFilterIfNeeded(eventId) {
+      const event = trafficMap.get(eventId);
+      if (!event) return;
+
+      const shouldShow = shouldShowEvent(event);
+      const element = document.getElementById(`traffic-${eventId}`);
+
+      if (element) {
+        element.style.display = shouldShow ? '' : 'none';
+      }
+    }
+
+    function shouldShowEvent(event) {
+      // Filter
+      if (currentFilter === 'requests' && event.direction !== 'client->server') {
+        return false;
+      }
+      if (currentFilter === 'responses' && event.direction !== 'server->client') {
+        return false;
+      }
+
+      // Search
+      if (currentSearch) {
+        const eventStr = JSON.stringify(event).toLowerCase();
+        if (!eventStr.includes(currentSearch)) {
+          return false;
+        }
+      }
+
+      return true;
+    }
+
+    // Filter traffic events
+    function filterTraffic() {
+      currentFilter = document.getElementById('mitm-filter').value;
+      currentSearch = document.getElementById('mitm-search').value.toLowerCase();
+
+      const container = document.getElementById('mitm-traffic-list');
+
+      if (trafficOrder.length === 0) {
         container.innerHTML = '<div class="text-center py-8 text-bg-400">No traffic data available</div>';
         return;
       }
-      
-      // Save current scroll position
-      const currentScrollTop = container.scrollTop;
-      const currentScrollHeight = container.scrollHeight;
-      
-      const trafficHTML = events.map(createTrafficItem).join('');
-      container.innerHTML = trafficHTML;
-      
-      // Restore scroll position if auto-scroll is disabled
-      if (!isAutoScroll && currentScrollTop > 0) {
-        // Try to restore to similar position
-        container.scrollTop = Math.min(currentScrollTop, container.scrollHeight - container.clientHeight);
-      } else if (isAutoScroll) {
-        // Auto scroll to bottom if enabled
-        container.scrollTop = container.scrollHeight;
-      }
+
+      // 遍历所有事件，根据筛选条件显示/隐藏
+      trafficOrder.forEach(id => {
+        const event = trafficMap.get(id);
+        const element = document.getElementById(`traffic-${id}`);
+        if (element && event) {
+          element.style.display = shouldShowEvent(event) ? '' : 'none';
+        }
+      });
     }
 
     // Clear traffic list
     function clearTraffic() {
-      trafficEvents = [];
-      renderTraffic([]);
+      trafficMap.clear();
+      trafficOrder.length = 0;
+      document.getElementById('mitm-traffic-list').innerHTML = '<div class="text-center py-8 text-bg-400">No traffic data available</div>';
     }
 
     // Connect to SSE endpoint
@@ -750,26 +881,19 @@
       if (window.eventSource) {
         window.eventSource.close();
       }
-      
+
       const eventSource = new EventSource('/api/mitm/traffic/sse');
       window.eventSource = eventSource;
-      
+
       eventSource.addEventListener('welcome', function(event) {
         console.log('SSE connected:', event.data);
       });
-      
+
       eventSource.addEventListener('traffic', function(event) {
         const trafficEvent = JSON.parse(event.data);
-        trafficEvents.unshift(trafficEvent);
-        
-        // Limit to 100 events
-        if (trafficEvents.length > 100) {
-          trafficEvents = trafficEvents.slice(0, 100);
-        }
-        
-        filterTraffic();
+        handleTrafficEvent(trafficEvent);
       });
-      
+
       eventSource.addEventListener('error', function(event) {
         console.error('SSE error:', event);
         if (event.readyState === EventSource.CLOSED) {
@@ -787,7 +911,7 @@
       document.getElementById('auto-scroll').addEventListener('change', function(e) {
         isAutoScroll = e.target.checked;
       });
-      
+
       // Connect to SSE
       connectSSE();
     }

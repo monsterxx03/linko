@@ -2,6 +2,7 @@ package mitm
 
 import (
 	"bytes"
+	"compress/gzip"
 	"log/slog"
 	"strings"
 	"testing"
@@ -295,4 +296,232 @@ func TestSSEInspector_EventBusIntegration(t *testing.T) {
 
 	// Give time for event to be published
 	time.Sleep(100 * time.Millisecond)
+}
+
+func TestSSEInspector_SSEResponse(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
+
+	connectionID := "test-sse-1"
+
+	// Cache a request first
+	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+
+	// SSE response (no Content-Length, streaming)
+	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: hello\r\n\r\ndata: world\r\n\r\n")
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	if err != nil {
+		t.Fatalf("Inspect failed: %v", err)
+	}
+
+	if !bytes.Equal(result, responseData) {
+		t.Errorf("Expected result to be same as input, got different data")
+	}
+}
+
+func TestSSEInspector_SSEIncrementalEvents(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
+
+	connectionID := "test-sse-2"
+
+	// Cache a request first
+	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+
+	// Split SSE events into multiple chunks
+	chunk1 := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: first event\r\n\r\n")
+	chunk2 := []byte("data: second event\r\n\r\n")
+	chunk3 := []byte("data: third event\r\n\r\n")
+
+	result1, err := inspector.Inspect(DirectionServerToClient, chunk1, "example.com", connectionID)
+	if err != nil {
+		t.Fatalf("Inspect chunk1 failed: %v", err)
+	}
+	// For SSE, we return the full accumulated data
+	expected1 := make([]byte, len(chunk1))
+	copy(expected1, chunk1)
+	if !bytes.Equal(result1, expected1) {
+		t.Errorf("Expected result1 to match expected, got different data")
+	}
+
+	result2, err := inspector.Inspect(DirectionServerToClient, chunk2, "example.com", connectionID)
+	if err != nil {
+		t.Fatalf("Inspect chunk2 failed: %v", err)
+	}
+	// Second chunk returns accumulated data (chunk1 + chunk2)
+	expected2 := append(chunk1, chunk2...)
+	if !bytes.Equal(result2, expected2) {
+		t.Errorf("Expected result2 to contain accumulated data")
+	}
+
+	result3, err := inspector.Inspect(DirectionServerToClient, chunk3, "example.com", connectionID)
+	if err != nil {
+		t.Fatalf("Inspect chunk3 failed: %v", err)
+	}
+	// Third chunk returns accumulated data (chunk1 + chunk2 + chunk3)
+	expected3 := append(append(chunk1, chunk2...), chunk3...)
+	if !bytes.Equal(result3, expected3) {
+		t.Errorf("Expected result3 to contain accumulated data")
+	}
+}
+
+func TestSSEInspector_SSEMultiLineData(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
+
+	connectionID := "test-sse-3"
+
+	// Cache a request first
+	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+
+	// SSE with multi-line data (data: followed by more data: lines)
+	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nevent: message\r\ndata: line1\r\ndata: line2\r\ndata: line3\r\n\r\n")
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	if err != nil {
+		t.Fatalf("Inspect failed: %v", err)
+	}
+
+	if !bytes.Equal(result, responseData) {
+		t.Errorf("Expected result to be same as input")
+	}
+}
+
+func TestSSEInspector_SSEWithAllFields(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
+
+	connectionID := "test-sse-4"
+
+	// Cache a request first
+	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+
+	// SSE with all fields: event, id, retry, data
+	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 123\r\nevent: update\r\nretry: 5000\r\ndata: {\"status\":\"ok\"}\r\n\r\n")
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	if err != nil {
+		t.Fatalf("Inspect failed: %v", err)
+	}
+
+	if !bytes.Equal(result, responseData) {
+		t.Errorf("Expected result to be same as input")
+	}
+}
+
+func TestSSEInspector_CompressedSSE(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
+
+	connectionID := "test-sse-compressed"
+
+	// Cache a request first
+	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+
+	// Compress SSE data with gzip
+	originalData := "data: compressed event 1\r\n\r\ndata: compressed event 2\r\n\r\n"
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Write([]byte(originalData))
+	gz.Close()
+	compressedData := buf.Bytes()
+
+	// Build response with Content-Encoding: gzip
+	responseData := bytes.NewBuffer(nil)
+	responseData.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Encoding: gzip\r\n\r\n"))
+	responseData.Write(compressedData)
+
+	result, err := inspector.Inspect(DirectionServerToClient, responseData.Bytes(), "example.com", connectionID)
+	if err != nil {
+		t.Fatalf("Inspect failed: %v", err)
+	}
+
+	if !bytes.Equal(result, responseData.Bytes()) {
+		t.Errorf("Expected result to be same as input")
+	}
+}
+
+func TestSSEInspector_SSEWithChunkedTransfer(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
+
+	connectionID := "test-sse-chunked"
+
+	// Cache a request first
+	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+
+	// Chunked encoded SSE response
+	responseData := []byte("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/event-stream\r\n\r\nd\r\ndata: hello\r\n\r\n0\r\n\r\n")
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	if err != nil {
+		t.Fatalf("Inspect failed: %v", err)
+	}
+
+	if !bytes.Equal(result, responseData) {
+		t.Errorf("Expected result to be same as input")
+	}
+}
+
+func TestSSEInspector_RegularHTTPNotAffected(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
+
+	connectionID := "test-regular"
+
+	// Cache a request first
+	requestData := []byte("GET /api/data HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+
+	// Regular JSON response should still work
+	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}")
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	if err != nil {
+		t.Fatalf("Inspect failed: %v", err)
+	}
+
+	if !bytes.Equal(result, responseData) {
+		t.Errorf("Expected result to be same as input")
+	}
+}
+
+func TestSSEInspector_ClearPendingWithDecompressor(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
+
+	connectionID := "test-clear-sse"
+
+	// Cache a request first
+	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+
+	// SSE response with compression
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Write([]byte("data: test\r\n\r\n"))
+	gz.Close()
+
+	responseData := bytes.NewBuffer(nil)
+	responseData.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Encoding: gzip\r\n\r\n"))
+	responseData.Write(buf.Bytes())
+
+	_, _ = inspector.Inspect(DirectionServerToClient, responseData.Bytes(), "example.com", connectionID)
+
+	// Clear pending - should not panic
+	inspector.ClearPending(connectionID)
+
+	if _, exists := inspector.pendingResps.Load(connectionID); exists {
+		t.Error("Expected pending response to be cleared")
+	}
 }
