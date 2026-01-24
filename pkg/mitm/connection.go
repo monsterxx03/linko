@@ -167,15 +167,17 @@ func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname strin
 	connectionID := uuid.New().String()
 
 	// Create inspectable ReadWriters if inspector is active
-	var clientReader, clientWriter io.ReadWriter = client, client
-	var serverReader, serverWriter io.ReadWriter = server, server
+	var clientReader io.Reader = client
+	var clientWriter io.Writer = client
+	var serverReader io.Reader = server
+	var serverWriter io.Writer = server
 
 	if h.inspector.ShouldInspect(hostname) {
 		// Only inspect on read operations to avoid duplicate inspection
 		// Client -> Server: inspect when reading from client
-		clientReader = NewReadWriter(client, h.inspector, hostname, DirectionClientToServer, h.logger, connectionID)
+		clientReader = NewInspectReader(client, h.inspector, hostname, DirectionClientToServer, h.logger, connectionID)
 		// Server -> Client: inspect when reading from server
-		serverReader = NewReadWriter(server, h.inspector, hostname, DirectionServerToClient, h.logger, connectionID)
+		serverReader = NewInspectReader(server, h.inspector, hostname, DirectionServerToClient, h.logger, connectionID)
 		// Use original connections for write operations
 		clientWriter = client
 		serverWriter = server

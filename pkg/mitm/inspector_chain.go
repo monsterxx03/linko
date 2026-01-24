@@ -46,8 +46,8 @@ func (c *InspectorChain) ShouldInspect(hostname string) bool {
 	return false
 }
 
-type ReadWriter struct {
-	rw           io.ReadWriter
+type InspectReader struct {
+	r            io.Reader
 	inspector    *InspectorChain
 	hostname     string
 	direction    Direction
@@ -55,9 +55,9 @@ type ReadWriter struct {
 	connectionID string
 }
 
-func NewReadWriter(rw io.ReadWriter, inspector *InspectorChain, hostname string, direction Direction, logger *slog.Logger, connectionID string) *ReadWriter {
-	return &ReadWriter{
-		rw:           rw,
+func NewInspectReader(r io.Reader, inspector *InspectorChain, hostname string, direction Direction, logger *slog.Logger, connectionID string) *InspectReader {
+	return &InspectReader{
+		r:            r,
 		inspector:    inspector,
 		hostname:     hostname,
 		direction:    direction,
@@ -66,32 +66,18 @@ func NewReadWriter(rw io.ReadWriter, inspector *InspectorChain, hostname string,
 	}
 }
 
-func (rw *ReadWriter) Read(p []byte) (n int, err error) {
-	n, err = rw.rw.Read(p)
-	if n > 0 && rw.inspector.ShouldInspect(rw.hostname) {
+func (ir *InspectReader) Read(p []byte) (n int, err error) {
+	n, err = ir.r.Read(p)
+	if n > 0 && ir.inspector.ShouldInspect(ir.hostname) {
 		data := make([]byte, n)
 		copy(data, p[:n])
-		modified, inspectErr := rw.inspector.Inspect(rw.direction, data, rw.hostname, rw.connectionID)
+		modified, inspectErr := ir.inspector.Inspect(ir.direction, data, ir.hostname, ir.connectionID)
 		if inspectErr != nil {
-			rw.logger.Debug("inspect error", "error", inspectErr)
+			ir.logger.Debug("inspect error", "error", inspectErr)
 		}
 		if modified != nil {
 			copy(p[:n], modified)
 		}
 	}
 	return n, err
-}
-
-func (rw *ReadWriter) Write(p []byte) (n int, err error) {
-	if rw.inspector.ShouldInspect(rw.hostname) {
-		modified, inspectErr := rw.inspector.Inspect(rw.direction, p, rw.hostname, rw.connectionID)
-		if inspectErr != nil {
-			rw.logger.Debug("inspect error", "error", inspectErr)
-		}
-		if modified != nil {
-			return rw.rw.Write(modified)
-		}
-		return len(p), nil
-	}
-	return rw.rw.Write(p)
 }

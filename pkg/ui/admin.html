@@ -522,8 +522,21 @@
     }
 
     // Format body for display (full content)
-    function formatBody(body) {
+    function formatBody(body, contentType) {
       if (!body) return '';
+      
+      // Check if content type is JSON
+      if (contentType && contentType.includes('application/json')) {
+        try {
+          // Parse and pretty-print JSON
+          const parsed = JSON.parse(body);
+          return JSON.stringify(parsed, null, 2);
+        } catch (e) {
+          // Not valid JSON, return original
+          return body;
+        }
+      }
+      
       return body;
     }
 
@@ -566,7 +579,7 @@
             ${event.request.body ? `
             <div class="p-3 bg-bg-50 rounded-lg">
               <h4 class="text-xs font-medium text-bg-600 mb-2">Request Body</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.request.body)}</pre>
+              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.request.body, event.request.content_type)}</pre>
             </div>
             ` : ''}
             ` : ''}
@@ -578,7 +591,7 @@
             ${event.response.body ? `
             <div class="p-3 bg-bg-50 rounded-lg">
               <h4 class="text-xs font-medium text-bg-600 mb-2">Response Body</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.response.body)}</pre>
+              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.response.body, event.response.content_type)}</pre>
             </div>
             ` : ''}
             ` : ''}
@@ -612,7 +625,7 @@
             ${event.request.body ? `
             <div class="p-3 bg-bg-50 rounded-lg">
               <h4 class="text-xs font-medium text-bg-600 mb-2">Request Body</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.request.body)}</pre>
+              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.request.body, event.request.content_type)}</pre>
             </div>
             ` : ''}
           </div>
@@ -646,7 +659,7 @@
             ${event.response.body ? `
             <div class="p-3 bg-bg-50 rounded-lg">
               <h4 class="text-xs font-medium text-bg-600 mb-2">Response Body</h4>
-              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.response.body)}</pre>
+              <pre class="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">${formatBody(event.response.body, event.response.content_type)}</pre>
             </div>
             ` : ''}
           </div>
