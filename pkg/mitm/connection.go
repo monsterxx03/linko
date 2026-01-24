@@ -193,7 +193,6 @@ func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname strin
 
 	// Client -> Server
 	wg.Go(func() {
-		defer wg.Done()
 		// Get buffer from pool
 		buffer := bufferPool.Get().([]byte)
 		defer bufferPool.Put(buffer)
@@ -202,7 +201,6 @@ func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname strin
 
 	// Server -> Client
 	wg.Go(func() {
-		defer wg.Done()
 		// Get buffer from pool
 		buffer := bufferPool.Get().([]byte)
 		defer bufferPool.Put(buffer)
