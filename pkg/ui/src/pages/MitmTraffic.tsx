@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
+import ReactJson from 'react-json-view';
 import { useTraffic, TrafficEvent } from '../hooks/useTraffic';
 
 function formatTime(timestamp: number): string {
@@ -41,17 +42,36 @@ function formatHeaders(headers?: Record<string, string>): string {
     .join('\n');
 }
 
-function formatBody(body?: string, contentType?: string): string {
-  if (!body) return '';
-  if (contentType && contentType.includes('application/json')) {
+interface JsonBodyProps {
+  body: string;
+  contentType?: string;
+}
+
+function JsonBody({ body, contentType }: JsonBodyProps) {
+  if (!body) return null;
+
+  const isJson = contentType && contentType.includes('application/json');
+
+  if (isJson) {
     try {
       const parsed = JSON.parse(body);
-      return JSON.stringify(parsed, null, 2);
+      return (
+        <ReactJson
+          src={parsed}
+          theme="rjv-default"
+          collapsed={2}
+          displayDataTypes={false}
+          enableClipboard={false}
+          iconStyle="triangle"
+          style={{ backgroundColor: 'transparent', padding: '8px', borderRadius: '4px' }}
+        />
+      );
     } catch {
-      return body;
+      return <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">{body}</pre>;
     }
   }
-  return body;
+
+  return <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">{body}</pre>;
 }
 
 interface SectionProps {
@@ -90,10 +110,13 @@ function CollapsibleSection({ title, sectionId, children, defaultExpanded = fals
 
 interface TrafficItemProps {
   event: TrafficEvent;
+  isBodyExpanded: boolean;
 }
 
-function TrafficItem({ event }: TrafficItemProps) {
+function TrafficItem({ event, isBodyExpanded }: TrafficItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  // 只有在全局折叠时，body 才折叠；否则保持用户选择的展开状态
+  const bodyExpanded = isBodyExpanded;
   const hasRequest = event.request !== undefined;
   const hasResponse = event.response !== undefined;
   const isComplete = event.direction === 'complete' || (hasRequest && hasResponse);
@@ -129,6 +152,7 @@ function TrafficItem({ event }: TrafficItemProps) {
 
   const rightSection = () => (
     <div className="flex items-center gap-2">
+      <span className="text-xs text-bg-400 font-mono">{event.id.slice(0, 8)}</span>
       <span className="text-xs text-bg-400">{formatTime(event.timestamp)}</span>
       <span className="text-xs text-bg-400">{event.hostname}</span>
       {event.response?.latency !== undefined && (
@@ -172,10 +196,8 @@ function TrafficItem({ event }: TrafficItemProps) {
                 </pre>
               </CollapsibleSection>
               {event.request?.body && (
-                <CollapsibleSection title="Request Body" sectionId={`traffic-${event.id}-req-body`}>
-                  <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">
-                    {formatBody(event.request?.body, event.request?.content_type)}
-                  </pre>
+                <CollapsibleSection title="Request Body" sectionId={`traffic-${event.id}-req-body`} defaultExpanded={bodyExpanded}>
+                  <JsonBody body={event.request?.body} contentType={event.request?.content_type} />
                 </CollapsibleSection>
               )}
             </>
@@ -188,10 +210,8 @@ function TrafficItem({ event }: TrafficItemProps) {
                 </pre>
               </CollapsibleSection>
               {event.response?.body && (
-                <CollapsibleSection title="Response Body" sectionId={`traffic-${event.id}-resp-body`}>
-                  <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">
-                    {formatBody(event.response?.body, event.response?.content_type)}
-                  </pre>
+                <CollapsibleSection title="Response Body" sectionId={`traffic-${event.id}-resp-body`} defaultExpanded={bodyExpanded}>
+                  <JsonBody body={event.response?.body} contentType={event.response?.content_type} />
                 </CollapsibleSection>
               )}
             </>
@@ -215,6 +235,13 @@ function MitmTraffic() {
     clear,
     reconnect,
   } = useTraffic({ maxEvents: 100, autoScroll: true });
+  const [collapseVersion, setCollapseVersion] = useState(0);
+  const [isBodyExpanded, setIsBodyExpanded] = useState(true);
+
+  const collapseBodies = () => {
+    setIsBodyExpanded(false);
+    setCollapseVersion(v => v + 1);
+  };
 
   return (
     <div className="tab-section">
@@ -237,6 +264,12 @@ function MitmTraffic() {
             </div>
           </div>
           <div className="flex gap-3">
+            <button
+              onClick={collapseBodies}
+              className="btn-action px-4 py-2 text-sm font-medium text-bg-700 bg-bg-100 rounded-lg hover:bg-bg-200"
+            >
+              Collapse Bodies
+            </button>
             <button
               onClick={clear}
               className="btn-action px-4 py-2 text-sm font-medium text-bg-700 bg-bg-100 rounded-lg hover:bg-bg-200"
@@ -311,7 +344,7 @@ function MitmTraffic() {
               <div className="text-center py-8 text-bg-400">No traffic data available</div>
             )}
             {events.map((event) => (
-              <TrafficItem key={event.id} event={event} />
+              <TrafficItem key={`${event.id}-${collapseVersion}`} event={event} isBodyExpanded={isBodyExpanded} />
             ))}
           </div>
         </div>

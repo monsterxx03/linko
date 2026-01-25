@@ -8,18 +8,19 @@ Linko is a high-performance transparent proxy server with DNS proxy/shunting cap
 - **Transparent proxy** for TCP traffic (HTTP/HTTPS port 80/443 redirect)
 - **DNS server** with China/foreign分流 (smart DNS based on IP geo-location)
 - **Multi-protocol support**: SOCKS5, HTTP CONNECT tunnel
-- **Traffic statistics** with SQLite storage and real-time analytics
-- **Admin API** for monitoring and management
+- **HTTPS MITM proxy** with real-time traffic inspection via SSE
+- **Admin UI** built with React + TypeScript + Vite
 
 ## Tech Stack
 
 | Category | Technology |
 |----------|------------|
-| Language | Go 1.25.5 |
+| Language | Go 1.25+ |
 | DNS | `github.com/miekg/dns` |
 | Config | `github.com/spf13/viper` |
 | CLI | `github.com/spf13/cobra` |
 | IP Matching | `github.com/yl2chen/cidranger` |
+| UI | React + TypeScript + Vite |
 | Config Format | YAML (gopkg.in/yaml.v3) |
 
 ## Project Structure
@@ -33,9 +34,11 @@ linko/
 │   ├── config/             # Configuration loading
 │   ├── dns/                # DNS server, cache, splitter
 │   ├── ipdb/               # China IP detection (APNIC + cidranger)
+│   ├── mitm/               # HTTPS MITM proxy (cert management, traffic inspection)
 │   ├── proxy/              # Transparent proxy, firewall, connection pool
-│   ├── traffic/            # Traffic statistics (TODO)
-│   └── ui/                 # UI (TODO)
+│   ├── ui/                 # Admin UI (React + TypeScript + Vite)
+│   └── version/            # Version info
+├── admin-ui/               # Admin UI source code
 ├── config/linko.yaml       # Main configuration file
 ├── data/china_ip_ranges.json
 └── Makefile
@@ -66,7 +69,8 @@ Key sections:
 - `dns`: DNS server address, domestic/foreign DNS servers, cache TTL
 - `firewall`: Auto-configure firewall rules
 - `upstream`: Upstream SOCKS5/HTTP proxy
-- `admin`: Admin API server address
+- `admin`: Admin API server address, UI path
+- `mitm`: MITM proxy configuration (enabled, CA cert path, max body size)
 
 ## Admin API Endpoints
 
@@ -76,6 +80,7 @@ Key sections:
 | `/stats/dns` | GET | DNS query statistics |
 | `/stats/dns/clear` | POST | Clear DNS query stats |
 | `/cache/dns/clear` | POST | Clear DNS cache |
+| `/api/mitm/traffic/sse` | GET | SSE stream for MITM traffic |
 
 ## Development
 
@@ -106,6 +111,12 @@ make test-coverage
 - Extracts SNI from HTTPS handshake for filtering
 - macOS uses `pf` firewall, Linux uses `iptables`/`nftables`
 
+### MITM Proxy
+- Generates dynamic site certificates using a custom CA
+- Supports incremental SSE streaming for real-time traffic inspection
+- Inspector chain pattern for extensible traffic analysis (LogInspector, HTTPInspector, SSEInspector)
+- Event bus for broadcasting traffic events to multiple subscribers
+
 ### Connection Handling
 - Connection pooling in `pkg/proxy/conn_pool.go`
 - Retry mechanism for upstream connections
@@ -117,3 +128,4 @@ make test-coverage
 - On macOS, firewall rules managed via `pf` (`pfctl`)
 - On Linux, firewall rules managed via `iptables` or `nftables`
 - China IP database needs periodic updates via `update-cn-ip` command
+- MITM feature requires installing the CA certificate in the system/browser for HTTPS inspection
