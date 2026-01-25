@@ -24,7 +24,7 @@ func (d Direction) String() string {
 
 type Inspector interface {
 	Name() string
-	Inspect(direction Direction, data []byte, hostname string, connectionID string) ([]byte, error)
+	Inspect(direction Direction, data []byte, hostname string, connectionID, requestID string) ([]byte, error)
 	ShouldInspect(hostname string) bool
 }
 

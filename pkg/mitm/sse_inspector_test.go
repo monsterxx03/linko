@@ -15,9 +15,9 @@ func TestSSEInspector_InspectRequest(t *testing.T) {
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestData := []byte("GET / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 11\r\n\r\nHello World")
-	connectionID := "test-1"
+	requestID := "test-1-1"
 
-	result, err := inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-1", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -26,10 +26,10 @@ func TestSSEInspector_InspectRequest(t *testing.T) {
 		t.Errorf("Expected result to be same as input, got different data")
 	}
 
-	if _, exists := inspector.requestCache.Load(connectionID); !exists {
+	if _, exists := inspector.requestCache.Load(requestID); !exists {
 		t.Error("Expected request to be cached")
 	} else {
-		if val, exists := inspector.requestCache.Load(connectionID); exists {
+		if val, exists := inspector.requestCache.Load(requestID); exists {
 			httpReq := val.(*HTTPRequest)
 			if httpReq.Method != "GET" {
 				t.Errorf("Expected method GET, got %s", httpReq.Method)
@@ -54,12 +54,12 @@ func TestSSEInspector_InspectResponse(t *testing.T) {
 
 	// First cache a request
 	requestData := []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	connectionID := "test-2"
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	requestID := "test-2-1"
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-2", requestID)
 
 	// Then inspect response
 	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 12\r\n\r\nHello Server")
-	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", "test-2", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestSSEInspector_InspectResponse(t *testing.T) {
 		t.Errorf("Expected result to be same as input, got different data")
 	}
 
-	if _, exists := inspector.requestCache.Load(connectionID); exists {
+	if _, exists := inspector.requestCache.Load(requestID); exists {
 		t.Error("Expected request to be removed from cache after response")
 	}
 }
@@ -81,10 +81,10 @@ func TestSSEInspector_IncrementalRequest(t *testing.T) {
 	// Split request into two chunks
 	chunk1 := []byte("GET / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 11\r\n\r\nHello")
 	chunk2 := []byte(" World")
-	connectionID := "test-3"
+	requestID := "test-3-1"
 
 	// First chunk
-	result1, err := inspector.Inspect(DirectionClientToServer, chunk1, "example.com", connectionID)
+	result1, err := inspector.Inspect(DirectionClientToServer, chunk1, "example.com", "test-3", requestID)
 	if err != nil {
 		t.Fatalf("Inspect chunk1 failed: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestSSEInspector_IncrementalRequest(t *testing.T) {
 	}
 
 	// Second chunk (should complete the request)
-	result2, err := inspector.Inspect(DirectionClientToServer, chunk2, "example.com", connectionID)
+	result2, err := inspector.Inspect(DirectionClientToServer, chunk2, "example.com", "test-3", requestID)
 	if err != nil {
 		t.Fatalf("Inspect chunk2 failed: %v", err)
 	}
@@ -103,10 +103,10 @@ func TestSSEInspector_IncrementalRequest(t *testing.T) {
 		t.Errorf("Expected result2 to be full request, got different data")
 	}
 
-	if _, exists := inspector.requestCache.Load(connectionID); !exists {
+	if _, exists := inspector.requestCache.Load(requestID); !exists {
 		t.Error("Expected request to be cached after complete")
 	} else {
-		if val, exists := inspector.requestCache.Load(connectionID); exists {
+		if val, exists := inspector.requestCache.Load(requestID); exists {
 			httpReq := val.(*HTTPRequest)
 			if httpReq.Body != "Hello World" {
 				t.Errorf("Expected body 'Hello World', got '%s'", httpReq.Body)
@@ -120,18 +120,18 @@ func TestSSEInspector_IncrementalResponse(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-4"
+	requestID := "test-4-1"
 
 	// Cache a request first
 	requestData := []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-4", requestID)
 
 	// Split response into two chunks
 	chunk1 := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 12\r\n\r\nHello")
 	chunk2 := []byte(" Server")
 
 	// First chunk
-	result1, err := inspector.Inspect(DirectionServerToClient, chunk1, "example.com", connectionID)
+	result1, err := inspector.Inspect(DirectionServerToClient, chunk1, "example.com", "test-4", requestID)
 	if err != nil {
 		t.Fatalf("Inspect chunk1 failed: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestSSEInspector_IncrementalResponse(t *testing.T) {
 	}
 
 	// Second chunk (should complete the response)
-	result2, err := inspector.Inspect(DirectionServerToClient, chunk2, "example.com", connectionID)
+	result2, err := inspector.Inspect(DirectionServerToClient, chunk2, "example.com", "test-4", requestID)
 	if err != nil {
 		t.Fatalf("Inspect chunk2 failed: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestSSEInspector_IncrementalResponse(t *testing.T) {
 		t.Errorf("Expected result2 to be full response, got different data")
 	}
 
-	if _, exists := inspector.requestCache.Load(connectionID); exists {
+	if _, exists := inspector.requestCache.Load(requestID); exists {
 		t.Error("Expected request to be removed from cache after response")
 	}
 }
@@ -162,9 +162,9 @@ func TestSSEInspector_ChunkedRequest(t *testing.T) {
 
 	// Chunked encoded request
 	requestData := []byte("POST / HTTP/1.1\r\nHost: example.com\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n")
-	connectionID := "test-5"
+	requestID := "test-5-1"
 
-	result, err := inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-5", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -179,15 +179,15 @@ func TestSSEInspector_ChunkedResponse(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-6"
+	requestID := "test-6-1"
 
 	// Cache a request first
 	requestData := []byte("POST / HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-6", requestID)
 
 	// Chunked encoded response
 	responseData := []byte("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nHello\r\n6\r\n World\r\n0\r\n\r\n")
-	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", "test-6", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestSSEInspector_EmptyData(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	result, err := inspector.Inspect(DirectionClientToServer, []byte{}, "example.com", "test-7")
+	result, err := inspector.Inspect(DirectionClientToServer, []byte{}, "example.com", "test-7", "test-7-1")
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -218,7 +218,7 @@ func TestSSEInspector_InvalidHTTP(t *testing.T) {
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	invalidData := []byte("Invalid HTTP data")
-	result, err := inspector.Inspect(DirectionClientToServer, invalidData, "example.com", "test-8")
+	result, err := inspector.Inspect(DirectionClientToServer, invalidData, "example.com", "test-8", "test-8-1")
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -233,19 +233,19 @@ func TestSSEInspector_ClearPending(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-9"
+	requestID := "test-9-1"
 
 	// Cache a request
 	requestData := []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-9", requestID)
 
-	if _, exists := inspector.requestCache.Load(connectionID); !exists {
+	if _, exists := inspector.requestCache.Load(requestID); !exists {
 		t.Error("Expected request to be cached")
 	}
 
-	inspector.ClearPending(connectionID)
+	inspector.ClearPending(requestID)
 
-	if _, exists := inspector.requestCache.Load(connectionID); exists {
+	if _, exists := inspector.requestCache.Load(requestID); exists {
 		t.Error("Expected request to be cleared from cache")
 	}
 }
@@ -256,15 +256,15 @@ func TestSSEInspector_MaxBodySize(t *testing.T) {
 	inspector := NewSSEInspector(logger, eventBus, "", 10) // 10 bytes max body
 
 	requestData := []byte("POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 11\r\n\r\nHello World")
-	connectionID := "test-10"
+	requestID := "test-10-1"
 
-	_, err := inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, err := inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-10", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
 
-	if _, exists := inspector.requestCache.Load(connectionID); exists {
-		if val, exists := inspector.requestCache.Load(connectionID); exists {
+	if _, exists := inspector.requestCache.Load(requestID); exists {
+		if val, exists := inspector.requestCache.Load(requestID); exists {
 			httpReq := val.(*HTTPRequest)
 			if len(httpReq.Body) > 10 {
 				t.Errorf("Expected body to be truncated to 10 bytes, got %d bytes", len(httpReq.Body))
@@ -281,15 +281,15 @@ func TestSSEInspector_EventBusIntegration(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-11"
+	requestID := "test-11-1"
 
 	// Cache a request
 	requestData := []byte("GET / HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-11", requestID)
 
 	// Send response
 	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
-	_, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	_, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", "test-11", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -303,15 +303,15 @@ func TestSSEInspector_SSEResponse(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-sse-1"
+	requestID := "test-sse-1-1"
 
 	// Cache a request first
 	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-sse-1", requestID)
 
 	// SSE response (no Content-Length, streaming)
 	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: hello\r\n\r\ndata: world\r\n\r\n")
-	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", "test-sse-1", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -326,18 +326,18 @@ func TestSSEInspector_SSEIncrementalEvents(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-sse-2"
+	requestID := "test-sse-2-1"
 
 	// Cache a request first
 	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-sse-2", requestID)
 
 	// Split SSE events into multiple chunks
 	chunk1 := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: first event\r\n\r\n")
 	chunk2 := []byte("data: second event\r\n\r\n")
 	chunk3 := []byte("data: third event\r\n\r\n")
 
-	result1, err := inspector.Inspect(DirectionServerToClient, chunk1, "example.com", connectionID)
+	result1, err := inspector.Inspect(DirectionServerToClient, chunk1, "example.com", "test-sse-2", requestID)
 	if err != nil {
 		t.Fatalf("Inspect chunk1 failed: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestSSEInspector_SSEIncrementalEvents(t *testing.T) {
 		t.Errorf("Expected result1 to match expected, got different data")
 	}
 
-	result2, err := inspector.Inspect(DirectionServerToClient, chunk2, "example.com", connectionID)
+	result2, err := inspector.Inspect(DirectionServerToClient, chunk2, "example.com", "test-sse-2", requestID)
 	if err != nil {
 		t.Fatalf("Inspect chunk2 failed: %v", err)
 	}
@@ -358,7 +358,7 @@ func TestSSEInspector_SSEIncrementalEvents(t *testing.T) {
 		t.Errorf("Expected result2 to contain accumulated data")
 	}
 
-	result3, err := inspector.Inspect(DirectionServerToClient, chunk3, "example.com", connectionID)
+	result3, err := inspector.Inspect(DirectionServerToClient, chunk3, "example.com", "test-sse-2", requestID)
 	if err != nil {
 		t.Fatalf("Inspect chunk3 failed: %v", err)
 	}
@@ -374,15 +374,15 @@ func TestSSEInspector_SSEMultiLineData(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-sse-3"
+	requestID := "test-sse-3-1"
 
 	// Cache a request first
 	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-sse-3", requestID)
 
 	// SSE with multi-line data (data: followed by more data: lines)
 	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nevent: message\r\ndata: line1\r\ndata: line2\r\ndata: line3\r\n\r\n")
-	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", "test-sse-3", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -397,15 +397,15 @@ func TestSSEInspector_SSEWithAllFields(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-sse-4"
+	requestID := "test-sse-4-1"
 
 	// Cache a request first
 	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-sse-4", requestID)
 
 	// SSE with all fields: event, id, retry, data
 	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\nid: 123\r\nevent: update\r\nretry: 5000\r\ndata: {\"status\":\"ok\"}\r\n\r\n")
-	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", "test-sse-4", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -420,11 +420,11 @@ func TestSSEInspector_CompressedSSE(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-sse-compressed"
+	requestID := "test-sse-compressed-1"
 
 	// Cache a request first
 	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-sse-compressed", requestID)
 
 	// Compress SSE data with gzip
 	originalData := "data: compressed event 1\r\n\r\ndata: compressed event 2\r\n\r\n"
@@ -439,7 +439,7 @@ func TestSSEInspector_CompressedSSE(t *testing.T) {
 	responseData.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Encoding: gzip\r\n\r\n"))
 	responseData.Write(compressedData)
 
-	result, err := inspector.Inspect(DirectionServerToClient, responseData.Bytes(), "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionServerToClient, responseData.Bytes(), "example.com", "test-sse-compressed", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -454,15 +454,15 @@ func TestSSEInspector_SSEWithChunkedTransfer(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-sse-chunked"
+	requestID := "test-sse-chunked-1"
 
 	// Cache a request first
 	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-sse-chunked", requestID)
 
 	// Chunked encoded SSE response
 	responseData := []byte("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Type: text/event-stream\r\n\r\nd\r\ndata: hello\r\n\r\n0\r\n\r\n")
-	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", "test-sse-chunked", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -477,15 +477,15 @@ func TestSSEInspector_RegularHTTPNotAffected(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-regular"
+	requestID := "test-regular-1"
 
 	// Cache a request first
 	requestData := []byte("GET /api/data HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-regular", requestID)
 
 	// Regular JSON response should still work
 	responseData := []byte("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 15\r\n\r\n{\"status\":\"ok\"}")
-	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", connectionID)
+	result, err := inspector.Inspect(DirectionServerToClient, responseData, "example.com", "test-regular", requestID)
 	if err != nil {
 		t.Fatalf("Inspect failed: %v", err)
 	}
@@ -500,11 +500,11 @@ func TestSSEInspector_ClearPendingWithDecompressor(t *testing.T) {
 	eventBus := NewEventBus(logger)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
-	connectionID := "test-clear-sse"
+	requestID := "test-clear-sse-1"
 
 	// Cache a request first
 	requestData := []byte("GET /events HTTP/1.1\r\nHost: example.com\r\n\r\n")
-	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionClientToServer, requestData, "example.com", "test-clear-sse", requestID)
 
 	// SSE response with compression
 	var buf bytes.Buffer
@@ -516,12 +516,12 @@ func TestSSEInspector_ClearPendingWithDecompressor(t *testing.T) {
 	responseData.Write([]byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Encoding: gzip\r\n\r\n"))
 	responseData.Write(buf.Bytes())
 
-	_, _ = inspector.Inspect(DirectionServerToClient, responseData.Bytes(), "example.com", connectionID)
+	_, _ = inspector.Inspect(DirectionServerToClient, responseData.Bytes(), "example.com", "test-clear-sse", requestID)
 
 	// Clear pending - should not panic
-	inspector.ClearPending(connectionID)
+	inspector.ClearPending(requestID)
 
-	if _, exists := inspector.pendingResps.Load(connectionID); exists {
+	if _, exists := inspector.pendingResps.Load(requestID); exists {
 		t.Error("Expected pending response to be cleared")
 	}
 }

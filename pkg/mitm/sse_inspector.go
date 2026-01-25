@@ -38,19 +38,19 @@ func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string, m
 	}
 }
 
-func (s *SSEInspector) Inspect(direction Direction, data []byte, hostname string, connectionID string) ([]byte, error) {
+func (s *SSEInspector) Inspect(direction Direction, data []byte, hostname string, connectionID, requestID string) ([]byte, error) {
 	if len(data) == 0 {
 		return data, nil
 	}
 
 	if direction == DirectionClientToServer {
-		return s.inspectRequestIncremental(data, connectionID)
+		return s.inspectRequestIncremental(data, requestID)
 	}
-	return s.inspectResponseIncremental(data, connectionID)
+	return s.inspectResponseIncremental(data, requestID)
 }
 
-func (s *SSEInspector) inspectRequestIncremental(inputData []byte, connectionID string) ([]byte, error) {
-	pending := s.loadOrCreatePending(&s.pendingReqs, inputData, connectionID, false)
+func (s *SSEInspector) inspectRequestIncremental(inputData []byte, requestID string) ([]byte, error) {
+	pending := s.loadOrCreatePending(&s.pendingReqs, inputData, requestID, false)
 	if pending == nil {
 		return inputData, nil
 	}
@@ -61,11 +61,11 @@ func (s *SSEInspector) inspectRequestIncremental(inputData []byte, connectionID 
 		return inputData, nil
 	}
 
-	return s.checkRequestComplete(pending, inputData, connectionID)
+	return s.checkRequestComplete(pending, inputData, requestID)
 }
 
-func (s *SSEInspector) inspectResponseIncremental(inputData []byte, connectionID string) ([]byte, error) {
-	pending := s.loadOrCreatePending(&s.pendingResps, inputData, connectionID, true)
+func (s *SSEInspector) inspectResponseIncremental(inputData []byte, requestID string) ([]byte, error) {
+	pending := s.loadOrCreatePending(&s.pendingResps, inputData, requestID, true)
 	if pending == nil {
 		return inputData, nil
 	}
@@ -77,14 +77,14 @@ func (s *SSEInspector) inspectResponseIncremental(inputData []byte, connectionID
 	}
 
 	if pending.isSSE {
-		return s.processSSEStream(pending.data, connectionID)
+		return s.processSSEStream(pending.data, requestID)
 	}
 
-	return s.checkResponseComplete(pending, inputData, connectionID)
+	return s.checkResponseComplete(pending, inputData, requestID)
 }
 
-func (s *SSEInspector) loadOrCreatePending(storage *sync.Map, data []byte, connectionID string, isResponse bool) *pendingMessage {
-	if val, exists := storage.Load(connectionID); exists {
+func (s *SSEInspector) loadOrCreatePending(storage *sync.Map, data []byte, requestID string, isResponse bool) *pendingMessage {
+	if val, exists := storage.Load(requestID); exists {
 		return val.(*pendingMessage)
 	}
 
@@ -113,7 +113,7 @@ func (s *SSEInspector) loadOrCreatePending(storage *sync.Map, data []byte, conne
 		pending.contentLength = s.parseContentLength(pending.headers, isResponse)
 	}
 
-	storage.Store(connectionID, pending)
+	storage.Store(requestID, pending)
 	return pending
 }
 
@@ -155,14 +155,14 @@ func (s *SSEInspector) detectSSE(headerData []byte) bool {
 	return strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream")
 }
 
-func (s *SSEInspector) cacheChunkedRequest(data []byte, connectionID string) {
+func (s *SSEInspector) cacheChunkedRequest(data []byte, requestID string) {
 	req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(data)))
 	if err != nil {
 		return
 	}
 	defer req.Body.Close()
 
-	s.requestCache.Store(connectionID, &HTTPRequest{
+	s.requestCache.Store(requestID, &HTTPRequest{
 		Method:        req.Method,
 		URL:           req.URL.String(),
 		Host:          req.Host,
@@ -173,60 +173,60 @@ func (s *SSEInspector) cacheChunkedRequest(data []byte, connectionID string) {
 	})
 }
 
-func (s *SSEInspector) checkRequestComplete(pending *pendingMessage, inputData []byte, connectionID string) ([]byte, error) {
+func (s *SSEInspector) checkRequestComplete(pending *pendingMessage, inputData []byte, requestID string) ([]byte, error) {
 	switch pending.contentLength {
 	case 0:
-		s.pendingReqs.Delete(connectionID)
-		return s.processCompleteRequest(pending.data, connectionID)
+		s.pendingReqs.Delete(requestID)
+		return s.processCompleteRequest(pending.data, requestID)
 	case -1:
 		bodyEndIdx := bytes.Index(pending.data, []byte("\r\n0\r\n\r\n"))
 		if bodyEndIdx >= 0 {
 			endIdx := bodyEndIdx + 7
-			s.pendingReqs.Delete(connectionID)
+			s.pendingReqs.Delete(requestID)
 			fullData := make([]byte, endIdx)
 			copy(fullData, pending.data[:endIdx])
-			s.cacheChunkedRequest(fullData, connectionID)
+			s.cacheChunkedRequest(fullData, requestID)
 			return fullData, nil
 		}
 	default:
 		needed := int(pending.contentLength) + len(pending.headers)
 		if len(pending.data) >= needed {
-			s.pendingReqs.Delete(connectionID)
+			s.pendingReqs.Delete(requestID)
 			fullData := make([]byte, needed)
 			copy(fullData, pending.data[:needed])
-			return s.processCompleteRequest(fullData, connectionID)
+			return s.processCompleteRequest(fullData, requestID)
 		}
 	}
 	return inputData, nil
 }
 
-func (s *SSEInspector) checkResponseComplete(pending *pendingMessage, inputData []byte, connectionID string) ([]byte, error) {
+func (s *SSEInspector) checkResponseComplete(pending *pendingMessage, inputData []byte, requestID string) ([]byte, error) {
 	switch pending.contentLength {
 	case 0:
-		s.pendingResps.Delete(connectionID)
-		return s.processCompleteResponse(pending.data, connectionID)
+		s.pendingResps.Delete(requestID)
+		return s.processCompleteResponse(pending.data, requestID)
 	case -1:
 		bodyEndIdx := bytes.Index(pending.data, []byte("\r\n0\r\n\r\n"))
 		if bodyEndIdx >= 0 {
 			endIdx := bodyEndIdx + 7
-			s.pendingResps.Delete(connectionID)
+			s.pendingResps.Delete(requestID)
 			fullData := make([]byte, endIdx)
 			copy(fullData, pending.data[:endIdx])
-			return s.processCompleteResponse(fullData, connectionID)
+			return s.processCompleteResponse(fullData, requestID)
 		}
 	default:
 		needed := int(pending.contentLength) + len(pending.headers)
 		if len(pending.data) >= needed {
-			s.pendingResps.Delete(connectionID)
+			s.pendingResps.Delete(requestID)
 			fullData := make([]byte, needed)
 			copy(fullData, pending.data[:needed])
-			return s.processCompleteResponse(fullData, connectionID)
+			return s.processCompleteResponse(fullData, requestID)
 		}
 	}
 	return inputData, nil
 }
 
-func (s *SSEInspector) processCompleteRequest(data []byte, connectionID string) ([]byte, error) {
+func (s *SSEInspector) processCompleteRequest(data []byte, requestID string) ([]byte, error) {
 	req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(data)))
 	if err != nil {
 		return data, nil
@@ -236,7 +236,7 @@ func (s *SSEInspector) processCompleteRequest(data []byte, connectionID string) 
 	bodyBytes, _ := io.ReadAll(req.Body)
 	bodyStr := s.truncateBody(bodyBytes, req.Header.Get("Content-Encoding"), req.Header.Get("Content-Type"))
 
-	s.requestCache.Store(connectionID, &HTTPRequest{
+	s.requestCache.Store(requestID, &HTTPRequest{
 		Method:        req.Method,
 		URL:           req.URL.String(),
 		Host:          req.Host,
@@ -249,7 +249,7 @@ func (s *SSEInspector) processCompleteRequest(data []byte, connectionID string) 
 	return data, nil
 }
 
-func (s *SSEInspector) processCompleteResponse(data []byte, connectionID string) ([]byte, error) {
+func (s *SSEInspector) processCompleteResponse(data []byte, requestID string) ([]byte, error) {
 	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(data)), nil)
 	if err != nil {
 		return data, nil
@@ -260,7 +260,7 @@ func (s *SSEInspector) processCompleteResponse(data []byte, connectionID string)
 	bodyStr := s.truncateBody(bodyBytes, resp.Header.Get("Content-Encoding"), resp.Header.Get("Content-Type"))
 
 	var httpReq *HTTPRequest
-	if val, exists := s.requestCache.LoadAndDelete(connectionID); exists {
+	if val, exists := s.requestCache.LoadAndDelete(requestID); exists {
 		httpReq = val.(*HTTPRequest)
 	}
 
@@ -274,11 +274,11 @@ func (s *SSEInspector) processCompleteResponse(data []byte, connectionID string)
 		Latency:       0,
 	}
 
-	s.publishTrafficEvent(connectionID, "", httpReq, httpResp)
+	s.publishTrafficEvent(requestID, "", httpReq, httpResp)
 	return data, nil
 }
 
-func (s *SSEInspector) processSSEStream(fullData []byte, connectionID string) ([]byte, error) {
+func (s *SSEInspector) processSSEStream(fullData []byte, requestID string) ([]byte, error) {
 	resp, err := http.ReadResponse(bufio.NewReader(bytes.NewReader(fullData)), nil)
 	if err != nil {
 		return fullData, nil
@@ -289,7 +289,7 @@ func (s *SSEInspector) processSSEStream(fullData []byte, connectionID string) ([
 	bodyStr := s.truncateBody(bodyBytes, resp.Header.Get("Content-Encoding"), resp.Header.Get("Content-Type"))
 
 	var httpReq *HTTPRequest
-	if val, exists := s.requestCache.LoadAndDelete(connectionID); exists {
+	if val, exists := s.requestCache.LoadAndDelete(requestID); exists {
 		httpReq = val.(*HTTPRequest)
 	}
 
@@ -302,7 +302,7 @@ func (s *SSEInspector) processSSEStream(fullData []byte, connectionID string) ([
 		ContentLength: resp.ContentLength,
 	}
 
-	s.publishTrafficEvent(connectionID, DirectionServerToClient.String(), httpReq, httpResp)
+	s.publishTrafficEvent(requestID, DirectionServerToClient.String(), httpReq, httpResp)
 	return fullData, nil
 }
 
@@ -325,12 +325,13 @@ func extractHeaders(header http.Header) map[string]string {
 	return headers
 }
 
-func (s *SSEInspector) publishTrafficEvent(connectionID, direction string, httpReq *HTTPRequest, httpResp *HTTPResponse) {
+func (s *SSEInspector) publishTrafficEvent(requestID, direction string, httpReq *HTTPRequest, httpResp *HTTPResponse) {
 	event := &TrafficEvent{
-		ID:           connectionID,
+		ID:           requestID,
 		Timestamp:    time.Now(),
 		Direction:    direction,
-		ConnectionID: connectionID,
+		ConnectionID: s.extractConnectionID(requestID),
+		RequestID:    requestID,
 		Request:      httpReq,
 		Response:     httpResp,
 	}
@@ -340,8 +341,16 @@ func (s *SSEInspector) publishTrafficEvent(connectionID, direction string, httpR
 	s.eventBus.Publish(event)
 }
 
-func (s *SSEInspector) ClearPending(connectionID string) {
-	s.pendingReqs.Delete(connectionID)
-	s.pendingResps.Delete(connectionID)
-	s.requestCache.Delete(connectionID)
+// extractConnectionID extracts the connection ID from a request ID (format: connectionID-seq)
+func (s *SSEInspector) extractConnectionID(requestID string) string {
+	if idx := strings.LastIndex(requestID, "-"); idx > 0 {
+		return requestID[:idx]
+	}
+	return requestID
+}
+
+func (s *SSEInspector) ClearPending(requestID string) {
+	s.pendingReqs.Delete(requestID)
+	s.pendingResps.Delete(requestID)
+	s.requestCache.Delete(requestID)
 }

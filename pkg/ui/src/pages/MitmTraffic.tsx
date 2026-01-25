@@ -113,7 +113,7 @@ function TrafficItem({ event, bodyExpanded }: { event: TrafficEvent; bodyExpande
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">{leftInfo}</div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-bg-400 font-mono">{event.id.slice(0, 8)}</span>
+          <span className="text-xs text-bg-400 font-mono" title={event.request_id || event.id}>{event.request_id ? event.request_id.slice(-8) : event.id.slice(0, 8)}</span>
           <span className="text-xs text-bg-400">{formatTime(event.timestamp)}</span>
           <span className="text-xs text-bg-400">{event.hostname}</span>
           {response?.latency !== undefined && <span className="text-xs text-bg-400">{response.latency}ms</span>}

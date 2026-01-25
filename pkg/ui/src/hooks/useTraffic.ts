@@ -5,6 +5,8 @@ export interface TrafficEvent {
   timestamp: number;
   hostname?: string;
   direction?: string;
+  connection_id?: string;
+  request_id?: string;
   request?: {
     method?: string;
     url?: string;

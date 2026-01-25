@@ -13,6 +13,7 @@ type TrafficEvent struct {
 	Timestamp    time.Time     `json:"timestamp"`          // Event timestamp
 	Direction    string        `json:"direction"`          // Traffic direction
 	ConnectionID string        `json:"connection_id"`      // Unique connection ID
+	RequestID    string        `json:"request_id"`         // Unique request ID (per connection)
 	Request      *HTTPRequest  `json:"request,omitempty"`  // Request details if available
 	Response     *HTTPResponse `json:"response,omitempty"` // Response details if available
 }
