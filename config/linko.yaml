@@ -32,9 +32,9 @@ admin:
     enable: true
     listen_addr: 0.0.0.0:9810
     ui_path: pkg/ui
-    ui_embed: false
+    ui_embed: true
 mitm:
-    enable: true
+    enable: false
     ca_cert_path: certs/ca.crt
     ca_key_path: certs/ca.key
     cert_cache_dir: certs/sites

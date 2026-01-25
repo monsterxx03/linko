@@ -1,11 +1,15 @@
 package admin
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/monsterxx03/linko/pkg/dns"
 	"github.com/monsterxx03/linko/pkg/mitm"
@@ -92,13 +96,52 @@ func (s *AdminServer) handleStatic() http.Handler {
 	return http.FileServer(http.Dir(s.uiPath))
 }
 
-// handleEmbed serves the embedded HTML
+// handleEmbed serves the embedded static files
 func (s *AdminServer) handleEmbed() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(ui.AdminHTML))
+		// Remove leading slash
+		path := r.URL.Path
+		if path == "/" {
+			path = "/admin.html"
+		}
+
+		// Try to open the file from embedded FS (embed path is dist/admin)
+		data, err := ui.AdminFS.ReadFile("dist/admin" + path)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				http.NotFound(w, r)
+			} else {
+				http.Error(w, "Internal server error", http.StatusInternalServerError)
+			}
+			return
+		}
+
+		// Set content type based on extension
+		contentType := "application/octet-stream"
+		switch {
+		case hasExt(path, ".html"):
+			contentType = "text/html; charset=utf-8"
+		case hasExt(path, ".js"):
+			contentType = "application/javascript"
+		case hasExt(path, ".css"):
+			contentType = "text/css"
+		case hasExt(path, ".json"):
+			contentType = "application/json"
+		case hasExt(path, ".png"):
+			contentType = "image/png"
+		case hasExt(path, ".svg"):
+			contentType = "image/svg+xml"
+		}
+
+		w.Header().Set("Content-Type", contentType)
+		w.Header().Set("Cache-Control", "no-cache")
+		reader := bytes.NewReader(data)
+		http.ServeContent(w, r, "admin.html", time.Time{}, reader)
 	})
+}
+
+func hasExt(path string, ext string) bool {
+	return len(path) >= len(ext) && path[len(path)-len(ext):] == ext
 }
 
 func (s *AdminServer) handleHealth(w http.ResponseWriter, r *http.Request) {

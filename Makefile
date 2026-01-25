@@ -10,6 +10,10 @@ GOMOD=$(GOCMD) mod
 BINARY_NAME=linko
 BINARY_UNIX=$(BINARY_NAME)_unix
 
+# UI parameters
+UI_DIR=pkg/ui
+BUN ?= bun
+
 # Build flags
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=$(VERSION) -X github.com/monsterxx03/linko/pkg/version.Commit=$$(git rev-parse --short HEAD) -X github.com/monsterxx03/linko/pkg/version.Date=$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -66,11 +70,33 @@ lint:
 	@echo "Linting code..."
 	golangci-lint run
 
+# UI targets
+ui-deps:
+	@echo "Installing UI dependencies..."
+	cd $(UI_DIR) && $(BUN) install
+
+ui-dev:
+	@echo "Starting UI dev server..."
+	cd $(UI_DIR) && $(BUN) run dev
+
+ui-build:
+	@echo "Building UI..."
+	cd $(UI_DIR) && $(BUN) run build
+
+ui-preview:
+	@echo "Previewing UI build..."
+	cd $(UI_DIR) && $(BUN) run preview
+
+# Build UI and embed into Go binary
+ui: ui-build
+	@echo "Rebuilding Go binary with embedded UI..."
+	$(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/linko
+
 # Help
 help:
 	@echo "Available targets:"
 	@echo "  all          - Clean, deps, test, build"
-	@echo "  deps         - Install dependencies"
+	@echo "  deps         - Install Go dependencies"
 	@echo "  build        - Build the binary"
 	@echo "  build-linux  - Build for Linux"
 	@echo "  clean        - Clean build artifacts"
@@ -79,4 +105,9 @@ help:
 	@echo "  dev-deps     - Install development tools"
 	@echo "  fmt          - Format code"
 	@echo "  lint         - Lint code"
+	@echo "  ui-deps      - Install UI dependencies"
+	@echo "  ui-dev       - Start UI dev server (http://localhost:5173)"
+	@echo "  ui-build     - Build UI to dist/admin"
+	@echo "  ui-preview   - Preview UI build"
+	@echo "  ui           - Build UI and Go binary with embedded UI"
 	@echo "  help         - Show this help"

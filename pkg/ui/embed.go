@@ -1,6 +1,8 @@
 package ui
 
-import _ "embed"
+import (
+	"embed"
+)
 
-//go:embed admin.html
-var AdminHTML string
+//go:embed dist/admin
+var AdminFS embed.FS

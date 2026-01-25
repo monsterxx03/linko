@@ -17,7 +17,10 @@
       "Bash(go mod tidy:*)",
       "mcp__chrome-devtools__navigate_page",
       "mcp__chrome-devtools__new_page",
-      "mcp__chrome-devtools__take_snapshot"
+      "mcp__chrome-devtools__take_snapshot",
+      "Bash(bun run build)",
+      "Bash(curl:*)",
+      "Bash(python3 -m json.tool:*)"
     ]
   }
 }

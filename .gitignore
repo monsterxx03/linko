@@ -70,3 +70,5 @@ temp/
 .claude/
 linko
 .trae/
+
+node_modules/
