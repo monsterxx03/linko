@@ -22,6 +22,7 @@ firewall:
     redirect_http: true
     redirect_https: true
     redirect_ssh: false
+    force_proxy_hosts: []
 upstream:
     enable: true
     type: socks5
@@ -32,11 +33,13 @@ admin:
     enable: true
     listen_addr: 0.0.0.0:9810
     ui_path: pkg/ui
-    ui_embed: true
+    ui_embed: false
 mitm:
     enable: false
     ca_cert_path: certs/ca.crt
     ca_key_path: certs/ca.key
     cert_cache_dir: certs/sites
     site_cert_validity: 168h0m0s
-    ca_cert_validity: 87600h0m0s
+    ca_cert_validity: 8760h0m0s
+    whitelist: []
+    max_body_size: 16384

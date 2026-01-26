@@ -68,7 +68,6 @@ tmp/
 temp/
 # Claude Code settings
 .claude/
-linko
 .trae/
 
 node_modules/

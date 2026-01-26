@@ -5,24 +5,14 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/monsterxx03/linko/pkg/admin"
 	"github.com/monsterxx03/linko/pkg/config"
 	"github.com/monsterxx03/linko/pkg/dns"
-	"github.com/monsterxx03/linko/pkg/ipdb"
 	"github.com/monsterxx03/linko/pkg/mitm"
 	"github.com/monsterxx03/linko/pkg/proxy"
 	"github.com/spf13/cobra"
-)
-
-var (
-	configPath     string
-	daemon         bool
-	logLevel       string
-	enableFirewall bool
 )
 
 var rootCmd = &cobra.Command{
@@ -32,108 +22,13 @@ var rootCmd = &cobra.Command{
 traffic analysis, and multi-protocol support.
 
 Features:
-  • Transparent proxy with DNS splitting
-  • Multi-protocol support (SOCKS5, HTTP, Shadowsocks)
-  • Real-time traffic analysis
-  • SNI-based host extraction`,
-}
-
-var serveCmd = &cobra.Command{
-	Use:   "serve",
-	Short: "Start the proxy server",
-	Long:  "Start the transparent proxy server with DNS splitting and firewall rules",
-	Run:   runServer,
-}
-
-var configPathFlag string
-
-var configCmd = &cobra.Command{
-	Use:   "config",
-	Short: "Generate default configuration file",
-	Long:  "Generate a default configuration file at the specified path",
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := config.GenerateConfig(configPathFlag); err != nil {
-			slog.Error("failed to generate config", "error", err)
-			os.Exit(1)
-		}
-		slog.Info("default config generated", "path", configPathFlag)
-	},
-}
-
-var updateCnIPCmd = &cobra.Command{
-	Use:   "update-cn-ip",
-	Short: "Download China IP ranges from APNIC",
-	Long:  "Fetch the latest China IP address ranges from APNIC and save to data directory",
-	Run: func(cmd *cobra.Command, args []string) {
-		slog.Info("fetching China IP ranges from APNIC...")
-		if err := ipdb.FetchChinaIPRanges(); err != nil {
-			slog.Error("failed to fetch China IP ranges", "error", err)
-			os.Exit(1)
-		}
-		slog.Info("China IP ranges updated successfully", "output_dir", "pkg/ipdb/china_ip_ranges.go")
-	},
-}
-
-var isCnIPCmd = &cobra.Command{
-	Use:   "is-cn-ip <ip>",
-	Short: "Check if an IP is a China IP address",
-	Long:  "Check if the given IP address falls within China IP ranges",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := ipdb.LoadChinaIPRanges(); err != nil {
-			slog.Error("failed to load China IP ranges", "error", err)
-			os.Exit(1)
-		}
-		ip := args[0]
-		isCN := ipdb.IsChinaIP(ip)
-		if isCN {
-			fmt.Printf("%s is a China IP address\n", ip)
-		} else {
-			fmt.Printf("%s is NOT a China IP address\n", ip)
-		}
-	},
-}
-
-var genCaOutputDir string
-
-var genCaCmd = &cobra.Command{
-	Use:   "gen-ca",
-	Short: "Generate CA certificate and private key for MITM proxy",
-	Long:  "Generate a self-signed CA certificate and private key for HTTPS MITM inspection",
-	Run: func(cmd *cobra.Command, args []string) {
-		if genCaOutputDir == "" {
-			genCaOutputDir = "certs"
-		}
-
-		caCertPath := filepath.Join(genCaOutputDir, "ca.crt")
-		caKeyPath := filepath.Join(genCaOutputDir, "ca.key")
-
-		slog.Info("generating CA certificate", "output_dir", genCaOutputDir)
-
-		if err := mitm.CreateCAOnly(caCertPath, caKeyPath, 10*365*24*time.Hour); err != nil {
-			slog.Error("failed to generate CA", "error", err)
-			os.Exit(1)
-		}
-
-		slog.Info("CA certificate generated successfully",
-			"cert_path", caCertPath,
-			"key_path", caKeyPath,
-		)
-		fmt.Printf("CA certificate generated:\n  %s\n  %s\n", caCertPath, caKeyPath)
-		fmt.Println("\nPlease install the CA certificate in your system/browser trust store.")
-	},
+  - Transparent proxy with DNS splitting
+  - Multi-protocol support (SOCKS5, HTTP, Shadowsocks)
+  - Real-time traffic analysis
+  - SNI-based host extraction`,
 }
 
 func main() {
-	serveCmd.Flags().StringVarP(&configPath, "config", "c", "config/linko.yaml", "Configuration file path")
-	serveCmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "Run as daemon")
-	serveCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
-	serveCmd.Flags().BoolVar(&enableFirewall, "firewall", false, "Enable automatic firewall rule setup (requires sudo)")
-
-	configCmd.Flags().StringVarP(&configPathFlag, "output", "o", "config/linko.yaml", "Output configuration file path")
-
-	genCaCmd.Flags().StringVarP(&genCaOutputDir, "output", "o", "", "Output directory for CA files (default: ./certs)")
-
 	rootCmd.AddCommand(serveCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(updateCnIPCmd)
