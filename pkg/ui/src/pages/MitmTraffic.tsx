@@ -158,7 +158,7 @@ function TrafficItem({ event, bodyExpanded }: { event: TrafficEvent; bodyExpande
 }
 
 function MitmTraffic() {
-  const { events, isConnected, error, filter, search, setFilter, setSearch, setAutoScroll, clear, reconnect } = useTraffic({ maxEvents: 100, autoScroll: true });
+  const { events, isConnected, error, search, setSearch, setAutoScroll, clear, reconnect } = useTraffic({ maxEvents: 100, autoScroll: true });
   const [collapseVer, setCollapseVer] = useState(0);
   const [bodyExpanded, setBodyExpanded] = useState(true);
 
@@ -185,14 +185,6 @@ function MitmTraffic() {
 
       <div className="bg-white rounded-xl border border-bg-200 p-4 mb-6">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2">
-            <label className="text-sm font-medium text-bg-600">Filter:</label>
-            <select value={filter} onChange={e => setFilter(e.target.value)} className="px-3 py-1.5 border border-bg-300 rounded-lg text-sm focus:ring-2 focus:ring-accent-500">
-              <option value="all">All Traffic</option>
-              <option value="requests">Requests Only</option>
-              <option value="responses">Responses Only</option>
-            </select>
-          </div>
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-bg-600">Search:</label>
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search URLs, domains..." className="px-3 py-1.5 border border-bg-300 rounded-lg text-sm focus:ring-2 focus:ring-accent-500 w-64" />
