@@ -173,7 +173,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		defer transparentProxy.Stop()
 	}
 
-	// Initialize MITM if enabled
 	var mitmManager *mitm.Manager
 	if cfg.MITM.Enable {
 		slog.Info("initializing MITM manager",
@@ -195,7 +194,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		} else {
 			slog.Info("MITM enabled", "ca_certificate", mitmManager.GetCACertificatePath())
 
-			// Set up MITM handler for transparent proxy
 			if transparentProxy != nil {
 				mitmHandler := proxy.NewMITMHandler(transparentProxy, mitmManager, cfg.MITM.Whitelist, logger)
 				transparentProxy.SetMITMHandler(mitmHandler)
@@ -206,15 +204,15 @@ func runServer(cmd *cobra.Command, args []string) {
 		}
 	}
 
-	// Initialize AdminServer after MITM Manager
 	var adminServer *admin.AdminServer
-	var eventBus *mitm.EventBus
 	if cfg.Admin.Enable {
-		// Get event bus from mitmManager if available
-		if mitmManager != nil {
-			eventBus = mitmManager.GetEventBus()
-		}
 		slog.Info("starting admin server", "address", cfg.Admin.ListenAddr)
+		eventBus := func() *mitm.EventBus {
+			if mitmManager != nil {
+				return mitmManager.GetEventBus()
+			}
+			return nil
+		}()
 		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, dnsServer, eventBus)
 		if err := adminServer.Start(); err != nil {
 			slog.Error("failed to start admin server", "error", err)
@@ -225,46 +223,12 @@ func runServer(cmd *cobra.Command, args []string) {
 
 	var firewallManager *proxy.FirewallManager
 	if cfg.Firewall.EnableAuto {
-		slog.Info("setting up firewall rules")
-
-		// Resolve force proxy hosts to IPs
-		forceProxyIPs, err := proxy.ResolveHosts(cfg.Firewall.ForceProxyHosts, cfg.DNS.DomesticDNS)
-		if err != nil {
-			slog.Warn("failed to resolve force proxy hosts", "error", err)
-		} else if len(forceProxyIPs) > 0 {
-			slog.Info("resolved force proxy hosts to IPs", "ips", forceProxyIPs)
+		firewallManager = setupFirewall(cfg)
+		if firewallManager != nil {
+			defer func() {
+				deferFunc(firewallManager)
+			}()
 		}
-
-		firewallManager = proxy.NewFirewallManager(
-			cfg.ProxyPort(),
-			cfg.DNSServerPort(),
-			cfg.DNS.DomesticDNS,
-			proxy.RedirectOption{
-				RedirectDNS:   cfg.Firewall.RedirectDNS,
-				RedirectHTTP:  cfg.Firewall.RedirectHTTP,
-				RedirectHTTPS: cfg.Firewall.RedirectHTTPS,
-				RedirectSSH:   cfg.Firewall.RedirectSSH,
-			},
-			forceProxyIPs,
-		)
-		if err := firewallManager.SetupFirewallRules(); err != nil {
-			slog.Warn("failed to setup firewall rules", "error", err)
-			slog.Info("please ensure you have sudo privileges")
-		} else {
-			slog.Info("firewall rules configured successfully")
-		}
-
-		defer func() {
-			if r := recover(); r != nil {
-				slog.Error("server panicked", "panic", r)
-			}
-			slog.Info("cleaning up firewall rules")
-			if err := firewallManager.CleanupFirewallRules(); err != nil {
-				slog.Warn("failed to remove firewall rules", "error", err)
-			} else {
-				slog.Info("firewall rules removed successfully")
-			}
-		}()
 	}
 
 	sigChan := make(chan os.Signal, 1)
@@ -272,6 +236,50 @@ func runServer(cmd *cobra.Command, args []string) {
 	<-sigChan
 
 	slog.Info("shutting down server...")
+}
+
+func deferFunc(firewallManager *proxy.FirewallManager) {
+	if r := recover(); r != nil {
+		slog.Error("server panicked", "panic", r)
+	}
+	slog.Info("cleaning up firewall rules")
+	if err := firewallManager.CleanupFirewallRules(); err != nil {
+		slog.Warn("failed to remove firewall rules", "error", err)
+	} else {
+		slog.Info("firewall rules removed successfully")
+	}
+}
+
+func setupFirewall(cfg *config.Config) *proxy.FirewallManager {
+	slog.Info("setting up firewall rules")
+
+	forceProxyIPs, err := proxy.ResolveHosts(cfg.Firewall.ForceProxyHosts, cfg.DNS.DomesticDNS)
+	if err != nil {
+		slog.Warn("failed to resolve force proxy hosts", "error", err)
+	} else if len(forceProxyIPs) > 0 {
+		slog.Info("resolved force proxy hosts to IPs", "ips", forceProxyIPs)
+	}
+
+	firewallManager := proxy.NewFirewallManager(
+		cfg.ProxyPort(),
+		cfg.DNSServerPort(),
+		cfg.DNS.DomesticDNS,
+		proxy.RedirectOption{
+			RedirectDNS:   cfg.Firewall.RedirectDNS,
+			RedirectHTTP:  cfg.Firewall.RedirectHTTP,
+			RedirectHTTPS: cfg.Firewall.RedirectHTTPS,
+			RedirectSSH:   cfg.Firewall.RedirectSSH,
+		},
+		forceProxyIPs,
+	)
+
+	if err := firewallManager.SetupFirewallRules(); err != nil {
+		slog.Warn("failed to setup firewall rules", "error", err)
+		slog.Info("please ensure you have sudo privileges")
+		return nil
+	}
+	slog.Info("firewall rules configured successfully")
+	return firewallManager
 }
 
 func parseLogLevel(level string) slog.Level {
