@@ -164,3 +164,23 @@ func (cm *CertManager) GetCACertPath() string {
 func (cm *CertManager) GetCAKeyPath() string {
 	return cm.caKeyPath
 }
+
+// CreateCAOnly generates a new self-signed CA certificate without loading existing one.
+// Returns error if files already exist.
+func CreateCAOnly(caCertPath, caKeyPath string, caValidity time.Duration) error {
+	// Check if files already exist
+	if _, err := os.Stat(caCertPath); err == nil {
+		return fmt.Errorf("CA certificate already exists at %s", caCertPath)
+	}
+	if _, err := os.Stat(caKeyPath); err == nil {
+		return fmt.Errorf("CA private key already exists at %s", caKeyPath)
+	}
+
+	cm := &CertManager{
+		caCertPath: caCertPath,
+		caKeyPath:  caKeyPath,
+		caValidity: caValidity,
+	}
+
+	return cm.CreateCA()
+}
