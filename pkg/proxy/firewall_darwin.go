@@ -91,6 +91,7 @@ func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, c
 ext_if = "en0"
 lo_if = "lo0"
 linko_port = "{{.ProxyPort}}"
+linko_user = "nobody"
 dns_port = "{{.DNSPort}}"
 
 # Options and table definition
@@ -109,11 +110,11 @@ pass out proto tcp from any to <{{.ForceTableName}}> tag FORCE_PROXY
 
 # Filtering rules (must come after translation)
 {{if .RedirectDNS}}
-pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
+pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53 user { != $linko_user }
 {{end}}
 
 {{range .RedirectPorts}}
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port {{.}}
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port {{.}} user { != $linko_user }
 {{end}}
 
 pass out proto udp from any to { {{range $i, $ip := .CNDNS}}{{if $i}}, {{end}}{{$ip}}{{end}} } port 53 # skip cn dns
