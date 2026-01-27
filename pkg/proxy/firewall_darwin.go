@@ -71,12 +71,22 @@ type firewallRuleData struct {
 	CIDRs          []string
 	ForceProxyIPs  []string
 	RedirectDNS    bool
-	RedirectHTTP   bool
-	RedirectHTTPS  bool
-	RedirectSSH    bool
+	RedirectPorts  []int // 通用重定向端口列表: 80(HTTP), 443(HTTPS), 22(SSH)
 }
 
 func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, cnDNS []string, tableName string, forceTableName string, cidrs []string, forceProxyIPs []string) (string, error) {
+	// 构建重定向端口列表
+	var redirectPorts []int
+	if d.fm.redirectOpt.RedirectHTTP {
+		redirectPorts = append(redirectPorts, 80)
+	}
+	if d.fm.redirectOpt.RedirectHTTPS {
+		redirectPorts = append(redirectPorts, 443)
+	}
+	if d.fm.redirectOpt.RedirectSSH {
+		redirectPorts = append(redirectPorts, 22)
+	}
+
 	const ruleTemplate = `# Linko Transparent Proxy Rules
 ext_if = "en0"
 lo_if = "lo0"
@@ -91,16 +101,8 @@ table <{{.ForceTableName}}> { {{range $i, $ip := .ForceProxyIPs}}{{if $i}}, {{en
 rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
 {{end}}
 
-{{if .RedirectHTTP}}
-rdr pass on $lo_if inet proto tcp from $ext_if to any port 80 -> 127.0.0.1 port $linko_port
-{{end}}
-
-{{if .RedirectHTTPS}}
-rdr pass on $lo_if inet proto tcp from $ext_if to any port 443 -> 127.0.0.1 port $linko_port
-{{end}}
-
-{{if .RedirectSSH}}
-rdr pass on $lo_if inet proto tcp from $ext_if to any port 22 -> 127.0.0.1 port $linko_port
+{{range .RedirectPorts}}
+rdr pass on $lo_if inet proto tcp from $ext_if to any port {{.}} -> 127.0.0.1 port $linko_port
 {{end}}
 
 pass out proto tcp from any to <{{.ForceTableName}}> tag FORCE_PROXY
@@ -110,16 +112,8 @@ pass out proto tcp from any to <{{.ForceTableName}}> tag FORCE_PROXY
 pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
 {{end}}
 
-{{if .RedirectHTTP}}
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 80
-{{end}}
-
-{{if .RedirectHTTPS}}
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 443
-{{end}}
-
-{{if .RedirectSSH}}
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port 22
+{{range .RedirectPorts}}
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port {{.}}
 {{end}}
 
 pass out proto udp from any to { {{range $i, $ip := .CNDNS}}{{if $i}}, {{end}}{{$ip}}{{end}} } port 53 # skip cn dns
@@ -135,9 +129,7 @@ pass out quick proto tcp from any to <{{.TableName}}> ! tagged FORCE_PROXY
 		CIDRs:          cidrs,
 		ForceProxyIPs:  forceProxyIPs,
 		RedirectDNS:    d.fm.redirectOpt.RedirectDNS,
-		RedirectHTTP:   d.fm.redirectOpt.RedirectHTTP,
-		RedirectHTTPS:  d.fm.redirectOpt.RedirectHTTPS,
-		RedirectSSH:    d.fm.redirectOpt.RedirectSSH,
+		RedirectPorts:  redirectPorts,
 	}
 
 	var buf bytes.Buffer
