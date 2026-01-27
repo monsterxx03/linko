@@ -37,16 +37,18 @@ type FirewallManager struct {
 	redirectOpt   RedirectOption
 	cnDNS         []string
 	forceProxyIPs []string
+	mitmGID       int
 	impl          FirewallManagerInterface
 }
 
-func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, redirectOpt RedirectOption, forceProxyIPs []string) *FirewallManager {
+func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, redirectOpt RedirectOption, forceProxyIPs []string, mitmGID int) *FirewallManager {
 	fm := &FirewallManager{
 		proxyPort:     proxyPort,
 		dnsServerPort: dnsServerPort,
 		cnDNS:         cnDNS,
 		redirectOpt:   redirectOpt,
 		forceProxyIPs: forceProxyIPs,
+		mitmGID:       mitmGID,
 	}
 	fm.impl = newFirewallManagerImpl(fm)
 	return fm

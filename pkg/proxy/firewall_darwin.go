@@ -72,6 +72,7 @@ type firewallRuleData struct {
 	ForceProxyIPs  []string
 	RedirectDNS    bool
 	RedirectPorts  []int // 通用重定向端口列表: 80(HTTP), 443(HTTPS), 22(SSH)
+	MITMGID        int
 }
 
 func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, cnDNS []string, tableName string, forceTableName string, cidrs []string, forceProxyIPs []string) (string, error) {
@@ -91,7 +92,6 @@ func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, c
 ext_if = "en0"
 lo_if = "lo0"
 linko_port = "{{.ProxyPort}}"
-linko_user = "nobody"
 dns_port = "{{.DNSPort}}"
 
 # Options and table definition
@@ -110,11 +110,11 @@ pass out proto tcp from any to <{{.ForceTableName}}> tag FORCE_PROXY
 
 # Filtering rules (must come after translation)
 {{if .RedirectDNS}}
-pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53 user { != $linko_user }
+pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
 {{end}}
 
-{{range .RedirectPorts}}
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port {{.}} user { != $linko_user }
+{{range $_, $port := .RedirectPorts}}
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port {{$port}} group != {{$.MITMGID}} keep state
 {{end}}
 
 pass out proto udp from any to { {{range $i, $ip := .CNDNS}}{{if $i}}, {{end}}{{$ip}}{{end}} } port 53 # skip cn dns
@@ -131,6 +131,7 @@ pass out quick proto tcp from any to <{{.TableName}}> ! tagged FORCE_PROXY
 		ForceProxyIPs:  forceProxyIPs,
 		RedirectDNS:    d.fm.redirectOpt.RedirectDNS,
 		RedirectPorts:  redirectPorts,
+		MITMGID:        d.fm.mitmGID,
 	}
 
 	var buf bytes.Buffer

@@ -131,6 +131,9 @@ type MITMConfig struct {
 	// Enable MITM functionality
 	Enable bool `mapstructure:"enable" yaml:"enable"`
 
+	// Setgid after start
+	GID int `mapstructure:"gid" yaml:"gid"`
+
 	// CA certificate path
 	CACertPath string `mapstructure:"ca_cert_path" yaml:"ca_cert_path"`
 
@@ -197,6 +200,7 @@ func DefaultConfig() *Config {
 		},
 		MITM: MITMConfig{
 			Enable:           false,
+			GID:              8001,
 			CACertPath:       "certs/ca.crt",
 			CAKeyPath:        "certs/ca.key",
 			CertCacheDir:     "certs/sites",

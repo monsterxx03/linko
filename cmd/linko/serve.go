@@ -189,6 +189,7 @@ func setupFirewall(cfg *config.Config) *proxy.FirewallManager {
 			RedirectSSH:   cfg.Firewall.RedirectSSH,
 		},
 		forceProxyIPs,
+		cfg.MITM.GID,
 	)
 
 	if err := firewallManager.SetupFirewallRules(); err != nil {

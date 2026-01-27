@@ -22,6 +22,7 @@ Features:
 
 func main() {
 	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(mitmCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(updateCnIPCmd)
 	rootCmd.AddCommand(isCnIPCmd)
