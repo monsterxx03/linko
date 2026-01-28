@@ -117,7 +117,7 @@ pass out proto tcp from any to <{{.ForceTableName}}> tag FORCE_PROXY
 
 # Filtering rules (must come after translation)
 {{if .RedirectDNS}}
-pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
+pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53 group != {{.MITMGID}}
 {{end}}
 
 {{if .RedirectPorts}}

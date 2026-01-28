@@ -118,14 +118,27 @@ func (s *DNSServer) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 	defer cancel()
 
-	if cached := s.cache.Get(r); cached != nil {
-		cached.SetReply(r)
-		queryRecord.Success = true
-		w.WriteMsg(cached)
-		return
+	// Check cache if cache is not nil
+	if s.cache != nil {
+		if cached := s.cache.Get(r); cached != nil {
+			cached.SetReply(r)
+			queryRecord.Success = true
+			w.WriteMsg(cached)
+			return
+		}
 	}
 
-	resp, err := s.splitter.SplitQuery(ctx, r)
+	var resp *dns.Msg
+	var err error
+
+	if s.splitter != nil {
+		// Use DNSSplitter for intelligent DNS splitting
+		resp, err = s.splitter.SplitQuery(ctx, r)
+	} else {
+		// Use system default DNS resolver
+		resp, err = s.resolveWithSystemDNS(ctx, r)
+	}
+
 	if err != nil {
 		slog.Error("DNS query error", "domain", domain, "error", err)
 		queryRecord.Success = false
@@ -140,9 +153,46 @@ func (s *DNSServer) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
-	s.cache.Set(r, resp)
+	// Cache the response if cache is not nil
+	if s.cache != nil {
+		s.cache.Set(r, resp)
+	}
 	queryRecord.Success = true
 	w.WriteMsg(resp)
+}
+
+// resolveWithSystemDNS resolves DNS using the system's default resolver
+func (s *DNSServer) resolveWithSystemDNS(_ context.Context, r *dns.Msg) (*dns.Msg, error) {
+	// Get system DNS servers
+	conf, err := dns.ClientConfigFromFile("/etc/resolv.conf")
+	if err != nil {
+		// Fallback to common DNS servers
+		conf = &dns.ClientConfig{
+			Servers:  []string{"8.8.8.8", "8.8.4.4"},
+			Port:     "53",
+			Ndots:    0,
+			Timeout:  5,
+			Attempts: 2,
+		}
+	}
+
+	client := &dns.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	var lastErr error
+	for _, server := range conf.Servers {
+		resp, _, err := client.Exchange(r, net.JoinHostPort(server, conf.Port))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp != nil && resp.Rcode == dns.RcodeSuccess {
+			return resp, nil
+		}
+	}
+
+	return nil, lastErr
 }
 
 // GetAddr returns the server address
@@ -187,7 +237,19 @@ func (s *DNSServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 
 // GetCacheStats returns cache statistics
 func (s *DNSServer) GetCacheStats() map[string]interface{} {
-	cacheStats := s.cache.GetStats()
+	var cacheStats map[string]any
+	if s.cache != nil {
+		cacheStats = s.cache.GetStats()
+	} else {
+		cacheStats = map[string]any{
+			"size":      0,
+			"max_size":  0,
+			"ttl":       "0s",
+			"hits":      0,
+			"misses":    0,
+			"hit_rate":  0.0,
+		}
+	}
 	statsStats := s.statsCollector.GetStatsSummary()
 	topDomains := s.statsCollector.GetTopDomains(20, "queries")
 
@@ -217,5 +279,7 @@ func (s *DNSServer) ClearStats() {
 
 // ClearCache clears the DNS cache
 func (s *DNSServer) ClearCache() {
-	s.cache.Clear()
+	if s.cache != nil {
+		s.cache.Clear()
+	}
 }

@@ -28,9 +28,9 @@ type AdminServer struct {
 }
 
 type StatsResponse struct {
-	Code    int              `json:"code"`
-	Message string           `json:"message"`
-	Data    map[string]any   `json:"data"`
+	Code    int            `json:"code"`
+	Message string         `json:"message"`
+	Data    map[string]any `json:"data"`
 }
 
 func NewAdminServer(addr string, uiPath string, uiEmbed bool, dnsServer *dns.DNSServer, eventBus *mitm.EventBus) *AdminServer {
@@ -73,7 +73,6 @@ func (s *AdminServer) Start() error {
 	}
 
 	s.wg.Go(func() {
-		defer s.wg.Done()
 		slog.Info("Admin server listening", "address", s.addr)
 		if err := s.server.Serve(s.listener); err != nil && err != http.ErrServerClosed {
 			slog.Error("Admin server error", "error", err)

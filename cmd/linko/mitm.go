@@ -8,6 +8,7 @@ import (
 
 	"github.com/monsterxx03/linko/pkg/admin"
 	"github.com/monsterxx03/linko/pkg/config"
+	"github.com/monsterxx03/linko/pkg/dns"
 	"github.com/monsterxx03/linko/pkg/mitm"
 	"github.com/monsterxx03/linko/pkg/proxy"
 	"github.com/spf13/cobra"
@@ -67,6 +68,15 @@ func runMITM(cmd *cobra.Command, args []string) {
 	}
 	defer transparentProxy.Stop()
 
+	slog.Info("starting DNS server, no splitting, no caching")
+	dnsServer := dns.NewDNSServer(cfg.DNS.ListenAddr, nil, nil)
+	if err := dnsServer.Start(); err != nil {
+		slog.Error("failed to start DNS server", "error", err)
+		os.Exit(1)
+	}
+	defer dnsServer.Stop()
+	slog.Info("DNS server started", "address", "127.0.0.1:"+cfg.DNSServerPort(), "mode", "system default (no splitting)")
+
 	// Initialize MITM Manager
 	if !cfg.MITM.Enable {
 		cfg.MITM.Enable = true
@@ -107,7 +117,7 @@ func runMITM(cmd *cobra.Command, args []string) {
 	// Start admin server (optional, for traffic inspection)
 	var adminServer *admin.AdminServer
 	if cfg.Admin.Enable {
-		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, nil, mitmManager.GetEventBus())
+		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, dnsServer, mitmManager.GetEventBus())
 		if err := adminServer.Start(); err != nil {
 			slog.Error("failed to start admin server", "error", err)
 			os.Exit(1)
@@ -138,7 +148,7 @@ func setupMITMFirewall(cfg *config.Config) *proxy.FirewallManager {
 		cfg.DNSServerPort(),
 		cfg.DNS.DomesticDNS,
 		proxy.RedirectOption{
-			RedirectDNS:   false,
+			RedirectDNS:   true,
 			RedirectHTTP:  false,
 			RedirectHTTPS: true,
 			RedirectSSH:   false,
