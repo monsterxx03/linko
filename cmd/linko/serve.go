@@ -190,6 +190,7 @@ func setupFirewall(cfg *config.Config) *proxy.FirewallManager {
 		},
 		forceProxyIPs,
 		cfg.MITM.GID,
+		true, // skipCN: true for serve mode (DNS splitting)
 	)
 
 	if err := firewallManager.SetupFirewallRules(); err != nil {

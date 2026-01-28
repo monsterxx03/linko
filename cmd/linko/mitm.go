@@ -156,6 +156,7 @@ func setupMITMFirewall(cfg *config.Config) *proxy.FirewallManager {
 		},
 		nil,
 		cfg.MITM.GID,
+		false, // skipCN: false for MITM mode (intercept all HTTPS traffic)
 	)
 
 	if err := firewallManager.SetupFirewallRules(); err != nil {

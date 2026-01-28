@@ -38,10 +38,11 @@ type FirewallManager struct {
 	cnDNS         []string
 	forceProxyIPs []string
 	mitmGID       int
+	skipCN        bool // whether to skip China IP ranges in firewall rules
 	impl          FirewallManagerInterface
 }
 
-func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, redirectOpt RedirectOption, forceProxyIPs []string, mitmGID int) *FirewallManager {
+func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, redirectOpt RedirectOption, forceProxyIPs []string, mitmGID int, skipCN bool) *FirewallManager {
 	fm := &FirewallManager{
 		proxyPort:     proxyPort,
 		dnsServerPort: dnsServerPort,
@@ -49,6 +50,7 @@ func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, 
 		redirectOpt:   redirectOpt,
 		forceProxyIPs: forceProxyIPs,
 		mitmGID:       mitmGID,
+		skipCN:        skipCN,
 	}
 	fm.impl = newFirewallManagerImpl(fm)
 	return fm

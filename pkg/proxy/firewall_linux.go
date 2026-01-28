@@ -105,8 +105,10 @@ func (l *linuxFirewallManager) createIPSet() error {
 		return fmt.Errorf("failed to add reserved IPs: %w", err)
 	}
 
-	if err := l.addChinaIPsToIPSet(); err != nil {
-		return fmt.Errorf("failed to add China IPs: %w", err)
+	if l.fm.skipCN {
+		if err := l.addChinaIPsToIPSet(); err != nil {
+			return fmt.Errorf("failed to add China IPs: %w", err)
+		}
 	}
 
 	return nil

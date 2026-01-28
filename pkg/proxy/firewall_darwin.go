@@ -29,14 +29,21 @@ func newFirewallManagerImpl(fm *FirewallManager) FirewallManagerInterface {
 }
 
 func (d *darwinFirewallManager) SetupFirewallRules() error {
-	if err := ipdb.LoadChinaIPRanges(); err != nil {
-		slog.Warn("Failed to load cached China IP ranges", "error", err)
-		slog.Info("Run 'linko update-cn-ip' to download China IP data")
+	if d.fm.skipCN {
+		if err := ipdb.LoadChinaIPRanges(); err != nil {
+			slog.Warn("Failed to load cached China IP ranges", "error", err)
+			slog.Info("Run 'linko update-cn-ip' to download China IP data")
+		}
 	}
 
 	chinaCIDRs, _ := ipdb.GetChinaCIDRs()
 	reservedCIDRs := ipdb.GetReservedCIDRs()
-	allCIDRs := append(reservedCIDRs, chinaCIDRs...)
+	var allCIDRs []string
+	if d.fm.skipCN {
+		allCIDRs = append(reservedCIDRs, chinaCIDRs...)
+	} else {
+		allCIDRs = reservedCIDRs
+	}
 	proxyPort := d.fm.proxyPort
 	dnsServerPort := d.fm.dnsServerPort
 	cnDNS := d.fm.cnDNS
