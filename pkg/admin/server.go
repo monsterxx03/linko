@@ -28,9 +28,9 @@ type AdminServer struct {
 }
 
 type StatsResponse struct {
-	Code    int                    `json:"code"`
-	Message string                 `json:"message"`
-	Data    map[string]interface{} `json:"data"`
+	Code    int              `json:"code"`
+	Message string           `json:"message"`
+	Data    map[string]any   `json:"data"`
 }
 
 func NewAdminServer(addr string, uiPath string, uiEmbed bool, dnsServer *dns.DNSServer, eventBus *mitm.EventBus) *AdminServer {
@@ -72,14 +72,13 @@ func (s *AdminServer) Start() error {
 		Handler: mux,
 	}
 
-	s.wg.Add(1)
-	go func() {
+	s.wg.Go(func() {
 		defer s.wg.Done()
 		slog.Info("Admin server listening", "address", s.addr)
 		if err := s.server.Serve(s.listener); err != nil && err != http.ErrServerClosed {
 			slog.Error("Admin server error", "error", err)
 		}
-	}()
+	})
 
 	return nil
 }
@@ -152,6 +151,15 @@ func (s *AdminServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *AdminServer) writeServiceUnavailable(w http.ResponseWriter, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusServiceUnavailable)
+	json.NewEncoder(w).Encode(StatsResponse{
+		Code:    503,
+		Message: msg,
+	})
+}
+
 func (s *AdminServer) handleDNSStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Content-Type", "application/json")
@@ -160,6 +168,11 @@ func (s *AdminServer) handleDNSStats(w http.ResponseWriter, r *http.Request) {
 			Code:    405,
 			Message: "Method not allowed",
 		})
+		return
+	}
+
+	if s.dnsServer == nil {
+		s.writeServiceUnavailable(w, "DNS server not available")
 		return
 	}
 
@@ -188,6 +201,11 @@ func (s *AdminServer) handleDNSStatsClear(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if s.dnsServer == nil {
+		s.writeServiceUnavailable(w, "DNS server not available")
+		return
+	}
+
 	s.dnsServer.ClearStats()
 
 	response := StatsResponse{
@@ -209,6 +227,11 @@ func (s *AdminServer) handleDNSCacheClear(w http.ResponseWriter, r *http.Request
 			Code:    405,
 			Message: "Method not allowed",
 		})
+		return
+	}
+
+	if s.dnsServer == nil {
+		s.writeServiceUnavailable(w, "DNS server not available")
 		return
 	}
 
@@ -258,12 +281,15 @@ data: {"message":"Connected to MITM traffic stream"}
 	w.Write([]byte(welcomeMsg))
 	flusher.Flush()
 
-	// Set up connection close handling
-	notify := w.(http.CloseNotifier).CloseNotify()
+	// Set up connection close handling using context
+	ctx := r.Context()
 
 	// Listen for events
 	for {
 		select {
+		case <-ctx.Done():
+			// Client closed connection or context cancelled
+			return
 		case event, ok := <-subscriber.Channel:
 			if !ok {
 				return
@@ -285,9 +311,6 @@ data: ` + string(eventData) + `
 			}
 			// Flush the data immediately to the client
 			flusher.Flush()
-		case <-notify:
-			// Client closed connection
-			return
 		}
 	}
 }

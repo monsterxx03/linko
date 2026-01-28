@@ -234,7 +234,7 @@ func (s *SSEInspector) processCompleteRequest(data []byte, requestID string) ([]
 	defer req.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(req.Body)
-	bodyStr := s.truncateBody(bodyBytes, req.Header.Get("Content-Encoding"), req.Header.Get("Content-Type"))
+	bodyStr := s.truncateBody(bodyBytes, getContentEncoding(req.Header), req.Header.Get("Content-Type"))
 
 	s.requestCache.Store(requestID, &HTTPRequest{
 		Method:        req.Method,
@@ -257,7 +257,7 @@ func (s *SSEInspector) processCompleteResponse(data []byte, requestID string) ([
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
-	bodyStr := s.truncateBody(bodyBytes, resp.Header.Get("Content-Encoding"), resp.Header.Get("Content-Type"))
+	bodyStr := s.truncateBody(bodyBytes, getContentEncoding(resp.Header), resp.Header.Get("Content-Type"))
 
 	var httpReq *HTTPRequest
 	if val, exists := s.requestCache.LoadAndDelete(requestID); exists {
@@ -286,7 +286,7 @@ func (s *SSEInspector) processSSEStream(fullData []byte, requestID string) ([]by
 	defer resp.Body.Close()
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
-	bodyStr := s.truncateBody(bodyBytes, resp.Header.Get("Content-Encoding"), resp.Header.Get("Content-Type"))
+	bodyStr := s.truncateBody(bodyBytes, getContentEncoding(resp.Header), resp.Header.Get("Content-Type"))
 
 	var httpReq *HTTPRequest
 	if val, exists := s.requestCache.LoadAndDelete(requestID); exists {
@@ -313,6 +313,13 @@ func (s *SSEInspector) truncateBody(body []byte, contentEncoding, contentType st
 		return bodyStr[:s.maxBodySize]
 	}
 	return bodyStr
+}
+
+func getContentEncoding(header http.Header) string {
+	if ce := header.Get("Content-Encoding"); ce != "" {
+		return ce
+	}
+	return header.Get("Connect-Content-Encoding")
 }
 
 func extractHeaders(header http.Header) map[string]string {

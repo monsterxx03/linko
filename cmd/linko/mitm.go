@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/monsterxx03/linko/pkg/admin"
@@ -17,7 +16,6 @@ import (
 var (
 	mitmConfigPath string
 	mitmLogLevel   string
-	mitmTargets    string
 )
 
 var mitmCmd = &cobra.Command{
@@ -44,15 +42,6 @@ func runMITM(cmd *cobra.Command, args []string) {
 
 	if mitmLogLevel != "" {
 		cfg.Server.LogLevel = mitmLogLevel
-	}
-
-	// Parse targets parameter
-	var targets []string
-	if mitmTargets != "" {
-		targets = strings.Split(mitmTargets, ",")
-		for i := range targets {
-			targets[i] = strings.TrimSpace(targets[i])
-		}
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -97,9 +86,9 @@ func runMITM(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	// Setup MITM handler with targets as whitelist
-	// If targets is empty, intercept all HTTPS traffic
-	whitelist := targets
+	// Setup MITM handler with whitelist from config
+	// If whitelist is empty, intercept all HTTPS traffic
+	whitelist := cfg.MITM.Whitelist
 	if len(whitelist) == 0 {
 		whitelist = nil
 	}
@@ -171,5 +160,4 @@ func setupMITMFirewall(cfg *config.Config) *proxy.FirewallManager {
 func init() {
 	mitmCmd.Flags().StringVarP(&mitmConfigPath, "config", "c", "config/linko.yaml", "Configuration file path")
 	mitmCmd.Flags().StringVar(&mitmLogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
-	mitmCmd.Flags().StringVar(&mitmTargets, "targets", "", "Comma-separated list of domains to MITM (default: all HTTPS traffic)")
 }

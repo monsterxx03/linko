@@ -109,8 +109,8 @@ table <{{.ForceTableName}}> { {{range $i, $ip := .ForceProxyIPs}}{{if $i}}, {{en
 rdr pass on $lo_if inet proto udp from $ext_if to any port 53 -> 127.0.0.1 port $dns_port
 {{end}}
 
-{{range .RedirectPorts}}
-rdr pass on $lo_if inet proto tcp from $ext_if to any port {{.}} -> 127.0.0.1 port $linko_port
+{{if .RedirectPorts}}
+rdr pass on $lo_if inet proto tcp from $ext_if to any port { {{range $i, $port := .RedirectPorts}}{{if $i}}, {{end}}{{$port}}{{end}} } -> 127.0.0.1 port $linko_port
 {{end}}
 
 pass out proto tcp from any to <{{.ForceTableName}}> tag FORCE_PROXY
@@ -120,8 +120,8 @@ pass out proto tcp from any to <{{.ForceTableName}}> tag FORCE_PROXY
 pass out on $ext_if route-to $lo_if inet proto udp from $ext_if to any port 53
 {{end}}
 
-{{range $_, $port := .RedirectPorts}}
-pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port {{$port}} group != {{$.MITMGID}} keep state
+{{if .RedirectPorts}}
+pass out on $ext_if route-to $lo_if inet proto tcp from $ext_if to any port { {{range $i, $port := .RedirectPorts}}{{if $i}}, {{end}}{{$port}}{{end}} } group != {{.MITMGID}} keep state
 {{end}}
 
 pass out proto udp from any to { {{range $i, $ip := .CNDNS}}{{if $i}}, {{end}}{{$ip}}{{end}} } port 53 # skip cn dns
