@@ -27,6 +27,7 @@ type ManagerConfig struct {
 	CACertValidity   time.Duration
 	Enabled          bool
 	MaxBodySize      int64
+	EventHistorySize int
 }
 
 // NewManager creates a new MITM manager
@@ -67,7 +68,7 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		logger:          logger,
 		enabled:         config.Enabled,
 		inspector:       NewInspectorChain(),
-		eventBus:        NewEventBus(logger), // Create event bus
+		eventBus:        NewEventBus(logger, config.EventHistorySize), // Create event bus
 	}
 
 	m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))

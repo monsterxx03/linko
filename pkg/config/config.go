@@ -156,6 +156,9 @@ type MITMConfig struct {
 
 	// MaxBodySize is the maximum body size to capture for inspection (0 = unlimited)
 	MaxBodySize int64 `mapstructure:"max_body_size" yaml:"max_body_size"`
+
+	// EventHistorySize is the number of events to keep in history for replay (default: 10)
+	EventHistorySize int `mapstructure:"event_history_size" yaml:"event_history_size"`
 }
 
 // DefaultConfig returns a default configuration
@@ -207,6 +210,7 @@ func DefaultConfig() *Config {
 			SiteCertValidity: 168 * time.Hour,      // 7 days
 			CACertValidity:   365 * 24 * time.Hour, // 365 days
 			MaxBodySize:      16 * 1024,            // 16KB default
+			EventHistorySize: 10,                   // Default 10 historical events
 		},
 	}
 }

@@ -51,12 +51,12 @@ func runMITM(cmd *cobra.Command, args []string) {
 
 	// MITM 模式配置
 	sc := &ServerConfig{
-		DNSSplitter:  nil,
-		DNSCache:     nil,
-		SkipCN:       false,
-		ForceMITM:    true,
+		DNSSplitter: nil,
+		DNSCache:    nil,
+		SkipCN:      false,
+		ForceMITM:   true,
 		RedirectOption: proxy.RedirectOption{
-			RedirectDNS:   true,
+			RedirectDNS:   false,
 			RedirectHTTP:  false,
 			RedirectHTTPS: true,
 			RedirectSSH:   false,

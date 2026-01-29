@@ -15,11 +15,11 @@ import (
 
 // ServerConfig 通用服务器配置
 type ServerConfig struct {
-	DNSSplitter      *dns.DNSSplitter
-	DNSCache         *dns.DNSCache
-	RedirectOption   proxy.RedirectOption
-	SkipCN           bool // 是否跳过中国IP分流
-	ForceMITM        bool // 强制启用 MITM（用于 mitm 命令）
+	DNSSplitter    *dns.DNSSplitter
+	DNSCache       *dns.DNSCache
+	RedirectOption proxy.RedirectOption
+	SkipCN         bool // 是否跳过中国IP分流
+	ForceMITM      bool // 强制启用 MITM（用于 mitm 命令）
 }
 
 // RunServer 通用服务器启动函数

@@ -11,7 +11,7 @@ import (
 
 func TestSSEInspector_InspectRequest(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestData := []byte("GET / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 11\r\n\r\nHello World")
@@ -49,7 +49,7 @@ func TestSSEInspector_InspectRequest(t *testing.T) {
 
 func TestSSEInspector_InspectResponse(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	// First cache a request
@@ -75,7 +75,7 @@ func TestSSEInspector_InspectResponse(t *testing.T) {
 
 func TestSSEInspector_IncrementalRequest(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	// Split request into two chunks
@@ -117,7 +117,7 @@ func TestSSEInspector_IncrementalRequest(t *testing.T) {
 
 func TestSSEInspector_IncrementalResponse(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-4-1"
@@ -157,7 +157,7 @@ func TestSSEInspector_IncrementalResponse(t *testing.T) {
 
 func TestSSEInspector_ChunkedRequest(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	// Chunked encoded request
@@ -176,7 +176,7 @@ func TestSSEInspector_ChunkedRequest(t *testing.T) {
 
 func TestSSEInspector_ChunkedResponse(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-6-1"
@@ -199,7 +199,7 @@ func TestSSEInspector_ChunkedResponse(t *testing.T) {
 
 func TestSSEInspector_EmptyData(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	result, err := inspector.Inspect(DirectionClientToServer, []byte{}, "example.com", "test-7", "test-7-1")
@@ -214,7 +214,7 @@ func TestSSEInspector_EmptyData(t *testing.T) {
 
 func TestSSEInspector_InvalidHTTP(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	invalidData := []byte("Invalid HTTP data")
@@ -230,7 +230,7 @@ func TestSSEInspector_InvalidHTTP(t *testing.T) {
 
 func TestSSEInspector_ClearPending(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-9-1"
@@ -252,7 +252,7 @@ func TestSSEInspector_ClearPending(t *testing.T) {
 
 func TestSSEInspector_MaxBodySize(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 10) // 10 bytes max body
 
 	requestData := []byte("POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 11\r\n\r\nHello World")
@@ -278,7 +278,7 @@ func TestSSEInspector_MaxBodySize(t *testing.T) {
 
 func TestSSEInspector_EventBusIntegration(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-11-1"
@@ -300,7 +300,7 @@ func TestSSEInspector_EventBusIntegration(t *testing.T) {
 
 func TestSSEInspector_SSEResponse(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-sse-1-1"
@@ -323,7 +323,7 @@ func TestSSEInspector_SSEResponse(t *testing.T) {
 
 func TestSSEInspector_SSEIncrementalEvents(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-sse-2-1"
@@ -371,7 +371,7 @@ func TestSSEInspector_SSEIncrementalEvents(t *testing.T) {
 
 func TestSSEInspector_SSEMultiLineData(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-sse-3-1"
@@ -394,7 +394,7 @@ func TestSSEInspector_SSEMultiLineData(t *testing.T) {
 
 func TestSSEInspector_SSEWithAllFields(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-sse-4-1"
@@ -417,7 +417,7 @@ func TestSSEInspector_SSEWithAllFields(t *testing.T) {
 
 func TestSSEInspector_CompressedSSE(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-sse-compressed-1"
@@ -451,7 +451,7 @@ func TestSSEInspector_CompressedSSE(t *testing.T) {
 
 func TestSSEInspector_SSEWithChunkedTransfer(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-sse-chunked-1"
@@ -474,7 +474,7 @@ func TestSSEInspector_SSEWithChunkedTransfer(t *testing.T) {
 
 func TestSSEInspector_RegularHTTPNotAffected(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-regular-1"
@@ -497,7 +497,7 @@ func TestSSEInspector_RegularHTTPNotAffected(t *testing.T) {
 
 func TestSSEInspector_ClearPendingWithDecompressor(t *testing.T) {
 	logger := slog.Default()
-	eventBus := NewEventBus(logger)
+	eventBus := NewEventBus(logger, 10)
 	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
 
 	requestID := "test-clear-sse-1"

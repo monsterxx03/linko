@@ -51,13 +51,20 @@ type EventBus struct {
 	subscribers map[*Subscriber]bool // Active subscribers
 	mu          sync.RWMutex         // Mutex for thread safety
 	logger      *slog.Logger         // Logger for error and warning messages
+	history     []*TrafficEvent      // Historical events for replay
+	historySize int                  // Maximum number of historical events to keep
 }
 
-// NewEventBus creates a new EventBus
-func NewEventBus(logger *slog.Logger) *EventBus {
+// NewEventBus creates a new EventBus with the specified history size
+func NewEventBus(logger *slog.Logger, historySize int) *EventBus {
+	if historySize <= 0 {
+		historySize = 10 // Default to 10 events
+	}
 	return &EventBus{
 		subscribers: make(map[*Subscriber]bool),
 		logger:      logger,
+		history:     make([]*TrafficEvent, 0, historySize),
+		historySize: historySize,
 	}
 }
 
@@ -75,7 +82,12 @@ func (eb *EventBus) Publish(event *TrafficEvent) {
 
 	// Lock for writing
 	eb.mu.Lock()
-	defer eb.mu.Unlock()
+
+	// Add to history (keep only the latest N events)
+	eb.history = append(eb.history, event)
+	if len(eb.history) > eb.historySize {
+		eb.history = eb.history[len(eb.history)-eb.historySize:]
+	}
 
 	// Publish to all subscribers
 	for subscriber := range eb.subscribers {
@@ -89,6 +101,8 @@ func (eb *EventBus) Publish(event *TrafficEvent) {
 				"hostname", event.Hostname)
 		}
 	}
+
+	eb.mu.Unlock()
 }
 
 // Subscribe creates a new subscriber and returns it
@@ -100,7 +114,22 @@ func (eb *EventBus) Subscribe() *Subscriber {
 
 	eb.mu.Lock()
 	eb.subscribers[subscriber] = true
+
+	// Copy historical events for replay
+	historicalEvents := make([]*TrafficEvent, len(eb.history))
+	copy(historicalEvents, eb.history)
 	eb.mu.Unlock()
+
+	// Send historical events in a new goroutine (oldest to newest)
+	go func() {
+		for _, ev := range historicalEvents {
+			select {
+			case subscriber.Channel <- ev:
+			default:
+				// Channel full, skip this historical event
+			}
+		}
+	}()
 
 	return subscriber
 }

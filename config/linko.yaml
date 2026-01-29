@@ -43,3 +43,4 @@ mitm:
     ca_cert_validity: 8760h0m0s
     whitelist: []
     max_body_size: 16384
+    event_history_size: 10

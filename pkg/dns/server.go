@@ -244,12 +244,12 @@ func (s *DNSServer) GetCacheStats() map[string]interface{} {
 		cacheStats = s.cache.GetStats()
 	} else {
 		cacheStats = map[string]any{
-			"size":      0,
-			"max_size":  0,
-			"ttl":       "0s",
-			"hits":      0,
-			"misses":    0,
-			"hit_rate":  0.0,
+			"size":     0,
+			"max_size": 0,
+			"ttl":      "0s",
+			"hits":     0,
+			"misses":   0,
+			"hit_rate": 0.0,
 		}
 	}
 	statsStats := s.statsCollector.GetStatsSummary()
