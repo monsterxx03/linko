@@ -24,6 +24,8 @@ var readableAppTypes = []string{
 	"application/atom+xml",
 	"application/xhtml+xml",
 	"application/svg+xml",
+	"application/proto",
+	"application/connect+proto",
 }
 
 func isHTTPPrefix(data []byte) bool {
