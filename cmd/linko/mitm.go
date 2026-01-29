@@ -143,6 +143,13 @@ func runMITM(cmd *cobra.Command, args []string) {
 func setupMITMFirewall(cfg *config.Config) *proxy.FirewallManager {
 	slog.Info("setting up firewall rules for MITM (HTTPS only)")
 
+	forceProxyIPs, err := proxy.ResolveHosts(cfg.Firewall.ForceProxyHosts, nil)
+	if err != nil {
+		slog.Warn("failed to resolve force proxy hosts", "error", err)
+	} else if len(forceProxyIPs) > 0 {
+		slog.Info("resolved force proxy hosts to IPs", "ips", forceProxyIPs)
+	}
+
 	firewallManager := proxy.NewFirewallManager(
 		cfg.ProxyPort(),
 		cfg.DNSServerPort(),
@@ -153,7 +160,7 @@ func setupMITMFirewall(cfg *config.Config) *proxy.FirewallManager {
 			RedirectHTTPS: true,
 			RedirectSSH:   false,
 		},
-		nil,
+		forceProxyIPs,
 		cfg.MITM.GID,
 		false, // skipCN: false for MITM mode (intercept all HTTPS traffic)
 	)

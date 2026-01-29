@@ -6,7 +6,7 @@ import (
 )
 
 // ResolveHosts resolves a list of hosts (domains or IPs) to IP addresses.
-// Domains are resolved using the provided DNS servers.
+// Domains are resolved using the provided DNS servers, or system DNS if none specified.
 // IPs are returned directly.
 func ResolveHosts(hosts []string, dnsServers []string) ([]string, error) {
 	var result []string
@@ -21,12 +21,15 @@ func ResolveHosts(hosts []string, dnsServers []string) ([]string, error) {
 			continue
 		}
 
-		// It's a domain, resolve it using the first available DNS server
+		// It's a domain, resolve it
+		// If no DNS servers specified, use system DNS
+		var ips []string
+		var err error
 		if len(dnsServers) == 0 {
-			dnsServers = []string{"223.5.5.5"}
+			ips, err = resolveDomainWithSystemDNS(host)
+		} else {
+			ips, err = resolveDomain(host, dnsServers[0])
 		}
-
-		ips, err := resolveDomain(host, dnsServers[0])
 		if err != nil {
 			continue // Skip failed resolutions
 		}
@@ -35,6 +38,24 @@ func ResolveHosts(hosts []string, dnsServers []string) ([]string, error) {
 	}
 
 	return result, nil
+}
+
+// resolveDomainWithSystemDNS resolves a domain using the system's default DNS.
+func resolveDomainWithSystemDNS(domain string) ([]string, error) {
+	// Use system DNS resolver
+	addrs, err := net.DefaultResolver.LookupIP(context.Background(), "ip", domain)
+	if err != nil {
+		return nil, err
+	}
+
+	var ips []string
+	for _, ip := range addrs {
+		if ipv4 := ip.To4(); ipv4 != nil {
+			ips = append(ips, ipv4.String())
+		}
+	}
+
+	return ips, nil
 }
 
 // resolveDomain resolves a single domain to IPv4 addresses using the specified DNS server.

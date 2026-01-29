@@ -163,36 +163,38 @@ func (s *DNSServer) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 
 // resolveWithSystemDNS resolves DNS using the system's default resolver
 func (s *DNSServer) resolveWithSystemDNS(_ context.Context, r *dns.Msg) (*dns.Msg, error) {
-	// Get system DNS servers
-	conf, err := dns.ClientConfigFromFile("/etc/resolv.conf")
+	// Extract domain from the request
+	if len(r.Question) == 0 {
+		return nil, fmt.Errorf("empty question")
+	}
+	domain := r.Question[0].Name
+
+	// Use system DNS resolver
+	addrs, err := net.DefaultResolver.LookupIP(context.Background(), "ip", domain)
 	if err != nil {
-		// Fallback to common DNS servers
-		conf = &dns.ClientConfig{
-			Servers:  []string{"8.8.8.8", "8.8.4.4"},
-			Port:     "53",
-			Ndots:    0,
-			Timeout:  5,
-			Attempts: 2,
+		return nil, err
+	}
+
+	// Build response
+	resp := new(dns.Msg)
+	resp.SetReply(r)
+	resp.Authoritative = true
+
+	for _, ip := range addrs {
+		if ipv4 := ip.To4(); ipv4 != nil {
+			resp.Answer = append(resp.Answer, &dns.A{
+				Hdr: dns.RR_Header{
+					Name:   domain,
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+					Ttl:    300,
+				},
+				A: ipv4,
+			})
 		}
 	}
 
-	client := &dns.Client{
-		Timeout: 5 * time.Second,
-	}
-
-	var lastErr error
-	for _, server := range conf.Servers {
-		resp, _, err := client.Exchange(r, net.JoinHostPort(server, conf.Port))
-		if err != nil {
-			lastErr = err
-			continue
-		}
-		if resp != nil && resp.Rcode == dns.RcodeSuccess {
-			return resp, nil
-		}
-	}
-
-	return nil, lastErr
+	return resp, nil
 }
 
 // GetAddr returns the server address
