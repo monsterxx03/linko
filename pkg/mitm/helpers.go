@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"errors"
 	"io"
 	"slices"
 	"strings"
@@ -101,7 +102,7 @@ func decompressBody(body []byte, contentEncoding string, contentType string, log
 	if err != nil {
 		// For SSE, try to return whatever we managed to decompress
 		if isSSE {
-			if len(decompressed) > 0 {
+			if len(decompressed) > 0 && !errors.Is(err, io.ErrUnexpectedEOF) {
 				logger.Warn("Partial decompression for SSE", "contentEncoding", contentEncoding, "error", err)
 				return decompressed
 			}
