@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import DnsMonitor from './pages/DnsMonitor';
 import MitmTraffic from './pages/MitmTraffic';
+import Conversations from './pages/Conversations';
 
-type Tab = 'dns' | 'mitm';
+type Tab = 'dns' | 'mitm' | 'conversations';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('dns');
@@ -21,7 +22,7 @@ function App() {
               </div>
               <div>
                 <h1 className="text-lg font-semibold text-bg-900">Linko</h1>
-                <p className="text-xs text-bg-500">DNS Monitor</p>
+                <p className="text-xs text-bg-500">Proxy & Monitor</p>
               </div>
             </div>
 
@@ -68,19 +69,32 @@ function App() {
                 MITM Traffic
               </button>
             </li>
+            <li>
+              <button
+                onClick={() => setActiveTab('conversations')}
+                className={`py-4 px-1 border-b-2 font-medium transition-colors ${
+                  activeTab === 'conversations'
+                    ? 'border-accent-500 text-accent-600'
+                    : 'border-transparent text-bg-500 hover:text-bg-700 hover:border-bg-300'
+                }`}
+              >
+                LLM Conversations
+              </button>
+            </li>
           </ul>
         </div>
 
         {/* Tab Content */}
         {activeTab === 'dns' && <DnsMonitor />}
         {activeTab === 'mitm' && <MitmTraffic />}
+        {activeTab === 'conversations' && <Conversations />}
       </main>
 
       {/* Footer */}
       <footer className="border-t border-bg-200 mt-8">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between text-xs text-bg-400">
-            <span>Linko DNS Monitor</span>
+            <span>Linko Monitor</span>
           </div>
         </div>
       </footer>

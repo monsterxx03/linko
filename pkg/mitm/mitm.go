@@ -72,6 +72,8 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 	}
 
 	m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))
+	// Add LLM inspector for parsing LLM API traffic
+	m.inspector.Add(NewLLMInspector(logger, m.eventBus, ""))
 
 	return m, nil
 }

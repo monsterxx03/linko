@@ -16,6 +16,7 @@ type TrafficEvent struct {
 	RequestID    string        `json:"request_id"`         // Unique request ID (per connection)
 	Request      *HTTPRequest  `json:"request,omitempty"`  // Request details if available
 	Response     *HTTPResponse `json:"response,omitempty"` // Response details if available
+	Extra        interface{}   `json:"extra,omitempty"`    // Extra data for LLM events
 }
 
 // HTTPRequest represents an HTTP request
