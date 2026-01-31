@@ -60,11 +60,18 @@ func NewHTTPProcessor(logger *slog.Logger, maxBodySize int64) *HTTPProcessor {
 // ProcessRequest processes incoming request data incrementally
 // Returns: (completeMessage, isComplete, error)
 func (p *HTTPProcessor) ProcessRequest(inputData []byte, requestID string) ([]byte, *HTTPMessage, bool, error) {
-	if len(inputData) == 0 || !isHTTPPrefix(inputData) {
+	if len(inputData) == 0 {
 		return inputData, nil, false, nil
 	}
 
 	pending := p.loadOrCreatePendingRequest(requestID)
+
+	// If we already have headers, just append the data
+	// Otherwise, check if this is the start of a new request
+	if pending.headers == nil && !isHTTPPrefix(inputData) {
+		return inputData, nil, false, nil
+	}
+
 	pending.data = append(pending.data, inputData...)
 
 	if pending.headers == nil {
@@ -81,7 +88,7 @@ func (p *HTTPProcessor) ProcessRequest(inputData []byte, requestID string) ([]by
 
 	switch pending.contentLength {
 	case 0:
-		// No body
+		// No body - request is complete
 		p.pendingReqs.Delete(requestID)
 		msg := p.buildRequestMessage(pending.data)
 		if msg == nil {
@@ -106,6 +113,7 @@ func (p *HTTPProcessor) ProcessRequest(inputData []byte, requestID string) ([]by
 			return inputData, nil, false, nil
 		}
 		p.pendingReqs.Delete(requestID)
+		// Make a copy to ensure the returned data is independent
 		fullData := make([]byte, needed)
 		copy(fullData, pending.data[:needed])
 		msg := p.buildRequestMessage(fullData)
@@ -118,12 +126,20 @@ func (p *HTTPProcessor) ProcessRequest(inputData []byte, requestID string) ([]by
 
 // ProcessResponse processes incoming response data incrementally
 // Returns: (completeMessage, isComplete, error)
+// For SSE responses, always returns accumulated data (for streaming inspection)
 func (p *HTTPProcessor) ProcessResponse(inputData []byte, requestID string) ([]byte, *HTTPMessage, bool, error) {
-	if len(inputData) == 0 || !isHTTPResponsePrefix(inputData) {
+	if len(inputData) == 0 {
 		return inputData, nil, false, nil
 	}
 
 	pending := p.loadOrCreatePendingResponse(requestID)
+
+	// If we already have headers, just append the data
+	// Otherwise, check if this is the start of a new response
+	if pending.headers == nil && !isHTTPResponsePrefix(inputData) {
+		return inputData, nil, false, nil
+	}
+
 	pending.data = append(pending.data, inputData...)
 
 	if pending.headers == nil {
@@ -139,9 +155,15 @@ func (p *HTTPProcessor) ProcessResponse(inputData []byte, requestID string) ([]b
 
 	headerLen := len(pending.headers)
 
+	// For SSE responses, always return accumulated data (don't consume it)
+	if pending.isSSE {
+		msg := p.buildResponseMessage(pending.data)
+		return pending.data, msg, false, nil
+	}
+
 	switch pending.contentLength {
 	case 0:
-		// No body
+		// No body - response is complete
 		p.pendingResps.Delete(requestID)
 		msg := p.buildResponseMessage(pending.data)
 		if msg == nil {
@@ -166,6 +188,7 @@ func (p *HTTPProcessor) ProcessResponse(inputData []byte, requestID string) ([]b
 			return inputData, nil, false, nil
 		}
 		p.pendingResps.Delete(requestID)
+		// Make a copy to ensure the returned data is independent
 		fullData := make([]byte, needed)
 		copy(fullData, pending.data[:needed])
 		msg := p.buildResponseMessage(fullData)
@@ -263,12 +286,15 @@ func (p *HTTPProcessor) buildRequestMessage(data []byte) *HTTPMessage {
 	bodyBytes, _ := io.ReadAll(req.Body)
 
 	contentType := req.Header.Get("Content-Type")
-	// Only process readable content types
+	// Only decompress readable content types, but always apply body size limit
 	if isReadableTextType(contentType) {
 		// Decompress if needed
 		contentEncoding := getContentEncoding(req.Header)
 		decompressed := decompressBody(bodyBytes, contentEncoding, contentType, p.logger)
-		bodyBytes = p.truncateBody(decompressed, contentType)
+		bodyBytes = p.truncateBody(decompressed)
+	} else {
+		// Apply body size limit even for non-readable types
+		bodyBytes = p.truncateBody(bodyBytes)
 	}
 
 	return &HTTPMessage{
@@ -292,22 +318,27 @@ func (p *HTTPProcessor) buildResponseMessage(data []byte) *HTTPMessage {
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
 	contentType := resp.Header.Get("Content-Type")
-	// Only process readable content types
+	// Only decompress readable content types, but always apply body size limit
 	if isReadableTextType(contentType) {
 		// Decompress if needed
 		contentEncoding := getContentEncoding(resp.Header)
 		decompressed := decompressBody(bodyBytes, contentEncoding, contentType, p.logger)
-		bodyBytes = p.truncateBody(decompressed, contentType)
+		bodyBytes = p.truncateBody(decompressed)
+	} else {
+		// Apply body size limit even for non-readable types
+		bodyBytes = p.truncateBody(bodyBytes)
 	}
 
 	hostname := ""
-	if resp.Request != nil {
+	path := ""
+	if resp.Request != nil && resp.Request.URL != nil {
 		hostname = resp.Request.Host
+		path = resp.Request.URL.Path
 	}
 
 	return &HTTPMessage{
 		Hostname:    hostname,
-		Path:        resp.Request.URL.Path,
+		Path:        path,
 		Headers:     extractHeaders(resp.Header),
 		Body:        bodyBytes,
 		ContentType: contentType,
@@ -317,7 +348,7 @@ func (p *HTTPProcessor) buildResponseMessage(data []byte) *HTTPMessage {
 	}
 }
 
-func (p *HTTPProcessor) truncateBody(body []byte, contentType string) []byte {
+func (p *HTTPProcessor) truncateBody(body []byte) []byte {
 	bodyStr := string(body)
 	if p.maxBodySize > 0 && len(bodyStr) > int(p.maxBodySize) {
 		return []byte(bodyStr[:p.maxBodySize])

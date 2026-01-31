@@ -99,7 +99,7 @@ type anthropicRequest struct {
 	Model       string          `json:"model"`
 	MaxTokens   int             `json:"max_tokens"`
 	Messages    []anthropicMsg  `json:"messages"`
-	System      string          `json:"system,omitempty"`
+	System      any             `json:"system,omitempty"` // Can be string or array of strings
 	StopSequences []string      `json:"stop_sequences,omitempty"`
 	Temperature float64         `json:"temperature,omitempty"`
 	TopK        int             `json:"top_k,omitempty"`
@@ -229,8 +229,15 @@ type openaiDelta struct {
 type anthropicProvider struct{}
 
 func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
-	return strings.Contains(hostname, "api.anthropic.com") &&
-		strings.HasPrefix(path, "/v1/messages")
+	// Anthropic official API
+	if strings.Contains(hostname, "api.anthropic.com") && strings.HasPrefix(path, "/v1/messages") {
+		return true
+	}
+	// MiniMax API (compatible with Anthropic format)
+	if strings.Contains(hostname, "api.minimaxi.com") && strings.HasPrefix(path, "/anthropic/v1/messages") {
+		return true
+	}
+	return false
 }
 
 func (a anthropicProvider) ExtractConversationID(body []byte) string {
@@ -317,8 +324,7 @@ type openaiProvider struct{}
 func (o openaiProvider) Match(hostname, path string, body []byte) bool {
 	return (strings.Contains(hostname, "api.openai.com") ||
 		strings.Contains(hostname, "openai.azure.com") ||
-		strings.Contains(hostname, "aiplatform.cn")) &&
-		strings.Contains(path, "/chat/completions")
+		strings.Contains(path, "/chat/completions"))
 }
 
 func (o openaiProvider) ExtractConversationID(body []byte) string {
