@@ -35,15 +35,15 @@ type HTTPProcessor struct {
 
 // HTTPMessage represents a complete HTTP message
 type HTTPMessage struct {
-	Hostname     string
-	Path         string
-	Method       string
-	Headers      map[string]string
-	Body         []byte
-	ContentType  string
-	IsResponse   bool
-	StatusCode   int
-	IsSSE        bool
+	Hostname    string
+	Path        string
+	Method      string
+	Headers     map[string]string
+	Body        []byte
+	ContentType string
+	IsResponse  bool
+	StatusCode  int
+	IsSSE       bool
 }
 
 // NewHTTPProcessor creates a new HTTPProcessor

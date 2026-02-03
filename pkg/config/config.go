@@ -159,6 +159,12 @@ type MITMConfig struct {
 
 	// EventHistorySize is the number of events to keep in history for replay (default: 10)
 	EventHistorySize int `mapstructure:"event_history_size" yaml:"event_history_size"`
+
+	// EnableSSEInspector enables SSE inspector (mutually exclusive with LLM inspector)
+	EnableSSEInspector bool `mapstructure:"enable_sse_inspector" yaml:"enable_sse_inspector"`
+
+	// EnableLLMInspector enables LLM inspector (mutually exclusive with SSE inspector)
+	EnableLLMInspector bool `mapstructure:"enable_llm_inspector" yaml:"enable_llm_inspector"`
 }
 
 // DefaultConfig returns a default configuration

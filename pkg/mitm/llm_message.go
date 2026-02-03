@@ -11,9 +11,9 @@ import (
 
 // LLMMessage represents a message in an LLM conversation
 type LLMMessage struct {
-	Role     string      `json:"role"`               // "user", "assistant", "system", "tool"
-	Content  string      `json:"content"`            // message content
-	Name     string      `json:"name,omitempty"`     // optional name for the message
+	Role      string     `json:"role"`                 // "user", "assistant", "system", "tool"
+	Content   string     `json:"content"`              // message content
+	Name      string     `json:"name,omitempty"`       // optional name for the message
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
 }
 
@@ -38,9 +38,9 @@ type TokenUsage struct {
 
 // LLMResponse represents a response from an LLM
 type LLMResponse struct {
-	Content     string     `json:"content"`
-	StopReason  string     `json:"stop_reason"`
-	Usage       TokenUsage `json:"usage"`
+	Content    string     `json:"content"`
+	StopReason string     `json:"stop_reason"`
+	Usage      TokenUsage `json:"usage"`
 }
 
 // TokenDelta represents incremental token updates for streaming
@@ -57,7 +57,7 @@ type LLMMessageEvent struct {
 	ConversationID string     `json:"conversation_id"`
 	RequestID      string     `json:"request_id"` // HTTP request ID for correlation
 	Message        LLMMessage `json:"message"`
-	TokenCount     int        `json:"token_count,omitempty"` // token count for this message
+	TokenCount     int        `json:"token_count,omitempty"`  // token count for this message
 	TotalTokens    int        `json:"total_tokens,omitempty"` // total tokens in conversation
 	Model          string     `json:"model,omitempty"`        // model name
 }
@@ -68,8 +68,8 @@ type LLMTokenEvent struct {
 	Timestamp      time.Time `json:"timestamp"`
 	ConversationID string    `json:"conversation_id"`
 	RequestID      string    `json:"request_id"`
-	Delta          string    `json:"delta"`        // new token content
-	IsComplete     bool      `json:"is_complete"`  // true when streaming is done
+	Delta          string    `json:"delta"`       // new token content
+	IsComplete     bool      `json:"is_complete"` // true when streaming is done
 	StopReason     string    `json:"stop_reason,omitempty"`
 }
 
@@ -78,10 +78,10 @@ type ConversationUpdateEvent struct {
 	ID             string    `json:"id"`
 	Timestamp      time.Time `json:"timestamp"`
 	ConversationID string    `json:"conversation_id"`
-	Status         string    `json:"status"`       // "streaming", "complete", "error"
+	Status         string    `json:"status"` // "streaming", "complete", "error"
 	MessageCount   int       `json:"message_count"`
 	TotalTokens    int       `json:"total_tokens"`
-	Duration       int64     `json:"duration_ms"`  // duration in milliseconds
+	Duration       int64     `json:"duration_ms"` // duration in milliseconds
 	Model          string    `json:"model,omitempty"`
 }
 
@@ -96,25 +96,25 @@ type Provider interface {
 
 // Anthropic API types
 type anthropicRequest struct {
-	Model       string          `json:"model"`
-	MaxTokens   int             `json:"max_tokens"`
-	Messages    []anthropicMsg  `json:"messages"`
-	System      any             `json:"system,omitempty"` // Can be string or array of strings
-	StopSequences []string      `json:"stop_sequences,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
-	TopK        int             `json:"top_k,omitempty"`
-	TopP        float64         `json:"top_p,omitempty"`
+	Model         string         `json:"model"`
+	MaxTokens     int            `json:"max_tokens"`
+	Messages      []anthropicMsg `json:"messages"`
+	System        any            `json:"system,omitempty"` // Can be string or array of strings
+	StopSequences []string       `json:"stop_sequences,omitempty"`
+	Temperature   float64        `json:"temperature,omitempty"`
+	TopK          int            `json:"top_k,omitempty"`
+	TopP          float64        `json:"top_p,omitempty"`
 }
 
 type anthropicMsg struct {
-	Role    string              `json:"role"`
-	Content []anthropicContent  `json:"content"`
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"` // string or []anthropicContent
 }
 
 type anthropicContent struct {
-	Type     string        `json:"type"`
-	Text     string        `json:"text,omitempty"`
-	Source   *ImageSource  `json:"source,omitempty"`
+	Type   string       `json:"type"`
+	Text   string       `json:"text,omitempty"`
+	Source *ImageSource `json:"source,omitempty"`
 }
 
 type ImageSource struct {
@@ -124,14 +124,14 @@ type ImageSource struct {
 }
 
 type anthropicResponse struct {
-	ID          string             `json:"id"`
-	Type        string             `json:"type"`
-	Role        string             `json:"role"`
-	Content     []anthropicContent `json:"content"`
-	Model       string             `json:"model"`
-	StopReason  string             `json:"stop_reason"`
-	StopSequence string            `json:"stop_sequence,omitempty"`
-	Usage       anthropicUsage     `json:"usage"`
+	ID           string             `json:"id"`
+	Type         string             `json:"type"`
+	Role         string             `json:"role"`
+	Content      []anthropicContent `json:"content"`
+	Model        string             `json:"model"`
+	StopReason   string             `json:"stop_reason"`
+	StopSequence string             `json:"stop_sequence,omitempty"`
+	Usage        anthropicUsage     `json:"usage"`
 }
 
 type anthropicUsage struct {
@@ -158,19 +158,19 @@ type anthropicStreamEvent struct {
 
 // OpenAI API types (for future extension)
 type openaiRequest struct {
-	Model       string          `json:"model"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Messages    []openaiMsg     `json:"messages"`
-	System      string          `json:"system,omitempty"`
-	Stop        interface{}     `json:"stop,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
-	TopP        float64         `json:"top_p,omitempty"`
+	Model       string      `json:"model"`
+	MaxTokens   int         `json:"max_tokens,omitempty"`
+	Messages    []openaiMsg `json:"messages"`
+	System      string      `json:"system,omitempty"`
+	Stop        interface{} `json:"stop,omitempty"`
+	Temperature float64     `json:"temperature,omitempty"`
+	TopP        float64     `json:"top_p,omitempty"`
 }
 
 type openaiMsg struct {
-	Role    string              `json:"role"`
-	Content interface{}         `json:"content"` // string or array of content parts
-	Name    string              `json:"name,omitempty"`
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"` // string or array of content parts
+	Name    string      `json:"name,omitempty"`
 }
 
 type openaiContentPart struct {
@@ -183,19 +183,19 @@ type openaiContentPart struct {
 }
 
 type openaiResponse struct {
-	ID      string               `json:"id"`
-	Object  string               `json:"object"`
-	Created int64                `json:"created"`
-	Model   string               `json:"model"`
-	Choices []openaiChoice       `json:"choices"`
-	Usage   openaiUsage          `json:"usage"`
+	ID      string         `json:"id"`
+	Object  string         `json:"object"`
+	Created int64          `json:"created"`
+	Model   string         `json:"model"`
+	Choices []openaiChoice `json:"choices"`
+	Usage   openaiUsage    `json:"usage"`
 }
 
 type openaiChoice struct {
-	Index        int           `json:"index"`
-	Message      openaiMsg     `json:"message"`
-	FinishReason string        `json:"finish_reason"`
-	LogProbs     interface{}   `json:"logprobs,omitempty"`
+	Index        int         `json:"index"`
+	Message      openaiMsg   `json:"message"`
+	FinishReason string      `json:"finish_reason"`
+	LogProbs     interface{} `json:"logprobs,omitempty"`
 }
 
 type openaiUsage struct {
@@ -205,23 +205,23 @@ type openaiUsage struct {
 }
 
 type openaiStreamChunk struct {
-	ID      string            `json:"id"`
-	Object  string            `json:"object"`
-	Created int64             `json:"created"`
-	Model   string            `json:"model"`
+	ID      string              `json:"id"`
+	Object  string              `json:"object"`
+	Created int64               `json:"created"`
+	Model   string              `json:"model"`
 	Choices []openaiChunkChoice `json:"choices"`
 }
 
 type openaiChunkChoice struct {
-	Index        int               `json:"index"`
-	Delta        openaiDelta       `json:"delta"`
-	FinishReason string            `json:"finish_reason,omitempty"`
-	LogProbs     interface{}       `json:"logprobs,omitempty"`
+	Index        int         `json:"index"`
+	Delta        openaiDelta `json:"delta"`
+	FinishReason string      `json:"finish_reason,omitempty"`
+	LogProbs     interface{} `json:"logprobs,omitempty"`
 }
 
 type openaiDelta struct {
-	Role    string      `json:"role,omitempty"`
-	Content string      `json:"content,omitempty"`
+	Role      string     `json:"role,omitempty"`
+	Content   string     `json:"content,omitempty"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
 }
 
@@ -430,8 +430,13 @@ func generateConversationHash(messages []anthropicMsg) string {
 	// Generate a simple hash from message content
 	data := ""
 	for _, m := range messages {
-		for _, c := range m.Content {
-			data += c.Text
+		switch c := m.Content.(type) {
+		case string:
+			data += c
+		case []anthropicContent:
+			for _, item := range c {
+				data += item.Text
+			}
 		}
 	}
 	hash := sha256.Sum256([]byte(data))
@@ -454,14 +459,21 @@ func convertAnthropicMessages(messages []anthropicMsg) []LLMMessage {
 	for _, m := range messages {
 		content := ""
 		var toolCalls []ToolCall
-		for _, c := range m.Content {
-			if c.Type == "text" {
-				content += c.Text
+
+		switch c := m.Content.(type) {
+		case string:
+			content = c
+		case []anthropicContent:
+			for _, item := range c {
+				if item.Type == "text" {
+					content += item.Text
+				}
 			}
 		}
+
 		result = append(result, LLMMessage{
-			Role:     m.Role,
-			Content:  content,
+			Role:      m.Role,
+			Content:   content,
 			ToolCalls: toolCalls,
 		})
 	}

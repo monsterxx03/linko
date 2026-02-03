@@ -6,15 +6,17 @@ import (
 	"encoding/json"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 )
 
 // LLMInspector parses LLM API traffic and publishes structured events
 type LLMInspector struct {
 	*BaseInspector
-	logger   *slog.Logger
-	eventBus *EventBus
-	httpProc *HTTPProcessor
+	logger       *slog.Logger
+	eventBus     *EventBus
+	httpProc     *HTTPProcessor
+	requestPaths sync.Map // requestID -> string (path)
 }
 
 type conversationState struct {
@@ -49,7 +51,7 @@ func (l *LLMInspector) Inspect(direction Direction, data []byte, hostname string
 	if direction == DirectionClientToServer {
 		return l.inspectRequest(data, requestID)
 	}
-	return l.inspectResponse(data, requestID)
+	return l.inspectResponse(data, hostname, requestID)
 }
 
 // inspectRequest processes client-to-server (request) traffic
@@ -68,6 +70,9 @@ func (l *LLMInspector) inspectRequest(inputData []byte, requestID string) ([]byt
 }
 
 func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID string) {
+	// 保存路径信息到缓存
+	l.requestPaths.Store(requestID, httpMsg.Path)
+
 	bodyBytes := httpMsg.Body
 	if len(bodyBytes) == 0 {
 		return
@@ -78,7 +83,6 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	if provider == nil {
 		return
 	}
-
 	// Parse the request
 	messages, err := provider.ParseRequest(bodyBytes)
 	if err != nil {
@@ -118,18 +122,18 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 }
 
 // inspectResponse processes server-to-client (response) traffic
-func (l *LLMInspector) inspectResponse(inputData []byte, requestID string) ([]byte, error) {
+func (l *LLMInspector) inspectResponse(inputData []byte, hostname string, requestID string) ([]byte, error) {
 	_, httpMsg, complete, err := l.httpProc.ProcessResponse(inputData, requestID)
 	if err != nil || httpMsg == nil {
 		return inputData, nil
 	}
 
 	if httpMsg.IsSSE {
-		return l.processSSEStream(httpMsg, requestID)
+		return l.processSSEStream(httpMsg, hostname, requestID)
 	}
 
 	if complete {
-		l.processCompleteResponse(httpMsg, requestID)
+		l.processCompleteResponse(httpMsg, hostname, requestID)
 		l.httpProc.ClearPending(requestID)
 	}
 
@@ -137,14 +141,20 @@ func (l *LLMInspector) inspectResponse(inputData []byte, requestID string) ([]by
 }
 
 // processSSEStream processes streaming responses
-func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, requestID string) ([]byte, error) {
+func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, requestID string) ([]byte, error) {
 	bodyBytes := httpMsg.Body
 	if len(bodyBytes) == 0 {
 		return bodyBytes, nil
 	}
 
-	// Try to find a provider
-	provider := FindProvider(httpMsg.Hostname, httpMsg.Path, bodyBytes)
+	// 从缓存中获取路径信息
+	path := ""
+	if val, exists := l.requestPaths.Load(requestID); exists {
+		path = val.(string)
+	}
+
+	// Try to find a provider using the hostname from the connection and cached path
+	provider := FindProvider(hostname, path, bodyBytes)
 	if provider == nil {
 		return bodyBytes, nil
 	}
@@ -153,7 +163,13 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, requestID string) 
 	deltas := provider.ParseSSEStream(bodyBytes)
 	conversationID := l.extractConversationID(requestID)
 
+	// Accumulate content for streaming completion
+	accumulatedContent := ""
+
 	for _, delta := range deltas {
+		// Accumulate content
+		accumulatedContent += delta.Text
+
 		event := &LLMTokenEvent{
 			ID:             generateEventID(),
 			Timestamp:      time.Now(),
@@ -167,7 +183,20 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, requestID string) 
 		l.publishEvent("llm_token", event)
 
 		if delta.IsComplete {
-			l.publishConversationUpdate(conversationID, "complete", 1, estimateTokenCount(delta.Text), "")
+			// Publish message event for streaming completion (required for frontend)
+			msgEvent := &LLMMessageEvent{
+				ID:             generateEventID(),
+				Timestamp:      time.Now(),
+				ConversationID: conversationID,
+				RequestID:      requestID,
+				Message: LLMMessage{
+					Role:    "assistant",
+					Content: accumulatedContent,
+				},
+			}
+			l.publishEvent("llm_message", msgEvent)
+
+			l.publishConversationUpdate(conversationID, "complete", 1, estimateTokenCount(accumulatedContent), "")
 		}
 	}
 
@@ -175,14 +204,22 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, requestID string) 
 }
 
 // processCompleteResponse processes regular JSON responses
-func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, requestID string) {
+func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname string, requestID string) {
 	bodyBytes := httpMsg.Body
 	if len(bodyBytes) == 0 {
 		return
 	}
 
-	// Try to find a provider
-	provider := FindProvider(httpMsg.Hostname, httpMsg.Path, bodyBytes)
+	// 从缓存中获取路径信息
+	path := ""
+	if val, exists := l.requestPaths.Load(requestID); exists {
+		path = val.(string)
+		// 处理完响应后清理缓存
+		l.requestPaths.Delete(requestID)
+	}
+
+	// Try to find a provider using the hostname from the connection and cached path
+	provider := FindProvider(hostname, path, bodyBytes)
 	if provider == nil {
 		return
 	}

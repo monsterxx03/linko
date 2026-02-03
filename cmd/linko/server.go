@@ -69,6 +69,9 @@ func RunServer(cfg *config.Config, sc *ServerConfig, logger *slog.Logger) error 
 			CACertValidity:   cfg.MITM.CACertValidity,
 			Enabled:          true,
 			MaxBodySize:      cfg.MITM.MaxBodySize,
+			EventHistorySize: cfg.MITM.EventHistorySize,
+			EnableSSEInspector:  cfg.MITM.EnableSSEInspector,
+			EnableLLMInspector:  cfg.MITM.EnableLLMInspector,
 		}, logger)
 		if err != nil {
 			slog.Error("failed to initialize MITM manager", "error", err)

@@ -121,6 +121,13 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
 
   // Get or create conversation
   const getOrCreateConversation = useCallback((conversationId: string): Conversation => {
+    // Defensive check: ensure conversationId is not empty
+    if (!conversationId) {
+      // Generate a temporary unique ID to avoid key collisions
+      conversationId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      console.warn('Empty conversationId provided, generated temporary ID:', conversationId);
+    }
+
     const existing = conversationsRef.current.get(conversationId);
     if (existing) {
       return existing;
@@ -153,18 +160,33 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
   }, [getOrCreateConversation, maxConversations]);
 
   // Handle message events
-  const handleMessageEvent = useCallback((event: LLMMessageEvent) => {
-    const conv = getOrCreateConversation(event.conversation_id);
+  const handleMessageEvent = useCallback((event: any) => {
+    // Extract actual event data from extra field if present
+    const actualEvent = event.extra || event;
+    
+    // Defensive check: ensure message exists
+    if (!actualEvent.message) {
+      console.warn('Received llm_message event without message field:', event);
+      return;
+    }
+
+    // Defensive check: ensure conversation_id exists
+    if (!actualEvent.conversation_id) {
+      console.warn('Received llm_message event without conversation_id:', event);
+      return;
+    }
+
+    const conv = getOrCreateConversation(actualEvent.conversation_id);
 
     // Add or update message
-    const messageIndex = conv.messages.findIndex(m => m.id === event.id);
+    const messageIndex = conv.messages.findIndex(m => m.id === actualEvent.id);
     const newMessage: Message = {
-      id: event.id,
-      role: event.message.role,
-      content: event.message.content,
-      tool_calls: event.message.tool_calls,
-      tokens: event.token_count,
-      timestamp: new Date(event.timestamp).getTime(),
+      id: actualEvent.id,
+      role: actualEvent.message.role || 'unknown',
+      content: actualEvent.message.content || '',
+      tool_calls: actualEvent.message.tool_calls,
+      tokens: actualEvent.token_count,
+      timestamp: new Date(actualEvent.timestamp).getTime(),
     };
 
     if (messageIndex >= 0) {
@@ -174,49 +196,67 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
     }
 
     // Update conversation
-    updateConversation(event.conversation_id, {
+    updateConversation(actualEvent.conversation_id, {
       messages: [...conv.messages],
-      model: event.model || conv.model,
-      total_tokens: event.total_tokens || conv.total_tokens,
+      model: actualEvent.model || conv.model,
+      total_tokens: actualEvent.total_tokens || conv.total_tokens,
     });
 
     // Set as current if first message
     if (conv.messages.length === 1) {
-      setCurrentConversationId(event.conversation_id);
+      setCurrentConversationId(actualEvent.conversation_id);
     }
   }, [getOrCreateConversation, updateConversation]);
 
   // Handle token events (streaming)
-  const handleTokenEvent = useCallback((event: LLMTokenEvent) => {
-    const conv = conversationsRef.current.get(event.conversation_id);
+  const handleTokenEvent = useCallback((event: any) => {
+    // Extract actual event data from extra field if present
+    const actualEvent = event.extra || event;
+    
+    // Defensive check: ensure conversation_id exists
+    if (!actualEvent.conversation_id) {
+      console.warn('Received llm_token event without conversation_id:', event);
+      return;
+    }
+
+    const conv = conversationsRef.current.get(actualEvent.conversation_id);
     if (!conv || conv.messages.length === 0) return;
 
     const lastMessage = conv.messages[conv.messages.length - 1];
 
-    if (event.is_complete) {
+    if (actualEvent.is_complete) {
       // Streaming complete
       lastMessage.is_streaming = false;
-      updateConversation(event.conversation_id, {
+      updateConversation(actualEvent.conversation_id, {
         status: 'complete',
         messages: [...conv.messages],
       });
     } else {
       // Append token
-      lastMessage.content += event.delta;
+      lastMessage.content += actualEvent.delta;
       lastMessage.is_streaming = true;
-      updateConversation(event.conversation_id, {
+      updateConversation(actualEvent.conversation_id, {
         messages: [...conv.messages],
       });
     }
   }, [updateConversation]);
 
   // Handle conversation update
-  const handleConversationUpdate = useCallback((event: ConversationUpdateEvent) => {
-    updateConversation(event.conversation_id, {
-      status: event.status,
-      total_tokens: event.total_tokens,
-      message_count: event.message_count,
-      model: event.model,
+  const handleConversationUpdate = useCallback((event: any) => {
+    // Extract actual event data from extra field if present
+    const actualEvent = event.extra || event;
+    
+    // Defensive check: ensure conversation_id exists
+    if (!actualEvent.conversation_id) {
+      console.warn('Received conversation event without conversation_id:', event);
+      return;
+    }
+
+    updateConversation(actualEvent.conversation_id, {
+      status: actualEvent.status,
+      total_tokens: actualEvent.total_tokens,
+      message_count: actualEvent.message_count,
+      model: actualEvent.model,
     });
   }, [updateConversation]);
 

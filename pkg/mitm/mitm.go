@@ -20,14 +20,16 @@ type Manager struct {
 
 // ManagerConfig contains MITM manager configuration
 type ManagerConfig struct {
-	CACertPath       string
-	CAKeyPath        string
-	CertCacheDir     string
-	SiteCertValidity time.Duration
-	CACertValidity   time.Duration
-	Enabled          bool
-	MaxBodySize      int64
-	EventHistorySize int
+	CACertPath         string
+	CAKeyPath          string
+	CertCacheDir       string
+	SiteCertValidity   time.Duration
+	CACertValidity     time.Duration
+	Enabled            bool
+	MaxBodySize        int64
+	EventHistorySize   int
+	EnableSSEInspector bool // Enable SSE inspector (mutually exclusive with LLM inspector)
+	EnableLLMInspector bool // Enable LLM inspector (mutually exclusive with SSE inspector)
 }
 
 // NewManager creates a new MITM manager
@@ -71,9 +73,17 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		eventBus:        NewEventBus(logger, config.EventHistorySize), // Create event bus
 	}
 
-	m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))
-	// Add LLM inspector for parsing LLM API traffic
-	m.inspector.Add(NewLLMInspector(logger, m.eventBus, ""))
+	// Add inspectors based on configuration (mutually exclusive)
+	if config.EnableSSEInspector {
+		m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))
+		logger.Info("Added SSE inspector")
+	} else if config.EnableLLMInspector {
+		m.inspector.Add(NewLLMInspector(logger, m.eventBus, ""))
+		logger.Info("Added LLM inspector")
+	} else {
+		// Default: add no inspectors to avoid conflicts
+		logger.Info("No inspectors added (default behavior to avoid conflicts)")
+	}
 
 	return m, nil
 }
