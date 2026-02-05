@@ -1,12 +1,33 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import DnsMonitor from './pages/DnsMonitor';
 import MitmTraffic from './pages/MitmTraffic';
 import Conversations from './pages/Conversations';
 
 type Tab = 'dns' | 'mitm' | 'conversations';
 
+const TAB_VALUES: Tab[] = ['dns', 'mitm', 'conversations'];
+
+function getTabFromHash(): Tab {
+  const hash = window.location.hash.slice(1);
+  return TAB_VALUES.includes(hash as Tab) ? (hash as Tab) : 'dns';
+}
+
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('dns');
+  const [activeTab, setActiveTab] = useState<Tab>(getTabFromHash);
+
+  // 从 URL hash 同步状态
+  useEffect(() => {
+    const handleHashChange = () => {
+      setActiveTab(getTabFromHash());
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const switchTab = (tab: Tab) => {
+    setActiveTab(tab);
+    window.location.hash = tab;
+  };
 
   return (
     <div className="min-h-screen bg-bg-50">
@@ -47,7 +68,7 @@ function App() {
           <ul className="flex space-x-8">
             <li>
               <button
-                onClick={() => setActiveTab('dns')}
+                onClick={() => switchTab('dns')}
                 className={`py-4 px-1 border-b-2 font-medium transition-colors ${
                   activeTab === 'dns'
                     ? 'border-accent-500 text-accent-600'
@@ -59,7 +80,7 @@ function App() {
             </li>
             <li>
               <button
-                onClick={() => setActiveTab('mitm')}
+                onClick={() => switchTab('mitm')}
                 className={`py-4 px-1 border-b-2 font-medium transition-colors ${
                   activeTab === 'mitm'
                     ? 'border-accent-500 text-accent-600'
@@ -71,7 +92,7 @@ function App() {
             </li>
             <li>
               <button
-                onClick={() => setActiveTab('conversations')}
+                onClick={() => switchTab('conversations')}
                 className={`py-4 px-1 border-b-2 font-medium transition-colors ${
                   activeTab === 'conversations'
                     ? 'border-accent-500 text-accent-600'
