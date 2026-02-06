@@ -215,7 +215,7 @@ func DefaultConfig() *Config {
 			CertCacheDir:     "certs/sites",
 			SiteCertValidity: 168 * time.Hour,      // 7 days
 			CACertValidity:   365 * 24 * time.Hour, // 365 days
-			MaxBodySize:      16 * 1024,            // 16KB default
+			MaxBodySize:      2097152,              // 2M default
 			EventHistorySize: 10,                   // Default 10 historical events
 		},
 	}
