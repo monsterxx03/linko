@@ -129,14 +129,14 @@ export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, 
   };
 
   return (
-    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
+    <div className="flex gap-3">
       {/* Avatar */}
       <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${roleColors[role].replace('border', 'bg')}`}>
         {roleIcon[role]}
       </div>
 
       {/* Message bubble */}
-      <div className={`flex-1 max-w-[80%] ${isUser ? 'text-right' : ''}`}>
+      <div className="flex-1 max-w-[80%]">
         <div className="flex items-center gap-2 mb-1">
           <span className={`text-xs font-medium ${isUser ? 'text-blue-700' : 'text-bg-600'}`}>
             {roleLabel[role]}
@@ -152,7 +152,7 @@ export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, 
           )}
         </div>
 
-        <div className={`rounded-xl p-4 border ${roleColors[role]} ${isUser ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}>
+        <div className={`rounded-xl p-4 border ${roleColors[role]} rounded-tl-sm`}>
           {/* Tool calls */}
           {tool_calls && tool_calls.length > 0 && (
             <ToolCallPanel calls={tool_calls} />

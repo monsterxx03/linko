@@ -59,6 +59,11 @@ function ConversationList({
                 )}
               </div>
 
+              {/* Debug: 显示 conversation ID */}
+              <p className="text-xs text-bg-400 font-mono truncate mb-1" title={conv.id}>
+                {conv.id}
+              </p>
+
               <p className="text-sm text-bg-800 truncate mb-1">
                 {lastMessage?.content || 'Empty conversation'}
               </p>

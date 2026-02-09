@@ -102,12 +102,15 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
 
   const eventSourceRef = useRef<EventSource | null>(null);
   const conversationsRef = useRef<Map<string, Conversation>>(new Map());
+  // 用于跟踪当前活跃的对话 ID，处理追问时的 ID 变化
+  const activeConversationIdRef = useRef<string | null>(null);
 
   // Clear all conversations
   const clear = useCallback(() => {
     conversationsRef.current.clear();
     setConversations([]);
     setCurrentConversationId(null);
+    activeConversationIdRef.current = null;
   }, []);
 
   // Reconnect to SSE
@@ -117,6 +120,7 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
     }
     setIsConnected(false);
     setError(null);
+    activeConversationIdRef.current = null;
   }, []);
 
   // Get or create conversation
@@ -163,7 +167,7 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
   const handleMessageEvent = useCallback((event: any) => {
     // Extract actual event data from extra field if present
     const actualEvent = event.extra || event;
-    
+
     // Defensive check: ensure message exists
     if (!actualEvent.message) {
       console.warn('Received llm_message event without message field:', event);
@@ -176,7 +180,23 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
       return;
     }
 
-    const conv = getOrCreateConversation(actualEvent.conversation_id);
+    // 检测对话 ID 是否变化（用户追问时会变化）
+    const prevConversationId = activeConversationIdRef.current;
+    const newConversationId = actualEvent.conversation_id;
+
+    // 如果是新的对话（ID 变化了），将旧对话标记为完成
+    if (prevConversationId && prevConversationId !== newConversationId) {
+      const prevConv = conversationsRef.current.get(prevConversationId);
+      if (prevConv && prevConv.status !== 'complete') {
+        prevConv.status = 'complete';
+        conversationsRef.current.set(prevConversationId, prevConv);
+        // 触发状态更新
+        setConversations(Array.from(conversationsRef.current.values()));
+      }
+    }
+
+    // 获取或创建对话
+    const conv = getOrCreateConversation(newConversationId);
 
     // Add or update message
     const messageIndex = conv.messages.findIndex(m => m.id === actualEvent.id);
@@ -196,23 +216,22 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
     }
 
     // Update conversation
-    updateConversation(actualEvent.conversation_id, {
+    updateConversation(newConversationId, {
       messages: [...conv.messages],
       model: actualEvent.model || conv.model,
       total_tokens: actualEvent.total_tokens || conv.total_tokens,
     });
 
-    // Set as current if first message
-    if (conv.messages.length === 1) {
-      setCurrentConversationId(actualEvent.conversation_id);
-    }
+    // 设置当前活跃对话 ID，并自动选中
+    activeConversationIdRef.current = newConversationId;
+    setCurrentConversationId(newConversationId);
   }, [getOrCreateConversation, updateConversation]);
 
   // Handle token events (streaming)
   const handleTokenEvent = useCallback((event: any) => {
     // Extract actual event data from extra field if present
     const actualEvent = event.extra || event;
-    
+
     // Defensive check: ensure conversation_id exists
     if (!actualEvent.conversation_id) {
       console.warn('Received llm_token event without conversation_id:', event);
@@ -231,6 +250,10 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
         status: 'complete',
         messages: [...conv.messages],
       });
+      // 流结束时清除活跃对话标记
+      if (activeConversationIdRef.current === actualEvent.conversation_id) {
+        // 保留 ID，便于后续可能的追加，不立即清除
+      }
     } else {
       // Append token
       lastMessage.content += actualEvent.delta;

@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 )
@@ -13,10 +12,11 @@ import (
 // LLMInspector parses LLM API traffic and publishes structured events
 type LLMInspector struct {
 	*BaseInspector
-	logger       *slog.Logger
-	eventBus     *EventBus
-	httpProc     *HTTPProcessor
-	requestPaths sync.Map // requestID -> string (path)
+	logger         *slog.Logger
+	eventBus       *EventBus
+	httpProc       *HTTPProcessor
+	requestPaths   sync.Map // requestID -> string (path)
+	conversationIDs sync.Map // requestID -> string (conversationID)
 }
 
 type conversationState struct {
@@ -96,6 +96,8 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 
 	// Extract conversation ID
 	conversationID := provider.ExtractConversationID(bodyBytes)
+	// 缓存 conversationID，用于响应处理时匹配
+	l.conversationIDs.Store(requestID, conversationID)
 	model := l.extractModel(bodyBytes)
 
 	// Publish message events for each message in the request
@@ -161,12 +163,25 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 
 	// Parse SSE stream tokens
 	deltas := provider.ParseSSEStream(bodyBytes)
-	conversationID := l.extractConversationID(requestID)
+	// 从缓存中获取 conversationID（与请求时一致）
+	conversationID := ""
+	if val, exists := l.conversationIDs.Load(requestID); exists {
+		conversationID = val.(string)
+	}
+
+	// Check if this is the first chunk for this conversation
+	hasPublishedStart := false
 
 	// Accumulate content for streaming completion
 	accumulatedContent := ""
 
 	for _, delta := range deltas {
+		// 收到第一个 token 时立即更新状态为 streaming
+		if !hasPublishedStart {
+			l.publishConversationUpdate(conversationID, "streaming", 0, 0, "")
+			hasPublishedStart = true
+		}
+
 		// Accumulate content
 		accumulatedContent += delta.Text
 
@@ -230,7 +245,13 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 		return
 	}
 
-	conversationID := l.extractConversationID(requestID)
+	// 从缓存中获取 conversationID（与请求时一致）
+	conversationID := ""
+	if val, exists := l.conversationIDs.Load(requestID); exists {
+		conversationID = val.(string)
+		// 清理缓存
+		l.conversationIDs.Delete(requestID)
+	}
 
 	// Create assistant message from response
 	msg := LLMMessage{
@@ -310,15 +331,6 @@ func (l *LLMInspector) extractModel(data []byte) string {
 	}
 
 	return ""
-}
-
-// extractConversationID extracts conversation ID from requestID
-func (l *LLMInspector) extractConversationID(requestID string) string {
-	if idx := strings.LastIndex(requestID, "-"); idx > 0 {
-		connID := requestID[:idx]
-		return "conv-" + connID
-	}
-	return "conv-" + requestID
 }
 
 // estimateTokenCount provides a rough estimate of token count

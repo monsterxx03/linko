@@ -228,6 +228,27 @@ type openaiDelta struct {
 // anthropicProvider implements Provider for Anthropic Claude API
 type anthropicProvider struct{}
 
+// generateAnthropicMessagesHash generates a hash from all messages in the request
+// Used for conversation grouping - same conversation context produces same hash
+func generateAnthropicMessagesHash(messages []anthropicMsg) string {
+	var data string
+	for _, m := range messages {
+		// Include role to distinguish user/assistant/system messages
+		data += m.Role + ":"
+		switch c := m.Content.(type) {
+		case string:
+			data += c
+		case []anthropicContent:
+			for _, item := range c {
+				data += item.Text
+			}
+		}
+		data += "|"
+	}
+	hash := sha256.Sum256([]byte(data))
+	return hex.EncodeToString(hash[:8])
+}
+
 func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
 	// Anthropic official API
 	if strings.Contains(hostname, "api.anthropic.com") && strings.HasPrefix(path, "/v1/messages") {
@@ -245,8 +266,11 @@ func (a anthropicProvider) ExtractConversationID(body []byte) string {
 	if err := json.Unmarshal(body, &req); err != nil {
 		return ""
 	}
-	// Generate conversation ID from messages hash
-	hash := generateConversationHash(req.Messages)
+
+	// 提取所有消息的文本内容生成 hash
+	// 这样同一轮对话（相同的历史消息）会产生相同的 ID
+	hash := generateAnthropicMessagesHash(req.Messages)
+
 	return fmt.Sprintf("anthropic-%s", hash)
 }
 
@@ -426,6 +450,7 @@ func (o openaiProvider) ParseSSEStream(body []byte) []TokenDelta {
 }
 
 // Helper functions
+
 func generateConversationHash(messages []anthropicMsg) string {
 	// Generate a simple hash from message content
 	data := ""
@@ -446,9 +471,12 @@ func generateConversationHash(messages []anthropicMsg) string {
 func generateOpenAIConversationHash(messages []openaiMsg) string {
 	data := ""
 	for _, m := range messages {
+		// Include role to distinguish user/assistant/system messages
+		data += m.Role + ":"
 		if content, ok := m.Content.(string); ok {
 			data += content
 		}
+		data += "|"
 	}
 	hash := sha256.Sum256([]byte(data))
 	return hex.EncodeToString(hash[:8])
@@ -467,6 +495,16 @@ func convertAnthropicMessages(messages []anthropicMsg) []LLMMessage {
 			for _, item := range c {
 				if item.Type == "text" {
 					content += item.Text
+				}
+			}
+		case []interface{}:
+			for _, item := range c {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					if itemType, ok := itemMap["type"].(string); ok && itemType == "text" {
+						if text, ok := itemMap["text"].(string); ok {
+							content += text
+						}
+					}
 				}
 			}
 		}
