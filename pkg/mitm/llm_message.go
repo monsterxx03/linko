@@ -135,9 +135,10 @@ type anthropicMsg struct {
 }
 
 type anthropicContent struct {
-	Type   string       `json:"type"`
-	Text   string       `json:"text,omitempty"`
-	Source *ImageSource `json:"source,omitempty"`
+	Type     string       `json:"type"`
+	Text     string       `json:"text,omitempty"`
+	Thinking string       `json:"thinking,omitempty"`
+	Source   *ImageSource `json:"source,omitempty"`
 }
 
 type ImageSource struct {
@@ -602,18 +603,43 @@ func convertAnthropicMessages(messages []anthropicMsg) []LLMMessage {
 		switch c := m.Content.(type) {
 		case string:
 			contentParts = []string{c}
-		case []anthropicContent:
-			for _, item := range c {
-				if item.Type == "text" {
-					contentParts = append(contentParts, item.Text)
-				}
-			}
 		case []interface{}:
 			for _, item := range c {
 				if itemMap, ok := item.(map[string]interface{}); ok {
-					if itemType, ok := itemMap["type"].(string); ok && itemType == "text" {
+					itemType, _ := itemMap["type"].(string)
+					switch itemType {
+					case "text":
 						if text, ok := itemMap["text"].(string); ok {
 							contentParts = append(contentParts, text)
+						}
+					case "thinking":
+						if thinking, ok := itemMap["thinking"].(string); ok {
+							contentParts = append(contentParts, "[Thinking]\n"+thinking+"[/Thinking]")
+						}
+					case "redacted_thinking":
+						if thinking, ok := itemMap["thinking"].(string); ok {
+							contentParts = append(contentParts, "[Redacted Thinking]\n"+thinking+"[/Redacted Thinking]")
+						}
+					case "tool_use":
+						id, _ := itemMap["id"].(string)
+						name, _ := itemMap["name"].(string)
+						input, _ := itemMap["input"].(map[string]interface{})
+						inputJSON, _ := json.Marshal(input)
+						toolCalls = append(toolCalls, ToolCall{
+							ID:   id,
+							Type: "function",
+							Function: FunctionCall{
+								Name:      name,
+								Arguments: string(inputJSON),
+							},
+						})
+					case "tool_result":
+						toolUseID, _ := itemMap["tool_use_id"].(string)
+						content, _ := itemMap["content"].(string)
+						if content != "" {
+							contentParts = append(contentParts, fmt.Sprintf("[Tool Result for %s]\n%s", toolUseID, content))
+						} else {
+							contentParts = append(contentParts, fmt.Sprintf("[Tool Result for %s]", toolUseID))
 						}
 					}
 				}

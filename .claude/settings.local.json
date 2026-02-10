@@ -21,7 +21,8 @@
       "Bash(bun run build)",
       "Bash(curl:*)",
       "Bash(python3 -m json.tool:*)",
-      "Bash(make:*)"
+      "Bash(make:*)",
+      "Bash(bun add:*)"
     ]
   }
 }
