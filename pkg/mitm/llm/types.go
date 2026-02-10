@@ -57,6 +57,7 @@ type LLMResponse struct {
 // TokenDelta represents incremental token updates for streaming
 type TokenDelta struct {
 	Text       string `json:"text"`
+	Thinking   string `json:"thinking,omitempty"`
 	IsComplete bool   `json:"is_complete"`
 	StopReason string `json:"stop_reason,omitempty"`
 }
@@ -80,6 +81,7 @@ type LLMTokenEvent struct {
 	ConversationID string    `json:"conversation_id"`
 	RequestID      string    `json:"request_id"`
 	Delta          string    `json:"delta"`       // new token content
+	Thinking       string    `json:"thinking,omitempty"` // thinking content (for Claude)
 	IsComplete     bool      `json:"is_complete"` // true when streaming is done
 	StopReason     string    `json:"stop_reason,omitempty"`
 }

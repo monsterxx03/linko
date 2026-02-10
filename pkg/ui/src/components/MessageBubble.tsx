@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 
 export interface ToolDef {
@@ -23,6 +23,7 @@ interface MessageBubbleProps {
   timestamp?: number;
   system_prompts?: string[];
   tools?: ToolDef[];
+  thinking?: string;
 }
 
 function formatTime(ts?: number): string {
@@ -478,8 +479,53 @@ function UserMessageMeta({ systemPrompts, tools }: { systemPrompts?: string[]; t
   );
 }
 
-export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, timestamp, system_prompts, tools }: MessageBubbleProps) {
+// ThinkingContent displays Claude's thinking process
+function ThinkingContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const [displayContent, setDisplayContent] = useState(content);
+
+  // Update content when streaming
+  useEffect(() => {
+    if (isStreaming) {
+      setDisplayContent(content);
+    }
+  }, [content, isStreaming]);
+
+  if (!displayContent) return null;
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 transition-colors text-xs"
+      >
+        <svg
+          className={`w-3.5 h-3.5 text-slate-500 transition-transform ${expanded ? 'rotate-90' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="font-medium text-slate-600">Thinking</span>
+        {isStreaming && (
+          <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-1.5 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+          <pre className="text-xs font-mono text-slate-600 whitespace-pre-wrap break-all">
+            {displayContent}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, timestamp, system_prompts, tools, thinking }: MessageBubbleProps) {
   const isUser = role === 'user';
+  const isAssistant = role === 'assistant';
 
   const roleColors = {
     user: 'bg-indigo-50 border-indigo-200',
@@ -568,6 +614,11 @@ export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, 
               <span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse" />
             )}
           </div>
+
+          {/* Thinking content (for Claude) */}
+          {isAssistant && thinking && (
+            <ThinkingContent content={thinking} isStreaming={isStreaming} />
+          )}
 
           {/* Token count */}
           {tokens && tokens > 0 && (

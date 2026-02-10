@@ -217,6 +217,7 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 			ConversationID: conversationID,
 			RequestID:      requestID,
 			Delta:          delta.Text,
+			Thinking:       delta.Thinking,
 			IsComplete:     delta.IsComplete,
 			StopReason:     delta.StopReason,
 		}

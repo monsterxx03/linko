@@ -40,6 +40,7 @@ export interface LLMTokenEvent {
   conversation_id: string;
   request_id: string;
   delta: string;
+  thinking?: string;
   is_complete: boolean;
   stop_reason?: string;
 }
@@ -83,6 +84,7 @@ export interface Message {
   is_streaming?: boolean;
   system_prompts?: string[];
   tools?: ToolDef[];
+  thinking?: string;
 }
 
 // Hook options
@@ -274,6 +276,10 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
         lastMessage.content[lastMessage.content.length - 1] += actualEvent.delta;
       } else {
         lastMessage.content.push(actualEvent.delta);
+      }
+      // Handle thinking content (for Claude)
+      if (actualEvent.thinking) {
+        lastMessage.thinking = (lastMessage.thinking || '') + actualEvent.thinking;
       }
       lastMessage.is_streaming = true;
       updateConversation(actualEvent.conversation_id, {

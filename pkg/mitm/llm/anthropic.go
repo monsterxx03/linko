@@ -75,8 +75,10 @@ type AnthropicStreamEvent struct {
 	Type  string `json:"type"`
 	Index int    `json:"index,omitempty"`
 	Delta struct {
-		Type string `json:"type"`
-		Text string `json:"text,omitempty"`
+		Type         string `json:"type"`
+		Text         string `json:"text,omitempty"`
+		Thinking     string `json:"thinking,omitempty"`
+		PartialJSON  string `json:"partial_json,omitempty"`
 	} `json:"delta,omitempty"`
 	Message struct {
 		ID         string             `json:"id"`
@@ -86,6 +88,11 @@ type AnthropicStreamEvent struct {
 		StopReason string             `json:"stop_reason,omitempty"`
 		Usage      AnthropicUsage     `json:"usage,omitempty"`
 	} `json:"message,omitempty"`
+	ContentBlock struct {
+		Type     string       `json:"type"`
+		Text     string       `json:"text,omitempty"`
+		Thinking string       `json:"thinking,omitempty"`
+	} `json:"content_block,omitempty"`
 }
 
 // anthropicProvider implements Provider for Anthropic Claude API
@@ -225,17 +232,60 @@ func (a anthropicProvider) ParseSSEStream(body []byte) []TokenDelta {
 			continue
 		}
 
-		if event.Type == "content_block_delta" && event.Delta.Type == "text_delta" {
-			deltas = append(deltas, TokenDelta{
-				Text: event.Delta.Text,
-			})
-		} else if event.Type == "message_delta" {
+		switch event.Type {
+		case "content_block_delta":
+			switch event.Delta.Type {
+			case "text_delta":
+				deltas = append(deltas, TokenDelta{
+					Text: event.Delta.Text,
+				})
+			case "thinking_delta":
+				deltas = append(deltas, TokenDelta{
+					Thinking: event.Delta.Thinking,
+				})
+			case "input_json_delta":
+				// Ignore JSON structure deltas for now
+				a.logger.Debug("ignoring input_json_delta", "data", data)
+			default:
+				a.logger.Debug("unhandled delta type", "delta_type", event.Delta.Type, "data", data)
+			}
+		case "content_block_start":
+			// Content block started - may contain thinking block
+			if event.ContentBlock.Type == "thinking" {
+				a.logger.Debug("thinking block started", "index", event.Index)
+			}
+		case "content_block_stop":
+			// Content block ended
+			a.logger.Debug("content block stopped", "index", event.Index)
+		case "message_delta":
 			deltas = append(deltas, TokenDelta{
 				Text:       "",
 				IsComplete: true,
 				StopReason: event.Message.StopReason,
 			})
-		} else {
+		case "message_start":
+			// Message started - contains role info, not useful for deltas
+			a.logger.Debug("message started", "role", event.Message.Role)
+		case "message_stop":
+			// Message ended - final event, handled by message_delta
+			a.logger.Debug("message stopped")
+		case "error":
+			// Error event - parse error details
+			var errData struct {
+				Error struct {
+					Type    string `json:"type"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal([]byte(data), &errData) == nil {
+				a.logger.Warn("Anthropic API error", "type", errData.Error.Type, "message", errData.Error.Message)
+				deltas = append(deltas, TokenDelta{
+					Text:       fmt.Sprintf("[Error: %s] %s", errData.Error.Type, errData.Error.Message),
+					IsComplete: true,
+					StopReason: "error",
+				})
+			}
+		default:
 			a.logger.Debug("unhandled Anthropic event", "type", event.Type, "data", data)
 		}
 	}
