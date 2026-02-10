@@ -33,7 +33,7 @@ function App() {
     <div className="min-h-screen bg-bg-50">
       {/* Header */}
       <header className="bg-white border-b border-bg-200 sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-6 py-4">
+        <div className="w-full px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-bg-800 flex items-center justify-center">
@@ -62,7 +62,7 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="w-full px-6 py-8">
         {/* Tab Navigation */}
         <div className="border-b border-bg-200 mb-6">
           <ul className="flex space-x-8">
@@ -113,7 +113,7 @@ function App() {
 
       {/* Footer */}
       <footer className="border-t border-bg-200 mt-8">
-        <div className="max-w-6xl mx-auto px-6 py-4">
+        <div className="w-full px-6 py-4">
           <div className="flex items-center justify-between text-xs text-bg-400">
             <span>Linko Monitor</span>
           </div>
