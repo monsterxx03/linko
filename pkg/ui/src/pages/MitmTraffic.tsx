@@ -38,6 +38,51 @@ function formatHeaders(h?: Record<string, string>): string {
   return h ? Object.entries(h).map(([k, v]) => `${k}: ${v}`).join('\n') : '';
 }
 
+function toCurl(event: TrafficEvent): string {
+  const { request } = event;
+  if (!request) return '';
+
+  let curl = `curl -X ${request.method || 'GET'}`;
+
+  // Headers
+  if (request.headers) {
+    for (const [k, v] of Object.entries(request.headers)) {
+      curl += ` \\\n  -H '${k}: ${v}'`;
+    }
+  }
+
+  // Body
+  if (request.body) {
+    curl += ` \\\n  -d '${request.body.replace(/'/g, "'\\''")}'`;
+  }
+
+  curl += ` \\\n  '${request.url}'`;
+
+  return curl;
+}
+
+function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`text-xs px-2.5 py-1 rounded border shadow-sm transition-all ${copied ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-bg-300 text-bg-700 hover:bg-bg-50'}`}
+      title="Copy to clipboard"
+    >
+      {copied ? '✓ Copied!' : label}
+    </button>
+  );
+}
+
 function JsonBody({ body, contentType }: { body: string; contentType?: string }) {
   if (!body) return null;
 
@@ -46,19 +91,27 @@ function JsonBody({ body, contentType }: { body: string; contentType?: string })
     try {
       const parsed = JSON.parse(body);
       return (
-        <ReactJson
-          src={parsed}
-          theme="rjv-default"
-          collapsed={2}
-          displayDataTypes={false}
-          enableClipboard={false}
-          iconStyle="triangle"
-          style={{ backgroundColor: 'transparent', padding: '8px', borderRadius: '4px' }}
-        />
+        <div className="relative pr-20">
+          <CopyButton text={body} />
+          <ReactJson
+            src={parsed}
+            theme="rjv-default"
+            collapsed={2}
+            displayDataTypes={false}
+            enableClipboard={false}
+            iconStyle="triangle"
+            style={{ backgroundColor: 'transparent', padding: '8px', borderRadius: '4px' }}
+          />
+        </div>
       );
     } catch {}
   }
-  return <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">{body}</pre>;
+  return (
+    <div className="relative pr-20">
+      <CopyButton text={body} />
+      <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">{body}</pre>
+    </div>
+  );
 }
 
 function CollapsibleSection({ title, defaultExpanded, children }: {
@@ -127,6 +180,11 @@ function TrafficItem({ event, bodyExpanded }: { event: TrafficEvent; bodyExpande
 
       {expanded && (
         <div className="mt-3 space-y-3">
+          {hasReq && (
+            <div className="flex justify-end">
+              <CopyButton text={toCurl(event)} label="Copy as cURL" />
+            </div>
+          )}
           {hasReq && (
             <>
               <CollapsibleSection title="Request Headers">
