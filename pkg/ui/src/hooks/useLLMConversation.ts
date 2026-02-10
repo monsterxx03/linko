@@ -342,6 +342,22 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
         }
       });
 
+      eventSource.addEventListener('llm_error', (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          // Extract actual event data from extra field if present
+          const actualEvent = data.extra || data;
+          // Update conversation status to error
+          if (actualEvent.conversation_id) {
+            updateConversation(actualEvent.conversation_id, {
+              status: 'error',
+            });
+          }
+        } catch (e) {
+          console.error('Failed to parse llm_error event:', e);
+        }
+      });
+
       eventSource.addEventListener('error', () => {
         setIsConnected(false);
         if (eventSource.readyState === EventSource.CLOSED) {

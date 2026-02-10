@@ -49,6 +49,11 @@ function ConversationList({
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                     <span className="text-xs text-emerald-600">Streaming</span>
                   </span>
+                ) : conv.status === 'error' ? (
+                  <span className="flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-red-500" />
+                    <span className="text-xs text-red-600">Error</span>
+                  </span>
                 ) : (
                   <span className="text-xs text-bg-400">Done</span>
                 )}
@@ -118,7 +123,12 @@ function ConversationView({
             <div className="flex items-center gap-3 mt-1 text-xs text-bg-400">
               <span>{conversation.messages.length} messages</span>
               <span>{conversation.total_tokens} tokens</span>
-              <span className="capitalize">{conversation.status}</span>
+              <span className={`capitalize ${
+                conversation.status === 'error' ? 'text-red-600' :
+                conversation.status === 'streaming' ? 'text-emerald-600' : ''
+              }`}>
+                {conversation.status === 'error' ? 'Error' : conversation.status}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -126,6 +136,12 @@ function ConversationView({
               <span className="flex items-center gap-1.5 px-2 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-medium">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Live
+              </span>
+            )}
+            {conversation.status === 'error' && (
+              <span className="flex items-center gap-1.5 px-2 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium">
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                Error
               </span>
             )}
           </div>

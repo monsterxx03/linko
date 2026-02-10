@@ -11,12 +11,12 @@ import (
 
 // LLMMessage represents a message in an LLM conversation
 type LLMMessage struct {
-	Role       string     `json:"role"`                 // "user", "assistant", "system", "tool"
-	Content    []string   `json:"content"`              // message content
-	Name       string     `json:"name,omitempty"`       // optional name for the message
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
-	System     []string   `json:"system,omitempty"`     // system prompt (extracted from request)
-	Tools      []ToolDef  `json:"tools,omitempty"`    // available tools (extracted from request)
+	Role      string     `json:"role"`                 // "user", "assistant", "system", "tool"
+	Content   []string   `json:"content"`              // message content
+	Name      string     `json:"name,omitempty"`       // optional name for the message
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
+	System    []string   `json:"system,omitempty"`     // system prompt (extracted from request)
+	Tools     []ToolDef  `json:"tools,omitempty"`      // available tools (extracted from request)
 }
 
 // ToolDef represents a tool definition
@@ -45,11 +45,18 @@ type TokenUsage struct {
 	OutputTokens int `json:"output_tokens"`
 }
 
+// APIError represents an API error response
+type APIError struct {
+	Type    string `json:"type"`
+	Message string `json:"message"`
+}
+
 // LLMResponse represents a response from an LLM
 type LLMResponse struct {
 	Content    string     `json:"content"`
 	StopReason string     `json:"stop_reason"`
 	Usage      TokenUsage `json:"usage"`
+	Error      *APIError  `json:"error,omitempty"`
 }
 
 // TokenDelta represents incremental token updates for streaming
@@ -107,16 +114,16 @@ type Provider interface {
 
 // Anthropic API types
 type anthropicRequest struct {
-	Model         string           `json:"model"`
-	MaxTokens     int              `json:"max_tokens"`
-	Messages      []anthropicMsg  `json:"messages"`
-	System        any              `json:"system,omitempty"` // Can be string or array of strings
-	StopSequences []string         `json:"stop_sequences,omitempty"`
-	Temperature   float64          `json:"temperature,omitempty"`
-	TopK          int              `json:"top_k,omitempty"`
-	TopP          float64          `json:"top_p,omitempty"`
+	Model         string             `json:"model"`
+	MaxTokens     int                `json:"max_tokens"`
+	Messages      []anthropicMsg     `json:"messages"`
+	System        any                `json:"system,omitempty"` // Can be string or array of strings
+	StopSequences []string           `json:"stop_sequences,omitempty"`
+	Temperature   float64            `json:"temperature,omitempty"`
+	TopK          int                `json:"top_k,omitempty"`
+	TopP          float64            `json:"top_p,omitempty"`
 	Metadata      *anthropicMetadata `json:"metadata,omitempty"`
-	Tools         []anthropicTool `json:"tools,omitempty"`
+	Tools         []anthropicTool    `json:"tools,omitempty"`
 }
 
 type anthropicMetadata struct {
@@ -124,9 +131,9 @@ type anthropicMetadata struct {
 }
 
 type anthropicTool struct {
-	Name          string                    `json:"name"`
-	Description   string                    `json:"description,omitempty"`
-	InputSchema   map[string]interface{}    `json:"input_schema"`
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	InputSchema map[string]interface{} `json:"input_schema"`
 }
 
 type anthropicMsg struct {
@@ -156,6 +163,10 @@ type anthropicResponse struct {
 	StopReason   string             `json:"stop_reason"`
 	StopSequence string             `json:"stop_sequence,omitempty"`
 	Usage        anthropicUsage     `json:"usage"`
+	Error        struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
 }
 
 type anthropicUsage struct {
@@ -318,12 +329,24 @@ func (a anthropicProvider) ParseResponse(body []byte) (*LLMResponse, error) {
 		return nil, fmt.Errorf("failed to parse Anthropic response: %w", err)
 	}
 
+	// Check for API error response
+	if resp.Type == "error" {
+		return &LLMResponse{
+			Content:    resp.Error.Message,
+			StopReason: "error",
+			Error:      &APIError{Type: resp.Error.Type, Message: resp.Error.Message},
+		}, nil
+	}
+
 	content := ""
 	for _, c := range resp.Content {
 		if c.Type == "text" {
 			content = c.Text
 			break
 		}
+	}
+	if content == "" {
+		fmt.Println(string(body))
 	}
 
 	return &LLMResponse{

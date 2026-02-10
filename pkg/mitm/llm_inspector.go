@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -271,18 +272,30 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 		return
 	}
 
+	// 从缓存中获取 conversationID
+	var conversationID string
+	if val, exists := l.conversationIDs.Load(requestID); exists {
+		conversationID = val.(string)
+	}
+
 	resp, err := provider.ParseResponse(bodyBytes)
 	if err != nil {
 		l.logger.Debug("failed to parse LLM response", "error", err)
 		return
 	}
 
-	// 从缓存中获取 conversationID（与请求时一致）
-	conversationID := ""
-	if val, exists := l.conversationIDs.Load(requestID); exists {
-		conversationID = val.(string)
+	// Handle API error
+	if resp.Error != nil {
+		l.logger.Warn("LLM API error",
+			"conversation_id", conversationID,
+			"error_type", resp.Error.Type,
+			"error_message", resp.Error.Message,
+		)
+		l.publishLLMError(conversationID, requestID, resp.Error)
+		l.publishConversationUpdate(conversationID, "error", 0, 0, "")
 		// 清理缓存
 		l.conversationIDs.Delete(requestID)
+		return
 	}
 
 	// Create assistant message from response
@@ -311,6 +324,40 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 		"content_length", len(resp.Content),
 		"stop_reason", resp.StopReason,
 	)
+}
+
+// publishLLMError publishes an LLM API error event and a message with error content
+func (l *LLMInspector) publishLLMError(conversationID, requestID string, apiError *APIError) {
+	if l.eventBus == nil {
+		return
+	}
+
+	// Publish llm_error event
+	event := &TrafficEvent{
+		ID:        generateEventID(),
+		Timestamp: time.Now(),
+		Direction: "llm_error",
+		Extra: map[string]any{
+			"conversation_id": conversationID,
+			"request_id":      requestID,
+			"error_type":      apiError.Type,
+			"error_message":   apiError.Message,
+		},
+	}
+	l.eventBus.Publish(event)
+
+	// Also publish an error message so it shows in the conversation
+	errorMsgEvent := &LLMMessageEvent{
+		ID:             generateEventID(),
+		Timestamp:      time.Now(),
+		ConversationID: conversationID,
+		RequestID:      requestID,
+		Message: LLMMessage{
+			Role:    "assistant",
+			Content: []string{fmt.Sprintf("[Error: %s] %s", apiError.Type, apiError.Message)},
+		},
+	}
+	l.publishEvent("llm_message", errorMsgEvent)
 }
 
 // publishEvent publishes an event to the event bus
