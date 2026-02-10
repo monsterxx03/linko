@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/monsterxx03/linko/pkg/mitm/llm"
 )
 
 // LLMInspector parses LLM API traffic and publishes structured events
@@ -81,7 +83,7 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	}
 
 	// Try to find a provider for this request
-	provider := FindProvider(httpMsg.Hostname, httpMsg.Path, bodyBytes)
+	provider := llm.FindProvider(httpMsg.Hostname, httpMsg.Path, bodyBytes)
 	if provider == nil {
 		return
 	}
@@ -112,7 +114,7 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	lastMsg.System = systemPrompts
 	lastMsg.Tools = tools
 
-	event := &LLMMessageEvent{
+	event := &llm.LLMMessageEvent{
 		ID:             generateEventID(),
 		Timestamp:      time.Now(),
 		ConversationID: conversationID,
@@ -165,7 +167,7 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 	}
 
 	// Try to find a provider using the hostname from the connection and cached path
-	provider := FindProvider(hostname, path, bodyBytes)
+	provider := llm.FindProvider(hostname, path, bodyBytes)
 	if provider == nil {
 		return bodyBytes, nil
 	}
@@ -192,12 +194,12 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 			l.streamMsgIDs.Store(requestID, msgID)
 
 			// 发布初始的 assistant 消息（空内容），让前端能正确追加 token
-			l.publishEvent("llm_message", &LLMMessageEvent{
+			l.publishEvent("llm_message", &llm.LLMMessageEvent{
 				ID:             msgID,
 				Timestamp:      time.Now(),
 				ConversationID: conversationID,
 				RequestID:      requestID,
-				Message: LLMMessage{
+				Message: llm.LLMMessage{
 					Role:    "assistant",
 					Content: []string{""},
 				},
@@ -209,7 +211,7 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		// Accumulate content
 		accumulatedContent += delta.Text
 
-		event := &LLMTokenEvent{
+		event := &llm.LLMTokenEvent{
 			ID:             generateEventID(),
 			Timestamp:      time.Now(),
 			ConversationID: conversationID,
@@ -232,12 +234,12 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 			}
 
 			// Publish message event for streaming completion (使用相同 ID，前端会更新)
-			msgEvent := &LLMMessageEvent{
+			msgEvent := &llm.LLMMessageEvent{
 				ID:             msgID,
 				Timestamp:      time.Now(),
 				ConversationID: conversationID,
 				RequestID:      requestID,
-				Message: LLMMessage{
+				Message: llm.LLMMessage{
 					Role:    "assistant",
 					Content: []string{accumulatedContent},
 				},
@@ -267,7 +269,7 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 	}
 
 	// Try to find a provider using the hostname from the connection and cached path
-	provider := FindProvider(hostname, path, bodyBytes)
+	provider := llm.FindProvider(hostname, path, bodyBytes)
 	if provider == nil {
 		return
 	}
@@ -299,12 +301,12 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 	}
 
 	// Create assistant message from response
-	msg := LLMMessage{
+	msg := llm.LLMMessage{
 		Role:    "assistant",
 		Content: []string{resp.Content},
 	}
 
-	event := &LLMMessageEvent{
+	event := &llm.LLMMessageEvent{
 		ID:             generateEventID(),
 		Timestamp:      time.Now(),
 		ConversationID: conversationID,
@@ -327,7 +329,7 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 }
 
 // publishLLMError publishes an LLM API error event and a message with error content
-func (l *LLMInspector) publishLLMError(conversationID, requestID string, apiError *APIError) {
+func (l *LLMInspector) publishLLMError(conversationID, requestID string, apiError *llm.APIError) {
 	if l.eventBus == nil {
 		return
 	}
@@ -347,12 +349,12 @@ func (l *LLMInspector) publishLLMError(conversationID, requestID string, apiErro
 	l.eventBus.Publish(event)
 
 	// Also publish an error message so it shows in the conversation
-	errorMsgEvent := &LLMMessageEvent{
+	errorMsgEvent := &llm.LLMMessageEvent{
 		ID:             generateEventID(),
 		Timestamp:      time.Now(),
 		ConversationID: conversationID,
 		RequestID:      requestID,
-		Message: LLMMessage{
+		Message: llm.LLMMessage{
 			Role:    "assistant",
 			Content: []string{fmt.Sprintf("[Error: %s] %s", apiError.Type, apiError.Message)},
 		},
@@ -381,7 +383,7 @@ func (l *LLMInspector) publishConversationUpdate(conversationID, status string, 
 		return
 	}
 
-	event := &ConversationUpdateEvent{
+	event := &llm.ConversationUpdateEvent{
 		ID:             generateEventID(),
 		Timestamp:      time.Now(),
 		ConversationID: conversationID,
@@ -398,13 +400,13 @@ func (l *LLMInspector) publishConversationUpdate(conversationID, status string, 
 // extractModel attempts to extract the model name from request body
 func (l *LLMInspector) extractModel(data []byte) string {
 	// Try Anthropic format first
-	var anthropicReq anthropicRequest
+	var anthropicReq llm.AnthropicRequest
 	if err := json.Unmarshal(data, &anthropicReq); err == nil && anthropicReq.Model != "" {
 		return anthropicReq.Model
 	}
 
 	// Try OpenAI format
-	var openaiReq openaiRequest
+	var openaiReq llm.OpenAIRequest
 	if err := json.Unmarshal(data, &openaiReq); err == nil && openaiReq.Model != "" {
 		return openaiReq.Model
 	}
