@@ -106,7 +106,7 @@ type Provider interface {
 	Match(hostname, path string, body []byte) bool
 	ExtractConversationID(body []byte) string
 	ParseRequest(body []byte) ([]LLMMessage, error)
-	ParseResponse(body []byte) (*LLMResponse, error)
+	ParseResponse(path string, body []byte) (*LLMResponse, error)
 	ParseSSEStream(body []byte) []TokenDelta
 	ExtractSystemPrompt(body []byte) []string
 	ExtractTools(body []byte) []ToolDef
@@ -323,7 +323,23 @@ func (a anthropicProvider) ParseRequest(body []byte) ([]LLMMessage, error) {
 	return convertAnthropicMessages(req.Messages), nil
 }
 
-func (a anthropicProvider) ParseResponse(body []byte) (*LLMResponse, error) {
+func (a anthropicProvider) ParseResponse(path string, body []byte) (*LLMResponse, error) {
+	// Handle count_tokens endpoint
+	if strings.Contains(path, "/v1/messages/count_tokens") {
+		var countResp struct {
+			InputTokens int `json:"input_tokens"`
+		}
+		if err := json.Unmarshal(body, &countResp); err != nil {
+			return nil, fmt.Errorf("failed to parse count_tokens response: %w", err)
+		}
+		return &LLMResponse{
+			Content: fmt.Sprintf("input_tokens: %d", countResp.InputTokens),
+			Usage: TokenUsage{
+				InputTokens: countResp.InputTokens,
+			},
+		}, nil
+	}
+
 	var resp anthropicResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("failed to parse Anthropic response: %w", err)
@@ -469,7 +485,7 @@ func (o openaiProvider) ParseRequest(body []byte) ([]LLMMessage, error) {
 	return convertOpenAIMessages(req.Messages), nil
 }
 
-func (o openaiProvider) ParseResponse(body []byte) (*LLMResponse, error) {
+func (o openaiProvider) ParseResponse(path string, body []byte) (*LLMResponse, error) {
 	var resp openaiResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAI response: %w", err)

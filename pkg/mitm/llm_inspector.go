@@ -278,7 +278,7 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 		conversationID = val.(string)
 	}
 
-	resp, err := provider.ParseResponse(bodyBytes)
+	resp, err := provider.ParseResponse(path, bodyBytes)
 	if err != nil {
 		l.logger.Debug("failed to parse LLM response", "error", err)
 		return
