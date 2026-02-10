@@ -1,5 +1,7 @@
 package llm
 
+import "log/slog"
+
 // Provider interface defines the contract for LLM API parsers
 type Provider interface {
 	Match(hostname, path string, body []byte) bool
@@ -12,10 +14,10 @@ type Provider interface {
 }
 
 // FindProvider returns the appropriate provider for the given request
-func FindProvider(hostname, path string, body []byte) Provider {
+func FindProvider(hostname, path string, body []byte, logger *slog.Logger) Provider {
 	providers := []Provider{
-		anthropicProvider{},
-		openaiProvider{},
+		anthropicProvider{logger: logger},
+		openaiProvider{logger: logger},
 	}
 
 	for _, p := range providers {

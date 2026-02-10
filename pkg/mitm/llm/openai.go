@@ -3,19 +3,20 @@ package llm
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
 // OpenAI API types
 type OpenAIRequest struct {
-	Model       string      `json:"model"`
-	MaxTokens   int         `json:"max_tokens,omitempty"`
+	Model       string          `json:"model"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
 	Messages    []OpenAIMessage `json:"messages"`
-	System      string      `json:"system,omitempty"`
-	Stop        interface{} `json:"stop,omitempty"`
-	Temperature float64     `json:"temperature,omitempty"`
-	TopP        float64     `json:"top_p,omitempty"`
-	Tools       []ToolDef   `json:"tools,omitempty"`
+	System      string          `json:"system,omitempty"`
+	Stop        interface{}     `json:"stop,omitempty"`
+	Temperature float64         `json:"temperature,omitempty"`
+	TopP        float64         `json:"top_p,omitempty"`
+	Tools       []ToolDef       `json:"tools,omitempty"`
 }
 
 type OpenAIMessage struct {
@@ -43,10 +44,10 @@ type OpenAIResponse struct {
 }
 
 type OpenAIChoice struct {
-	Index        int         `json:"index"`
+	Index        int           `json:"index"`
 	Message      OpenAIMessage `json:"message"`
-	FinishReason string      `json:"finish_reason"`
-	LogProbs     interface{} `json:"logprobs,omitempty"`
+	FinishReason string        `json:"finish_reason"`
+	LogProbs     interface{}   `json:"logprobs,omitempty"`
 }
 
 type OpenAIUsage struct {
@@ -56,10 +57,10 @@ type OpenAIUsage struct {
 }
 
 type OpenAIStreamChunk struct {
-	ID      string             `json:"id"`
-	Object  string             `json:"object"`
-	Created int64             `json:"created"`
-	Model   string             `json:"model"`
+	ID      string              `json:"id"`
+	Object  string              `json:"object"`
+	Created int64               `json:"created"`
+	Model   string              `json:"model"`
 	Choices []OpenAIChunkChoice `json:"choices"`
 }
 
@@ -77,7 +78,9 @@ type OpenAIDelta struct {
 }
 
 // openaiProvider implements Provider for OpenAI Chat API
-type openaiProvider struct{}
+type openaiProvider struct {
+	logger *slog.Logger
+}
 
 func (o openaiProvider) Match(hostname, path string, body []byte) bool {
 	return (strings.Contains(hostname, "api.openai.com") ||
@@ -161,6 +164,7 @@ func (o openaiProvider) ParseSSEStream(body []byte) []TokenDelta {
 
 		var chunk OpenAIStreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			o.logger.Warn("failed to parse OpenAI SSE event", "error", err, "data", data)
 			continue
 		}
 

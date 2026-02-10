@@ -83,7 +83,7 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	}
 
 	// Try to find a provider for this request
-	provider := llm.FindProvider(httpMsg.Hostname, httpMsg.Path, bodyBytes)
+	provider := llm.FindProvider(httpMsg.Hostname, httpMsg.Path, bodyBytes, l.logger)
 	if provider == nil {
 		return
 	}
@@ -167,7 +167,7 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 	}
 
 	// Try to find a provider using the hostname from the connection and cached path
-	provider := llm.FindProvider(hostname, path, bodyBytes)
+	provider := llm.FindProvider(hostname, path, bodyBytes, l.logger)
 	if provider == nil {
 		return bodyBytes, nil
 	}
@@ -269,7 +269,7 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 	}
 
 	// Try to find a provider using the hostname from the connection and cached path
-	provider := llm.FindProvider(hostname, path, bodyBytes)
+	provider := llm.FindProvider(hostname, path, bodyBytes, l.logger)
 	if provider == nil {
 		return
 	}

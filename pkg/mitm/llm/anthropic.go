@@ -5,21 +5,22 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strings"
 )
 
 // Anthropic API types
 type AnthropicRequest struct {
-	Model         string              `json:"model"`
-	MaxTokens     int                 `json:"max_tokens"`
-	Messages      []AnthropicMessage  `json:"messages"`
-	System        any                 `json:"system,omitempty"` // Can be string or array of strings
-	StopSequences []string            `json:"stop_sequences,omitempty"`
-	Temperature   float64             `json:"temperature,omitempty"`
-	TopK          int                 `json:"top_k,omitempty"`
-	TopP          float64             `json:"top_p,omitempty"`
-	Metadata      *AnthropicMetadata  `json:"metadata,omitempty"`
-	Tools         []AnthropicTool     `json:"tools,omitempty"`
+	Model         string             `json:"model"`
+	MaxTokens     int                `json:"max_tokens"`
+	Messages      []AnthropicMessage `json:"messages"`
+	System        any                `json:"system,omitempty"` // Can be string or array of strings
+	StopSequences []string           `json:"stop_sequences,omitempty"`
+	Temperature   float64            `json:"temperature,omitempty"`
+	TopK          int                `json:"top_k,omitempty"`
+	TopP          float64            `json:"top_p,omitempty"`
+	Metadata      *AnthropicMetadata `json:"metadata,omitempty"`
+	Tools         []AnthropicTool    `json:"tools,omitempty"`
 }
 
 type AnthropicMetadata struct {
@@ -51,14 +52,14 @@ type ImageSource struct {
 }
 
 type AnthropicResponse struct {
-	ID           string           `json:"id"`
-	Type         string           `json:"type"`
-	Role         string           `json:"role"`
+	ID           string             `json:"id"`
+	Type         string             `json:"type"`
+	Role         string             `json:"role"`
 	Content      []AnthropicContent `json:"content"`
-	Model        string           `json:"model"`
-	StopReason   string           `json:"stop_reason"`
-	StopSequence string           `json:"stop_sequence,omitempty"`
-	Usage        AnthropicUsage   `json:"usage"`
+	Model        string             `json:"model"`
+	StopReason   string             `json:"stop_reason"`
+	StopSequence string             `json:"stop_sequence,omitempty"`
+	Usage        AnthropicUsage     `json:"usage"`
 	Error        struct {
 		Type    string `json:"type"`
 		Message string `json:"message"`
@@ -78,17 +79,19 @@ type AnthropicStreamEvent struct {
 		Text string `json:"text,omitempty"`
 	} `json:"delta,omitempty"`
 	Message struct {
-		ID         string           `json:"id"`
-		Type       string           `json:"type"`
-		Role       string           `json:"role"`
+		ID         string             `json:"id"`
+		Type       string             `json:"type"`
+		Role       string             `json:"role"`
 		Content    []AnthropicContent `json:"content"`
-		StopReason string           `json:"stop_reason,omitempty"`
-		Usage      AnthropicUsage   `json:"usage,omitempty"`
+		StopReason string             `json:"stop_reason,omitempty"`
+		Usage      AnthropicUsage     `json:"usage,omitempty"`
 	} `json:"message,omitempty"`
 }
 
 // anthropicProvider implements Provider for Anthropic Claude API
-type anthropicProvider struct{}
+type anthropicProvider struct {
+	logger *slog.Logger
+}
 
 // generateAnthropicMessagesHash generates a hash from all messages in the request
 // Used for conversation grouping - same conversation context produces same hash
@@ -218,6 +221,7 @@ func (a anthropicProvider) ParseSSEStream(body []byte) []TokenDelta {
 
 		var event AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			a.logger.Warn("failed to parse Anthropic SSE event", "error", err, "data", data)
 			continue
 		}
 
@@ -231,6 +235,8 @@ func (a anthropicProvider) ParseSSEStream(body []byte) []TokenDelta {
 				IsComplete: true,
 				StopReason: event.Message.StopReason,
 			})
+		} else {
+			a.logger.Debug("unhandled Anthropic event", "type", event.Type, "data", data)
 		}
 	}
 
