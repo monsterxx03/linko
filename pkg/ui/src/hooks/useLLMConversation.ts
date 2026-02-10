@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 // LLM Message types
 export interface LLMMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
-  content: string;
+  content: string[];
   name?: string;
   tool_calls?: ToolCall[];
 }
@@ -70,7 +70,7 @@ export interface Conversation {
 export interface Message {
   id: string;
   role: string;
-  content: string;
+  content: string[];
   tool_calls?: ToolCall[];
   tokens?: number;
   timestamp: number;
@@ -203,7 +203,11 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
     const newMessage: Message = {
       id: actualEvent.id,
       role: actualEvent.message.role || 'unknown',
-      content: actualEvent.message.content || '',
+      content: Array.isArray(actualEvent.message.content)
+        ? actualEvent.message.content
+        : typeof actualEvent.message.content === 'string'
+          ? [actualEvent.message.content]
+          : [],
       tool_calls: actualEvent.message.tool_calls,
       tokens: actualEvent.token_count,
       timestamp: new Date(actualEvent.timestamp).getTime(),
@@ -256,7 +260,11 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
       }
     } else {
       // Append token
-      lastMessage.content += actualEvent.delta;
+      if (lastMessage.content.length > 0) {
+        lastMessage.content[lastMessage.content.length - 1] += actualEvent.delta;
+      } else {
+        lastMessage.content.push(actualEvent.delta);
+      }
       lastMessage.is_streaming = true;
       updateConversation(actualEvent.conversation_id, {
         messages: [...conv.messages],

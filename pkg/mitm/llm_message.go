@@ -12,8 +12,8 @@ import (
 // LLMMessage represents a message in an LLM conversation
 type LLMMessage struct {
 	Role      string     `json:"role"`                 // "user", "assistant", "system", "tool"
-	Content   string     `json:"content"`              // message content
-	Name      string     `json:"name,omitempty"`       // optional name for the message
+	Content   []string   `json:"content"`             // message content
+	Name      string     `json:"name,omitempty"`     // optional name for the message
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
 }
 
@@ -104,6 +104,11 @@ type anthropicRequest struct {
 	Temperature   float64        `json:"temperature,omitempty"`
 	TopK          int            `json:"top_k,omitempty"`
 	TopP          float64        `json:"top_p,omitempty"`
+	Metadata      *anthropicMetadata `json:"metadata,omitempty"`
+}
+
+type anthropicMetadata struct {
+	UserID string `json:"user_id,omitempty"`
 }
 
 type anthropicMsg struct {
@@ -267,7 +272,12 @@ func (a anthropicProvider) ExtractConversationID(body []byte) string {
 		return ""
 	}
 
-	// 提取所有消息的文本内容生成 hash
+	// 优先从 metadata.user_id 获取会话 ID
+	if req.Metadata != nil && req.Metadata.UserID != "" {
+		return fmt.Sprintf("anthropic-%s", req.Metadata.UserID)
+	}
+
+	// 回退：提取所有消息的文本内容生成 hash
 	// 这样同一轮对话（相同的历史消息）会产生相同的 ID
 	hash := generateAnthropicMessagesHash(req.Messages)
 
@@ -485,16 +495,16 @@ func generateOpenAIConversationHash(messages []openaiMsg) string {
 func convertAnthropicMessages(messages []anthropicMsg) []LLMMessage {
 	var result []LLMMessage
 	for _, m := range messages {
-		content := ""
+		var contentParts []string
 		var toolCalls []ToolCall
 
 		switch c := m.Content.(type) {
 		case string:
-			content = c
+			contentParts = []string{c}
 		case []anthropicContent:
 			for _, item := range c {
 				if item.Type == "text" {
-					content += item.Text
+					contentParts = append(contentParts, item.Text)
 				}
 			}
 		case []interface{}:
@@ -502,7 +512,7 @@ func convertAnthropicMessages(messages []anthropicMsg) []LLMMessage {
 				if itemMap, ok := item.(map[string]interface{}); ok {
 					if itemType, ok := itemMap["type"].(string); ok && itemType == "text" {
 						if text, ok := itemMap["text"].(string); ok {
-							content += text
+							contentParts = append(contentParts, text)
 						}
 					}
 				}
@@ -511,7 +521,7 @@ func convertAnthropicMessages(messages []anthropicMsg) []LLMMessage {
 
 		result = append(result, LLMMessage{
 			Role:      m.Role,
-			Content:   content,
+			Content:   contentParts,
 			ToolCalls: toolCalls,
 		})
 	}
@@ -521,22 +531,22 @@ func convertAnthropicMessages(messages []anthropicMsg) []LLMMessage {
 func convertOpenAIMessages(messages []openaiMsg) []LLMMessage {
 	var result []LLMMessage
 	for _, m := range messages {
-		content := ""
+		var contentParts []string
 		switch c := m.Content.(type) {
 		case string:
-			content = c
+			contentParts = []string{c}
 		case []interface{}:
 			for _, part := range c {
 				if partMap, ok := part.(map[string]interface{}); ok {
 					if text, ok := partMap["text"].(string); ok {
-						content += text
+						contentParts = append(contentParts, text)
 					}
 				}
 			}
 		}
 		result = append(result, LLMMessage{
 			Role:    m.Role,
-			Content: content,
+			Content: contentParts,
 			Name:    m.Name,
 		})
 	}

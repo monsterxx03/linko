@@ -12,11 +12,12 @@ import (
 // LLMInspector parses LLM API traffic and publishes structured events
 type LLMInspector struct {
 	*BaseInspector
-	logger         *slog.Logger
-	eventBus       *EventBus
-	httpProc       *HTTPProcessor
-	requestPaths   sync.Map // requestID -> string (path)
+	logger          *slog.Logger
+	eventBus        *EventBus
+	httpProc        *HTTPProcessor
+	requestPaths    sync.Map // requestID -> string (path)
 	conversationIDs sync.Map // requestID -> string (conversationID)
+	streamMsgIDs    sync.Map // requestID -> string (assistant message ID for streaming)
 }
 
 type conversationState struct {
@@ -100,21 +101,22 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	l.conversationIDs.Store(requestID, conversationID)
 	model := l.extractModel(bodyBytes)
 
-	// Publish message events for each message in the request
-	for _, msg := range messages {
+	// 只发布最后一条消息（当前用户消息），避免重复发布历史消息
+	if len(messages) > 0 {
+		lastMsg := messages[len(messages)-1]
 		event := &LLMMessageEvent{
 			ID:             generateEventID(),
 			Timestamp:      time.Now(),
 			ConversationID: conversationID,
 			RequestID:      requestID,
-			Message:        msg,
+			Message:        lastMsg,
 		}
 
 		l.publishEvent("llm_message", event)
 	}
 
-	// Publish conversation update
-	l.publishConversationUpdate(conversationID, "streaming", len(messages), 0, model)
+	// Publish conversation update (1 = only the new message)
+	l.publishConversationUpdate(conversationID, "streaming", 1, 0, model)
 
 	l.logger.Debug("LLM request inspected",
 		"conversation_id", conversationID,
@@ -178,6 +180,21 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 	for _, delta := range deltas {
 		// 收到第一个 token 时立即更新状态为 streaming
 		if !hasPublishedStart {
+			// 生成并缓存消息 ID，流结束时复用同一个 ID
+			msgID := generateEventID()
+			l.streamMsgIDs.Store(requestID, msgID)
+
+			// 发布初始的 assistant 消息（空内容），让前端能正确追加 token
+			l.publishEvent("llm_message", &LLMMessageEvent{
+				ID:             msgID,
+				Timestamp:      time.Now(),
+				ConversationID: conversationID,
+				RequestID:      requestID,
+				Message: LLMMessage{
+					Role:    "assistant",
+					Content: []string{""},
+				},
+			})
 			l.publishConversationUpdate(conversationID, "streaming", 0, 0, "")
 			hasPublishedStart = true
 		}
@@ -198,15 +215,24 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		l.publishEvent("llm_token", event)
 
 		if delta.IsComplete {
-			// Publish message event for streaming completion (required for frontend)
+			// 获取流开始时生成的消息 ID（保持同一消息）
+			var msgID string
+			if val, exists := l.streamMsgIDs.Load(requestID); exists {
+				msgID = val.(string)
+				l.streamMsgIDs.Delete(requestID)
+			} else {
+				msgID = generateEventID()
+			}
+
+			// Publish message event for streaming completion (使用相同 ID，前端会更新)
 			msgEvent := &LLMMessageEvent{
-				ID:             generateEventID(),
+				ID:             msgID,
 				Timestamp:      time.Now(),
 				ConversationID: conversationID,
 				RequestID:      requestID,
 				Message: LLMMessage{
 					Role:    "assistant",
-					Content: accumulatedContent,
+					Content: []string{accumulatedContent},
 				},
 			}
 			l.publishEvent("llm_message", msgEvent)
@@ -256,7 +282,7 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 	// Create assistant message from response
 	msg := LLMMessage{
 		Role:    "assistant",
-		Content: resp.Content,
+		Content: []string{resp.Content},
 	}
 
 	event := &LLMMessageEvent{

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant' | 'system' | 'tool';
-  content: string;
+  content: string | string[];
   isStreaming?: boolean;
   tokens?: number;
   tool_calls?: Array<{
@@ -19,6 +19,81 @@ interface MessageBubbleProps {
 function formatTime(ts?: number): string {
   if (!ts) return '';
   return new Date(ts).toLocaleTimeString();
+}
+
+// Decode HTML entities and Unicode escapes for tag detection
+function decodeForTagCheck(content: string): string {
+  return content
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&amp;/gi, '&') // must be last
+    .replace(/\\u003c/g, '<')
+    .replace(/\\u003e/g, '>');
+}
+
+// Check if content is wrapped by matching XML/HTML tags at start and end
+function hasXmlTags(content: string): boolean {
+  const decoded = decodeForTagCheck(content);
+  // Match opening tag at start: <tagName...> or <tagName ...>
+  const openMatch = decoded.match(/^<([a-zA-Z][a-zA-Z0-9-]*)[^>]*>/);
+  if (!openMatch) return false;
+
+  const tagName = openMatch[1];
+  // Match closing tag at end: </tagName>
+  const closeRegex = new RegExp(`</${tagName}>$`);
+  return closeRegex.test(decoded);
+}
+
+// Extract tag name from content (only call when hasXmlTags is true)
+function extractFirstTagName(content: string): string {
+  const decoded = decodeForTagCheck(content);
+  const match = decoded.match(/^<([a-zA-Z][a-zA-Z0-9-]*)/);
+  return match ? match[1] : 'unknown';
+}
+
+// Collapsible content block for XML/HTML content
+function CollapsibleContent({ content, index }: { content: string; index: number }) {
+  const [collapsed, setCollapsed] = useState(true);
+
+  const hasTags = hasXmlTags(content);
+  const tagName = extractFirstTagName(content);
+
+  if (!hasTags) {
+    return <>{formatContent(content)}</>;
+  }
+
+  return (
+    <div className="border border-bg-200 rounded-lg overflow-hidden my-2">
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-bg-50 transition-colors bg-bg-50"
+      >
+        <svg
+          className={`w-4 h-4 text-bg-500 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="text-xs text-bg-500 font-mono">
+          [{index}] &lt;{tagName}&gt;
+        </span>
+        <span className="text-xs text-bg-400 ml-auto">
+          {collapsed ? 'Expand' : 'Collapse'}
+        </span>
+      </button>
+      {!collapsed && (
+        <div className="px-3 py-2 bg-bg-50 border-t border-bg-200">
+          <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">
+            {content}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
 }
 
 function formatContent(content: string): React.ReactNode {
@@ -160,7 +235,17 @@ export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, 
 
           {/* Content */}
           <div className={`text-sm leading-relaxed ${isUser ? 'text-blue-900' : 'text-bg-800'}`}>
-            {formatContent(content)}
+            {Array.isArray(content) ? (
+              <div className="space-y-2">
+                {content.map((c, i) => (
+                  <div key={i} className="pb-2 border-b border-bg-200 last:border-0 last:pb-0">
+                    <CollapsibleContent content={c} index={i} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <CollapsibleContent content={content} index={0} />
+            )}
             {isStreaming && (
               <span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse" />
             )}

@@ -65,7 +65,7 @@ function ConversationList({
               </p>
 
               <p className="text-sm text-bg-800 truncate mb-1">
-                {lastMessage?.content || 'Empty conversation'}
+                {lastMessage?.content?.[0] || 'Empty conversation'}
               </p>
 
               <div className="flex items-center gap-3 text-xs text-bg-400">

@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"strings"
 	"syscall"
 
 	"github.com/monsterxx03/linko/pkg/config"
@@ -11,8 +12,9 @@ import (
 )
 
 var (
-	mitmConfigPath string
-	mitmLogLevel   string
+	mitmLogLevel  string
+	mitmWhitelist string
+	mitmMode      string
 )
 
 var mitmCmd = &cobra.Command{
@@ -27,11 +29,22 @@ This command automatically sets up firewall rules to redirect HTTPS traffic.`,
 }
 
 func runMITM(cmd *cobra.Command, args []string) {
-	cfg, err := config.LoadConfig(mitmConfigPath)
-	if err != nil {
-		slog.Error("failed to load config", "error", err)
-		os.Exit(1)
+	cfg := config.DefaultConfig()
+
+	if mitmWhitelist != "" {
+		cfg.MITM.Whitelist = strings.Split(mitmWhitelist, ",")
 	}
+
+	// Set inspector mode
+	switch mitmMode {
+	case "llm":
+		cfg.MITM.EnableLLMInspector = true
+		cfg.MITM.EnableSSEInspector = false
+	default:
+		cfg.MITM.EnableSSEInspector = true
+		cfg.MITM.EnableLLMInspector = false
+	}
+
 	if err := syscall.Setgid(cfg.MITM.GID); err != nil {
 		slog.Error("failed to set gid")
 		os.Exit(1)
@@ -42,7 +55,7 @@ func runMITM(cmd *cobra.Command, args []string) {
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: parseLogLevel(cfg.Server.LogLevel),
+		Level: parseLogLevel(mitmLogLevel),
 	}))
 	slog.SetDefault(logger)
 
@@ -70,6 +83,7 @@ func runMITM(cmd *cobra.Command, args []string) {
 }
 
 func init() {
-	mitmCmd.Flags().StringVarP(&mitmConfigPath, "config", "c", "config/linko.yaml", "Configuration file path")
 	mitmCmd.Flags().StringVar(&mitmLogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
+	mitmCmd.Flags().StringVar(&mitmWhitelist, "whitelist", "", "Comma-separated list of domains to MITM (e.g., 'example.com,api.example.com')")
+	mitmCmd.Flags().StringVar(&mitmMode, "mode", "http", "Inspector mode: http or llm")
 }
