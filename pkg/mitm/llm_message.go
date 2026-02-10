@@ -11,10 +11,11 @@ import (
 
 // LLMMessage represents a message in an LLM conversation
 type LLMMessage struct {
-	Role      string     `json:"role"`                 // "user", "assistant", "system", "tool"
-	Content   []string   `json:"content"`             // message content
-	Name      string     `json:"name,omitempty"`     // optional name for the message
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
+	Role       string     `json:"role"`                 // "user", "assistant", "system", "tool"
+	Content    []string   `json:"content"`              // message content
+	Name       string     `json:"name,omitempty"`       // optional name for the message
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
+	System     []string   `json:"system,omitempty"`     // system prompt (extracted from request)
 }
 
 // ToolCall represents a tool call in an LLM message
@@ -92,23 +93,31 @@ type Provider interface {
 	ParseRequest(body []byte) ([]LLMMessage, error)
 	ParseResponse(body []byte) (*LLMResponse, error)
 	ParseSSEStream(body []byte) []TokenDelta
+	ExtractSystemPrompt(body []byte) []string
 }
 
 // Anthropic API types
 type anthropicRequest struct {
-	Model         string         `json:"model"`
-	MaxTokens     int            `json:"max_tokens"`
-	Messages      []anthropicMsg `json:"messages"`
-	System        any            `json:"system,omitempty"` // Can be string or array of strings
-	StopSequences []string       `json:"stop_sequences,omitempty"`
-	Temperature   float64        `json:"temperature,omitempty"`
-	TopK          int            `json:"top_k,omitempty"`
-	TopP          float64        `json:"top_p,omitempty"`
+	Model         string           `json:"model"`
+	MaxTokens     int              `json:"max_tokens"`
+	Messages      []anthropicMsg  `json:"messages"`
+	System        any              `json:"system,omitempty"` // Can be string or array of strings
+	StopSequences []string         `json:"stop_sequences,omitempty"`
+	Temperature   float64          `json:"temperature,omitempty"`
+	TopK          int              `json:"top_k,omitempty"`
+	TopP          float64          `json:"top_p,omitempty"`
 	Metadata      *anthropicMetadata `json:"metadata,omitempty"`
+	Tools         []anthropicTool `json:"tools,omitempty"`
 }
 
 type anthropicMetadata struct {
 	UserID string `json:"user_id,omitempty"`
+}
+
+type anthropicTool struct {
+	Name          string                    `json:"name"`
+	Description   string                    `json:"description,omitempty"`
+	InputSchema   map[string]interface{}    `json:"input_schema"`
 }
 
 type anthropicMsg struct {
@@ -352,6 +361,33 @@ func (a anthropicProvider) ParseSSEStream(body []byte) []TokenDelta {
 	return deltas
 }
 
+func (a anthropicProvider) ExtractSystemPrompt(body []byte) []string {
+	var req anthropicRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil
+	}
+
+	if req.System == nil {
+		return nil
+	}
+
+	var prompts []string
+	switch s := req.System.(type) {
+	case string:
+		prompts = append(prompts, s)
+	case []interface{}:
+		for _, item := range s {
+			if itemMap, ok := item.(map[string]interface{}); ok {
+				if text, ok := itemMap["text"].(string); ok {
+					prompts = append(prompts, text)
+				}
+			}
+		}
+	}
+
+	return prompts
+}
+
 // openaiProvider implements Provider for OpenAI Chat API
 type openaiProvider struct{}
 
@@ -457,6 +493,19 @@ func (o openaiProvider) ParseSSEStream(body []byte) []TokenDelta {
 	}
 
 	return deltas
+}
+
+func (o openaiProvider) ExtractSystemPrompt(body []byte) []string {
+	var req openaiRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil
+	}
+
+	if req.System == "" {
+		return nil
+	}
+
+	return []string{req.System}
 }
 
 // Helper functions

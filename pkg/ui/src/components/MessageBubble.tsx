@@ -53,6 +53,52 @@ function extractFirstTagName(content: string): string {
   return match ? match[1] : 'unknown';
 }
 
+// System prompt content - defaults to collapsed, shows first 50 chars
+function SystemContent({ content }: { content: string }) {
+  const [collapsed, setCollapsed] = useState(true);
+  const previewLength = 100;
+  const shouldCollapse = content.length > previewLength;
+
+  if (!shouldCollapse) {
+    return <div className="text-xs text-bg-600">{formatContent(content)}</div>;
+  }
+
+  const preview = content.substring(0, previewLength) + '...';
+
+  return (
+    <div className="border border-yellow-200 rounded-lg overflow-hidden">
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-yellow-50 transition-colors bg-yellow-50"
+      >
+        <svg
+          className={`w-4 h-4 text-yellow-600 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="text-xs text-yellow-700 font-medium">System Prompt</span>
+        <span className="text-xs text-yellow-500 ml-auto">
+          {collapsed ? 'Expand' : 'Collapse'}
+        </span>
+      </button>
+      {collapsed ? (
+        <div className="px-3 py-2 text-xs text-bg-600 bg-yellow-50/50">
+          {preview}
+        </div>
+      ) : (
+        <div className="px-3 py-2 bg-yellow-50 border-t border-yellow-200">
+          <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">
+            {content}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Collapsible content block for XML/HTML content
 function CollapsibleContent({ content, index }: { content: string; index: number }) {
   const [collapsed, setCollapsed] = useState(true);
@@ -235,7 +281,10 @@ export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, 
 
           {/* Content */}
           <div className={`text-sm leading-relaxed ${isUser ? 'text-blue-900' : 'text-bg-800'}`}>
-            {Array.isArray(content) ? (
+            {/* System prompt uses special collapsible view */}
+            {role === 'system' ? (
+              <SystemContent content={Array.isArray(content) ? content[0] : content} />
+            ) : Array.isArray(content) ? (
               <div className="space-y-2">
                 {content.map((c, i) => (
                   <div key={i} className="pb-2 border-b border-bg-200 last:border-0 last:pb-0">

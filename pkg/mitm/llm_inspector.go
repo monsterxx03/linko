@@ -84,6 +84,29 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	if provider == nil {
 		return
 	}
+
+	// Extract conversation ID
+	conversationID := provider.ExtractConversationID(bodyBytes)
+	// 缓存 conversationID，用于响应处理时匹配
+	l.conversationIDs.Store(requestID, conversationID)
+	model := l.extractModel(bodyBytes)
+
+	// Publish system prompt if present
+	systemPrompts := provider.ExtractSystemPrompt(bodyBytes)
+	for _, systemPrompt := range systemPrompts {
+		event := &LLMMessageEvent{
+			ID:             generateEventID(),
+			Timestamp:      time.Now(),
+			ConversationID: conversationID,
+			RequestID:      requestID,
+			Message: LLMMessage{
+				Role:    "system",
+				Content: []string{systemPrompt},
+			},
+		}
+		l.publishEvent("llm_message", event)
+	}
+
 	// Parse the request
 	messages, err := provider.ParseRequest(bodyBytes)
 	if err != nil {
@@ -95,25 +118,17 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 		return
 	}
 
-	// Extract conversation ID
-	conversationID := provider.ExtractConversationID(bodyBytes)
-	// 缓存 conversationID，用于响应处理时匹配
-	l.conversationIDs.Store(requestID, conversationID)
-	model := l.extractModel(bodyBytes)
-
 	// 只发布最后一条消息（当前用户消息），避免重复发布历史消息
-	if len(messages) > 0 {
-		lastMsg := messages[len(messages)-1]
-		event := &LLMMessageEvent{
-			ID:             generateEventID(),
-			Timestamp:      time.Now(),
-			ConversationID: conversationID,
-			RequestID:      requestID,
-			Message:        lastMsg,
-		}
-
-		l.publishEvent("llm_message", event)
+	lastMsg := messages[len(messages)-1]
+	event := &LLMMessageEvent{
+		ID:             generateEventID(),
+		Timestamp:      time.Now(),
+		ConversationID: conversationID,
+		RequestID:      requestID,
+		Message:        lastMsg,
 	}
+
+	l.publishEvent("llm_message", event)
 
 	// Publish conversation update (1 = only the new message)
 	l.publishConversationUpdate(conversationID, "streaming", 1, 0, model)
