@@ -1,4 +1,11 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
+
+export interface ToolDef {
+  name: string;
+  description?: string;
+  input_schema: Record<string, unknown>;
+}
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -14,6 +21,8 @@ interface MessageBubbleProps {
     };
   }>;
   timestamp?: number;
+  system_prompts?: string[];
+  tools?: ToolDef[];
 }
 
 function formatTime(ts?: number): string {
@@ -51,6 +60,40 @@ function extractFirstTagName(content: string): string {
   const decoded = decodeForTagCheck(content);
   const match = decoded.match(/^<([a-zA-Z][a-zA-Z0-9-]*)/);
   return match ? match[1] : 'unknown';
+}
+
+// CopyButton shows a copy button that copies text to clipboard
+function CopyButton({ text, className = '' }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleCopy}
+      className={`p-1 rounded hover:bg-bg-100 transition-colors ${className}`}
+      title="Copy"
+    >
+      {copied ? (
+        <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="w-3.5 h-3.5 text-bg-400 hover:text-bg-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      )}
+    </button>
+  );
 }
 
 // System prompt content - multiple prompts are shown with separators
@@ -91,7 +134,12 @@ function SingleSystemPrompt({ content }: { content: string }) {
   const shouldCollapse = content.length > previewLength;
 
   if (!shouldCollapse) {
-    return <div className="text-xs text-bg-600 px-2 py-1">{formatContent(content)}</div>;
+    return (
+      <div className="flex items-start gap-1 px-2 py-1 group">
+        <div className="text-xs text-bg-600 flex-1"><MarkdownContent content={content} /></div>
+        <CopyButton text={content} className="opacity-0 group-hover:opacity-100" />
+      </div>
+    );
   }
 
   const preview = content.substring(0, previewLength) + '...';
@@ -110,16 +158,19 @@ function SingleSystemPrompt({ content }: { content: string }) {
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
-        <span className="text-xs text-yellow-700">
+        <span className="text-xs text-yellow-700 flex-1">
           {collapsed ? preview : ''}
         </span>
-        <span className="text-xs text-yellow-500 ml-auto whitespace-nowrap">
+        <span className="text-xs text-yellow-500 whitespace-nowrap">
           {collapsed ? '展开' : '折叠'}
         </span>
       </button>
       {!collapsed && (
         <div className="px-3 py-2 bg-yellow-50 border-t border-yellow-200">
-          <div className="text-xs text-bg-700">{formatContent(content)}</div>
+          <div className="flex items-start gap-1 group">
+            <div className="text-xs text-bg-700 flex-1"><MarkdownContent content={content} /></div>
+            <CopyButton text={content} />
+          </div>
         </div>
       )}
     </>
@@ -134,7 +185,7 @@ function CollapsibleContent({ content, index }: { content: string; index: number
   const tagName = extractFirstTagName(content);
 
   if (!hasTags) {
-    return <>{formatContent(content)}</>;
+    return <MarkdownContent content={content} />;
   }
 
   return (
@@ -169,37 +220,73 @@ function CollapsibleContent({ content, index }: { content: string; index: number
   );
 }
 
-function formatContent(content: string): React.ReactNode {
-  // Basic markdown-like formatting
-  const lines = content.split('\n');
-  const elements: React.ReactNode[] = [];
-
-  lines.forEach((line, i) => {
-    if (i > 0) {
-      elements.push(<br key={`br-${i}`} />);
-    }
-
-    // Code blocks
-    if (line.startsWith('```')) {
-      return;
-    }
-
-    // Inline code
-    if (line.includes('`')) {
-      const parts = line.split(/`([^`]+)`/g);
-      parts.forEach((part, j) => {
-        if (j % 2 === 1) {
-          elements.push(<code key={`code-${i}-${j}`} className="bg-bg-100 px-1 py-0.5 rounded text-sm font-mono text-pink-600">{part}</code>);
-        } else if (part) {
-          elements.push(<span key={`text-${i}-${j}`}>{part}</span>);
-        }
-      });
-    } else if (line) {
-      elements.push(<span key={`text-${i}`}>{line}</span>);
-    }
-  });
-
-  return elements;
+// MarkdownContent renders markdown content with proper styling
+function MarkdownContent({ content, className = '' }: { content: string; className?: string }) {
+  return (
+    <div className={`markdown-content ${className}`}>
+      <ReactMarkdown
+        components={{
+          code({ children, className, node, ...props }) {
+            const isInline = !className;
+            return (
+              <code
+                className={`${className || ''} ${isInline ? 'bg-bg-100 px-1.5 py-0.5 rounded text-sm font-mono text-pink-600' : 'block bg-bg-50 p-3 rounded-lg overflow-x-auto text-xs font-mono my-2'}`}
+                {...props}
+              >
+                {children}
+              </code>
+            );
+          },
+          pre({ children }) {
+            return <>{children}</>;
+          },
+          p({ children }) {
+            return <p className="mb-2 last:mb-0">{children}</p>;
+          },
+          ul({ children }) {
+            return <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>;
+          },
+          ol({ children }) {
+            return <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>;
+          },
+          li({ children }) {
+            return <li className="text-sm">{children}</li>;
+          },
+          strong({ children }) {
+            return <strong className="font-semibold text-bg-800">{children}</strong>;
+          },
+          em({ children }) {
+            return <em className="italic">{children}</em>;
+          },
+          a({ href, children }) {
+            return (
+              <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                {children}
+              </a>
+            );
+          },
+          blockquote({ children }) {
+            return (
+              <blockquote className="border-l-4 border-bg-200 pl-3 py-1 my-2 bg-bg-50 italic text-bg-600">
+                {children}
+              </blockquote>
+            );
+          },
+          h1({ children }) {
+            return <h1 className="text-lg font-bold mb-2">{children}</h1>;
+          },
+          h2({ children }) {
+            return <h2 className="text-base font-bold mb-1.5">{children}</h2>;
+          },
+          h3({ children }) {
+            return <h3 className="text-sm font-bold mb-1">{children}</h3>;
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
 }
 
 function ToolCallPanel({ calls }: { calls: Array<{ id: string; function: { name: string; arguments: string } }> }) {
@@ -236,7 +323,120 @@ function ToolCallPanel({ calls }: { calls: Array<{ id: string; function: { name:
   );
 }
 
-export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, timestamp }: MessageBubbleProps) {
+// SystemMeta displays system prompts meta info (collapsible)
+function SystemMeta({ systemPrompts }: { systemPrompts?: string[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!systemPrompts || systemPrompts.length === 0) return null;
+
+  return (
+    <div className="inline-flex items-start">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-yellow-100 text-yellow-700 text-xs hover:bg-yellow-200 transition-colors"
+      >
+        <svg className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="font-medium">{systemPrompts.length} System</span>
+      </button>
+
+      {expanded && (
+        <div className="ml-2 mt-0.5 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs max-w-md">
+          <div className="font-medium text-yellow-700 mb-1">System Prompts</div>
+          <SystemContent content={systemPrompts} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ToolDefItem displays a single tool with expandable details
+function ToolDefItem({ tool }: { tool: ToolDef }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const toolDefinition = JSON.stringify(tool, null, 2);
+
+  return (
+    <div className="border border-purple-200 rounded overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-2 py-1 flex items-center gap-1 bg-purple-50 hover:bg-purple-100 transition-colors"
+      >
+        <svg className={`w-3 h-3 text-purple-600 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="font-medium text-purple-800 text-xs flex-1 text-left">{tool.name}</span>
+      </button>
+      {expanded && (
+        <div className="px-2 py-1.5 bg-white text-xs space-y-2">
+          {tool.description && (
+            <div className="flex items-start justify-between gap-2">
+              <div className="text-purple-700 flex-1"><MarkdownContent content={tool.description} /></div>
+              <CopyButton text={tool.description} />
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <div className="text-[10px] text-purple-500">Parameters</div>
+            <CopyButton text={toolDefinition} />
+          </div>
+          <pre className="text-purple-700 bg-purple-50 p-1.5 rounded overflow-x-auto text-[10px] leading-relaxed">
+            {JSON.stringify(tool.input_schema, null, 2)}
+          </pre>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ToolsMeta displays tools meta info (collapsible)
+function ToolsMeta({ tools }: { tools?: ToolDef[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!tools || tools.length === 0) return null;
+
+  return (
+    <div className="inline-flex items-start">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-xs hover:bg-purple-200 transition-colors"
+      >
+        <svg className={`w-3 h-3 transition-transform ${expanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        <span className="font-medium">{tools.length} Tools</span>
+      </button>
+
+      {expanded && (
+        <div className="ml-2 mt-0.5 p-2 bg-purple-50 border border-purple-200 rounded text-xs max-w-md">
+          <div className="font-medium text-purple-700 mb-1">Tools</div>
+          <div className="space-y-1">
+            {tools.map((tool, i) => (
+              <ToolDefItem key={i} tool={tool} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// UserMessageMeta displays system prompts and tools meta info for user messages
+function UserMessageMeta({ systemPrompts, tools }: { systemPrompts?: string[]; tools?: ToolDef[] }) {
+  const hasSystemPrompts = systemPrompts && systemPrompts.length > 0;
+  const hasTools = tools && tools.length > 0;
+
+  if (!hasSystemPrompts && !hasTools) return null;
+
+  return (
+    <div className="mt-2 space-y-2">
+      <SystemMeta systemPrompts={systemPrompts} />
+      <ToolsMeta tools={tools} />
+    </div>
+  );
+}
+
+export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, timestamp, system_prompts, tools }: MessageBubbleProps) {
   const isUser = role === 'user';
 
   const roleColors = {
@@ -337,6 +537,9 @@ export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, 
             </div>
           )}
         </div>
+
+        {/* System/Tools meta for user messages */}
+        {isUser && <UserMessageMeta systemPrompts={system_prompts} tools={tools} />}
       </div>
     </div>
   );

@@ -67,6 +67,12 @@ export interface Conversation {
   last_updated: number;
 }
 
+export interface ToolDef {
+  name: string;
+  description?: string;
+  input_schema: Record<string, unknown>;
+}
+
 export interface Message {
   id: string;
   role: string;
@@ -75,6 +81,8 @@ export interface Message {
   tokens?: number;
   timestamp: number;
   is_streaming?: boolean;
+  system_prompts?: string[];
+  tools?: ToolDef[];
 }
 
 // Hook options
@@ -211,6 +219,8 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
       tool_calls: actualEvent.message.tool_calls,
       tokens: actualEvent.token_count,
       timestamp: new Date(actualEvent.timestamp).getTime(),
+      system_prompts: actualEvent.message.system,
+      tools: actualEvent.message.tools,
     };
 
     if (messageIndex >= 0) {

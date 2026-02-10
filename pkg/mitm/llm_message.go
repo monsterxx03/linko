@@ -16,6 +16,14 @@ type LLMMessage struct {
 	Name       string     `json:"name,omitempty"`       // optional name for the message
 	ToolCalls  []ToolCall `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
 	System     []string   `json:"system,omitempty"`     // system prompt (extracted from request)
+	Tools      []ToolDef  `json:"tools,omitempty"`    // available tools (extracted from request)
+}
+
+// ToolDef represents a tool definition
+type ToolDef struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	InputSchema map[string]interface{} `json:"input_schema"`
 }
 
 // ToolCall represents a tool call in an LLM message
@@ -94,6 +102,7 @@ type Provider interface {
 	ParseResponse(body []byte) (*LLMResponse, error)
 	ParseSSEStream(body []byte) []TokenDelta
 	ExtractSystemPrompt(body []byte) []string
+	ExtractTools(body []byte) []ToolDef
 }
 
 // Anthropic API types
@@ -179,6 +188,7 @@ type openaiRequest struct {
 	Stop        interface{} `json:"stop,omitempty"`
 	Temperature float64     `json:"temperature,omitempty"`
 	TopP        float64     `json:"top_p,omitempty"`
+	Tools       []ToolDef   `json:"tools,omitempty"`
 }
 
 type openaiMsg struct {
@@ -388,6 +398,27 @@ func (a anthropicProvider) ExtractSystemPrompt(body []byte) []string {
 	return prompts
 }
 
+func (a anthropicProvider) ExtractTools(body []byte) []ToolDef {
+	var req anthropicRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil
+	}
+
+	if len(req.Tools) == 0 {
+		return nil
+	}
+
+	var tools []ToolDef
+	for _, t := range req.Tools {
+		tools = append(tools, ToolDef{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: t.InputSchema,
+		})
+	}
+	return tools
+}
+
 // openaiProvider implements Provider for OpenAI Chat API
 type openaiProvider struct{}
 
@@ -506,6 +537,27 @@ func (o openaiProvider) ExtractSystemPrompt(body []byte) []string {
 	}
 
 	return []string{req.System}
+}
+
+func (o openaiProvider) ExtractTools(body []byte) []ToolDef {
+	var req openaiRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil
+	}
+
+	if len(req.Tools) == 0 {
+		return nil
+	}
+
+	var tools []ToolDef
+	for _, t := range req.Tools {
+		tools = append(tools, ToolDef{
+			Name:        t.Name,
+			Description: t.Description,
+			InputSchema: t.InputSchema,
+		})
+	}
+	return tools
 }
 
 // Helper functions

@@ -143,6 +143,8 @@ function ConversationView({
             tool_calls={msg.tool_calls}
             timestamp={msg.timestamp}
             isStreaming={msg.is_streaming}
+            system_prompts={msg.system_prompts}
+            tools={msg.tools}
           />
         ))}
         <div ref={messagesEndRef} />

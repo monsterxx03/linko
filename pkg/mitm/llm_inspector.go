@@ -91,21 +91,9 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	l.conversationIDs.Store(requestID, conversationID)
 	model := l.extractModel(bodyBytes)
 
-	// Publish system prompt if present (merge all prompts into one message)
+	// Extract system prompts and tools
 	systemPrompts := provider.ExtractSystemPrompt(bodyBytes)
-	if len(systemPrompts) > 0 {
-		event := &LLMMessageEvent{
-			ID:             generateEventID(),
-			Timestamp:      time.Now(),
-			ConversationID: conversationID,
-			RequestID:      requestID,
-			Message: LLMMessage{
-				Role:    "system",
-				Content: systemPrompts,
-			},
-		}
-		l.publishEvent("llm_message", event)
-	}
+	tools := provider.ExtractTools(bodyBytes)
 
 	// Parse the request
 	messages, err := provider.ParseRequest(bodyBytes)
@@ -118,8 +106,11 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 		return
 	}
 
-	// 只发布最后一条消息（当前用户消息），避免重复发布历史消息
+	// 只发布最后一条消息（当前用户消息），包含 system 和 tools
 	lastMsg := messages[len(messages)-1]
+	lastMsg.System = systemPrompts
+	lastMsg.Tools = tools
+
 	event := &LLMMessageEvent{
 		ID:             generateEventID(),
 		Timestamp:      time.Now(),
