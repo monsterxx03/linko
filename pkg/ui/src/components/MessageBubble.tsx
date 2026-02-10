@@ -53,49 +53,76 @@ function extractFirstTagName(content: string): string {
   return match ? match[1] : 'unknown';
 }
 
-// System prompt content - defaults to collapsed, shows first 50 chars
-function SystemContent({ content }: { content: string }) {
+// System prompt content - multiple prompts are shown with separators
+function SystemContent({ content }: { content: string[] }) {
+  if (content.length === 0) {
+    return null;
+  }
+
+  if (content.length === 1) {
+    return <SingleSystemPrompt content={content[0]} />;
+  }
+
+  // Multiple system prompts with separators
+  return (
+    <div className="space-y-3">
+      {content.map((c, i) => (
+        <div key={i} className="relative pl-6">
+          {/* Separator line */}
+          {i > 0 && (
+            <div className="absolute left-2 top-[-12px] w-0.5 h-3 bg-yellow-200" />
+          )}
+          {/* Index badge */}
+          <span className="absolute left-0 top-1 w-5 h-5 rounded-full bg-yellow-200 text-yellow-700 text-xs flex items-center justify-center font-medium">
+            {i + 1}
+          </span>
+          <div className="border border-yellow-200 rounded-lg overflow-hidden bg-yellow-50/50">
+            <SingleSystemPrompt content={c} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SingleSystemPrompt({ content }: { content: string }) {
   const [collapsed, setCollapsed] = useState(true);
   const previewLength = 100;
   const shouldCollapse = content.length > previewLength;
 
   if (!shouldCollapse) {
-    return <div className="text-xs text-bg-600">{formatContent(content)}</div>;
+    return <div className="text-xs text-bg-600 px-2 py-1">{formatContent(content)}</div>;
   }
 
   const preview = content.substring(0, previewLength) + '...';
 
   return (
-    <div className="border border-yellow-200 rounded-lg overflow-hidden">
+    <>
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-yellow-50 transition-colors bg-yellow-50"
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-yellow-100 transition-colors"
       >
         <svg
-          className={`w-4 h-4 text-yellow-600 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+          className={`w-3 h-3 text-yellow-600 transition-transform ${collapsed ? '' : 'rotate-90'}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
-        <span className="text-xs text-yellow-700 font-medium">System Prompt</span>
-        <span className="text-xs text-yellow-500 ml-auto">
-          {collapsed ? 'Expand' : 'Collapse'}
+        <span className="text-xs text-yellow-700">
+          {collapsed ? preview : ''}
+        </span>
+        <span className="text-xs text-yellow-500 ml-auto whitespace-nowrap">
+          {collapsed ? '展开' : '折叠'}
         </span>
       </button>
-      {collapsed ? (
-        <div className="px-3 py-2 text-xs text-bg-600 bg-yellow-50/50">
-          {preview}
-        </div>
-      ) : (
+      {!collapsed && (
         <div className="px-3 py-2 bg-yellow-50 border-t border-yellow-200">
-          <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">
-            {content}
-          </pre>
+          <div className="text-xs text-bg-700">{formatContent(content)}</div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -283,7 +310,7 @@ export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, 
           <div className={`text-sm leading-relaxed ${isUser ? 'text-blue-900' : 'text-bg-800'}`}>
             {/* System prompt uses special collapsible view */}
             {role === 'system' ? (
-              <SystemContent content={Array.isArray(content) ? content[0] : content} />
+              <SystemContent content={Array.isArray(content) ? content : [String(content)]} />
             ) : Array.isArray(content) ? (
               <div className="space-y-2">
                 {content.map((c, i) => (

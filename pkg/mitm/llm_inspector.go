@@ -91,9 +91,9 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	l.conversationIDs.Store(requestID, conversationID)
 	model := l.extractModel(bodyBytes)
 
-	// Publish system prompt if present
+	// Publish system prompt if present (merge all prompts into one message)
 	systemPrompts := provider.ExtractSystemPrompt(bodyBytes)
-	for _, systemPrompt := range systemPrompts {
+	if len(systemPrompts) > 0 {
 		event := &LLMMessageEvent{
 			ID:             generateEventID(),
 			Timestamp:      time.Now(),
@@ -101,7 +101,7 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 			RequestID:      requestID,
 			Message: LLMMessage{
 				Role:    "system",
-				Content: []string{systemPrompt},
+				Content: systemPrompts,
 			},
 		}
 		l.publishEvent("llm_message", event)

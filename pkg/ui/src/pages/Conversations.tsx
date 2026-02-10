@@ -107,7 +107,7 @@ function ConversationView({
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
       <div className="px-6 py-4 border-b border-bg-200 bg-white">
         <div className="flex items-center justify-between">
@@ -133,7 +133,7 @@ function ConversationView({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4">
+      <div className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth">
         {conversation.messages.map((msg) => (
           <MessageBubble
             key={msg.id}
@@ -165,7 +165,7 @@ export default function Conversations() {
   const currentConversation = conversations.find(c => c.id === currentConversationId);
 
   return (
-    <div className="h-[calc(100vh-180px)] flex flex-col">
+    <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div>
@@ -205,9 +205,9 @@ export default function Conversations() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden border border-bg-200 rounded-xl bg-white">
+      <div className="flex-1 flex overflow-hidden border border-bg-200 rounded-xl bg-white min-h-0">
         {/* Conversation list */}
-        <div className="w-80 border-r border-bg-200 overflow-y-auto">
+        <div className="w-80 border-r border-bg-200 overflow-y-auto flex-shrink-0">
           <ConversationList
             conversations={conversations}
             currentId={currentConversationId}
