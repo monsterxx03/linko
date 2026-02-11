@@ -25,6 +25,7 @@ type AdminServer struct {
 	wg        sync.WaitGroup
 	dnsServer *dns.DNSServer
 	eventBus  *mitm.EventBus
+	llmEventBus *mitm.EventBus
 }
 
 type StatsResponse struct {
@@ -33,13 +34,14 @@ type StatsResponse struct {
 	Data    map[string]any `json:"data"`
 }
 
-func NewAdminServer(addr string, uiPath string, uiEmbed bool, dnsServer *dns.DNSServer, eventBus *mitm.EventBus) *AdminServer {
+func NewAdminServer(addr string, uiPath string, uiEmbed bool, dnsServer *dns.DNSServer, eventBus *mitm.EventBus, llmEventBus *mitm.EventBus) *AdminServer {
 	return &AdminServer{
 		addr:      addr,
 		uiPath:    uiPath,
 		uiEmbed:   uiEmbed,
 		dnsServer: dnsServer,
 		eventBus:  eventBus,
+		llmEventBus: llmEventBus,
 	}
 }
 
@@ -67,6 +69,9 @@ func (s *AdminServer) Start() error {
 
 	// MITM traffic SSE endpoint
 	mux.HandleFunc("/api/mitm/traffic/sse", s.handleMITMTrafficSSE)
+
+	// LLM conversation SSE endpoint
+	mux.HandleFunc("/api/llm/conversation/sse", s.handleLLMConversationSSE)
 
 	s.server = &http.Server{
 		Handler: mux,
@@ -275,6 +280,83 @@ func (s *AdminServer) handleMITMTrafficSSE(w http.ResponseWriter, r *http.Reques
 	// Send welcome message
 	welcomeMsg := `event: welcome
 data: {"message":"Connected to MITM traffic stream"}
+
+`
+	w.Write([]byte(welcomeMsg))
+	flusher.Flush()
+
+	// Set up connection close handling using context
+	ctx := r.Context()
+
+	// Listen for events
+	for {
+		select {
+		case <-ctx.Done():
+			// Client closed connection or context cancelled
+			return
+		case event, ok := <-subscriber.Channel:
+			if !ok {
+				return
+			}
+			// Marshal event to JSON
+			eventData, err := json.Marshal(event)
+			if err != nil {
+				continue
+			}
+			// Determine event type based on direction
+			eventType := "traffic"
+			switch event.Direction {
+			case "llm_message":
+				eventType = "llm_message"
+			case "llm_token":
+				eventType = "llm_token"
+			case "conversation":
+				eventType = "conversation"
+			}
+			// Format SSE message
+			eventMsg := `event: ` + eventType + `
+data: ` + string(eventData) + `
+
+`
+			// Write event to response
+			_, err = w.Write([]byte(eventMsg))
+			if err != nil {
+				return
+			}
+			// Flush the data immediately to the client
+			flusher.Flush()
+		}
+	}
+}
+
+// handleLLMConversationSSE handles the SSE endpoint for LLM conversation events
+func (s *AdminServer) handleLLMConversationSSE(w http.ResponseWriter, r *http.Request) {
+	// Check if LLM event bus is available
+	if s.llmEventBus == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
+	// Set SSE headers
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	// Get flusher for SSE
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	// Create subscriber
+	subscriber := s.llmEventBus.Subscribe()
+	defer s.llmEventBus.Unsubscribe(subscriber)
+
+	// Send welcome message
+	welcomeMsg := `event: welcome
+data: {"message":"Connected to LLM conversation stream"}
 
 `
 	w.Write([]byte(welcomeMsg))

@@ -15,21 +15,21 @@ type Manager struct {
 	enabled         bool
 	inspector       *InspectorChain
 	eventBus        *EventBus
+	llmEventBus     *EventBus
 	mu              sync.RWMutex
 }
 
 // ManagerConfig contains MITM manager configuration
 type ManagerConfig struct {
-	CACertPath         string
-	CAKeyPath          string
-	CertCacheDir       string
-	SiteCertValidity   time.Duration
-	CACertValidity     time.Duration
-	Enabled            bool
-	MaxBodySize        int64
-	EventHistorySize   int
-	EnableSSEInspector bool // Enable SSE inspector (mutually exclusive with LLM inspector)
-	EnableLLMInspector bool // Enable LLM inspector (mutually exclusive with SSE inspector)
+	CACertPath          string
+	CAKeyPath           string
+	CertCacheDir        string
+	SiteCertValidity    time.Duration
+	CACertValidity      time.Duration
+	Enabled             bool
+	MaxBodySize         int64
+	EventHistorySize    int
+	LLMEventHistorySize int // Event history size for LLM inspector
 }
 
 // NewManager creates a new MITM manager
@@ -70,20 +70,14 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		logger:          logger,
 		enabled:         config.Enabled,
 		inspector:       NewInspectorChain(),
-		eventBus:        NewEventBus(logger, config.EventHistorySize), // Create event bus
+		eventBus:        NewEventBus(logger, config.EventHistorySize),
+		llmEventBus:     NewEventBus(logger, config.LLMEventHistorySize),
 	}
 
-	// Add inspectors based on configuration (mutually exclusive)
-	if config.EnableSSEInspector {
-		m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))
-		logger.Info("Added SSE inspector")
-	} else if config.EnableLLMInspector {
-		m.inspector.Add(NewLLMInspector(logger, m.eventBus, ""))
-		logger.Info("Added LLM inspector")
-	} else {
-		// Default: add no inspectors to avoid conflicts
-		logger.Info("No inspectors added (default behavior to avoid conflicts)")
-	}
+	// Add both inspectors - they publish to separate event buses
+	// SSEInspector must in the last
+	m.inspector.Add(NewLLMInspector(logger, m.llmEventBus, ""))
+	m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))
 
 	return m, nil
 }
@@ -145,4 +139,9 @@ func (m *Manager) GetStatistics() Statistics {
 // GetEventBus returns the event bus for traffic events
 func (m *Manager) GetEventBus() *EventBus {
 	return m.eventBus
+}
+
+// GetLLMEventBus returns the event bus for LLM conversation events
+func (m *Manager) GetLLMEventBus() *EventBus {
+	return m.llmEventBus
 }

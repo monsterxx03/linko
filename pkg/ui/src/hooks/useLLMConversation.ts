@@ -422,7 +422,7 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
         eventSourceRef.current.close();
       }
 
-      const eventSource = new EventSource('/api/mitm/traffic/sse');
+      const eventSource = new EventSource('/api/llm/conversation/sse');
       eventSourceRef.current = eventSource;
 
       eventSource.addEventListener('welcome', () => {

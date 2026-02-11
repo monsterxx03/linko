@@ -62,16 +62,15 @@ func RunServer(cfg *config.Config, sc *ServerConfig, logger *slog.Logger) error 
 
 		var err error
 		mitmManager, err = mitm.NewManager(mitm.ManagerConfig{
-			CACertPath:       cfg.MITM.CACertPath,
-			CAKeyPath:        cfg.MITM.CAKeyPath,
-			CertCacheDir:     cfg.MITM.CertCacheDir,
-			SiteCertValidity: cfg.MITM.SiteCertValidity,
-			CACertValidity:   cfg.MITM.CACertValidity,
-			Enabled:          true,
-			MaxBodySize:      cfg.MITM.MaxBodySize,
-			EventHistorySize: cfg.MITM.EventHistorySize,
-			EnableSSEInspector:  cfg.MITM.EnableSSEInspector,
-			EnableLLMInspector:  cfg.MITM.EnableLLMInspector,
+			CACertPath:         cfg.MITM.CACertPath,
+			CAKeyPath:          cfg.MITM.CAKeyPath,
+			CertCacheDir:       cfg.MITM.CertCacheDir,
+			SiteCertValidity:   cfg.MITM.SiteCertValidity,
+			CACertValidity:     cfg.MITM.CACertValidity,
+			Enabled:            true,
+			MaxBodySize:        cfg.MITM.MaxBodySize,
+			EventHistorySize:   cfg.MITM.EventHistorySize,
+			LLMEventHistorySize: cfg.MITM.LLMEventHistorySize,
 		}, logger)
 		if err != nil {
 			slog.Error("failed to initialize MITM manager", "error", err)
@@ -90,10 +89,12 @@ func RunServer(cfg *config.Config, sc *ServerConfig, logger *slog.Logger) error 
 	if cfg.Admin.Enable {
 		slog.Info("starting admin server", "address", cfg.Admin.ListenAddr)
 		var eventBus *mitm.EventBus
+		var llmEventBus *mitm.EventBus
 		if mitmManager != nil {
 			eventBus = mitmManager.GetEventBus()
+			llmEventBus = mitmManager.GetLLMEventBus()
 		}
-		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, dnsServer, eventBus)
+		adminServer = admin.NewAdminServer(cfg.Admin.ListenAddr, cfg.Admin.UIPath, cfg.Admin.UIEmbed, dnsServer, eventBus, llmEventBus)
 		if err := adminServer.Start(); err != nil {
 			return err
 		}

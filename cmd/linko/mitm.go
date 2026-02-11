@@ -14,7 +14,6 @@ import (
 var (
 	mitmLogLevel  string
 	mitmWhitelist string
-	mitmMode      string
 )
 
 var mitmCmd = &cobra.Command{
@@ -33,16 +32,6 @@ func runMITM(cmd *cobra.Command, args []string) {
 
 	if mitmWhitelist != "" {
 		cfg.MITM.Whitelist = strings.Split(mitmWhitelist, ",")
-	}
-
-	// Set inspector mode
-	switch mitmMode {
-	case "llm":
-		cfg.MITM.EnableLLMInspector = true
-		cfg.MITM.EnableSSEInspector = false
-	default:
-		cfg.MITM.EnableSSEInspector = true
-		cfg.MITM.EnableLLMInspector = false
 	}
 
 	if err := syscall.Setgid(cfg.MITM.GID); err != nil {
@@ -85,5 +74,4 @@ func runMITM(cmd *cobra.Command, args []string) {
 func init() {
 	mitmCmd.Flags().StringVar(&mitmLogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	mitmCmd.Flags().StringVar(&mitmWhitelist, "whitelist", "", "Comma-separated list of domains to MITM (e.g., 'example.com,api.example.com')")
-	mitmCmd.Flags().StringVar(&mitmMode, "mode", "http", "Inspector mode: http or llm")
 }

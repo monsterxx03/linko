@@ -160,11 +160,8 @@ type MITMConfig struct {
 	// EventHistorySize is the number of events to keep in history for replay (default: 10)
 	EventHistorySize int `mapstructure:"event_history_size" yaml:"event_history_size"`
 
-	// EnableSSEInspector enables SSE inspector (mutually exclusive with LLM inspector)
-	EnableSSEInspector bool `mapstructure:"enable_sse_inspector" yaml:"enable_sse_inspector"`
-
-	// EnableLLMInspector enables LLM inspector (mutually exclusive with SSE inspector)
-	EnableLLMInspector bool `mapstructure:"enable_llm_inspector" yaml:"enable_llm_inspector"`
+	// LLMEventHistorySize is the number of LLM events to keep in history for replay (default: 10)
+	LLMEventHistorySize int `mapstructure:"llm_event_history_size" yaml:"llm_event_history_size"`
 }
 
 // DefaultConfig returns a default configuration
@@ -208,15 +205,16 @@ func DefaultConfig() *Config {
 			UIEmbed:    false,
 		},
 		MITM: MITMConfig{
-			Enable:           false,
-			GID:              8001,
-			CACertPath:       "certs/ca.crt",
-			CAKeyPath:        "certs/ca.key",
-			CertCacheDir:     "certs/sites",
-			SiteCertValidity: 168 * time.Hour,      // 7 days
-			CACertValidity:   365 * 24 * time.Hour, // 365 days
-			MaxBodySize:      2097152,              // 2M default
-			EventHistorySize: 10,                   // Default 10 historical events
+			Enable:             false,
+			GID:                8001,
+			CACertPath:         "certs/ca.crt",
+			CAKeyPath:          "certs/ca.key",
+			CertCacheDir:       "certs/sites",
+			SiteCertValidity:   168 * time.Hour,      // 7 days
+			CACertValidity:    365 * 24 * time.Hour, // 365 days
+			MaxBodySize:       2097152,              // 2M default
+			EventHistorySize:  10,                   // Default 10 historical events
+			LLMEventHistorySize: 10,                // Default 10 LLM historical events
 		},
 	}
 }
