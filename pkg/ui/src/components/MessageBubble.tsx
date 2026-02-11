@@ -48,24 +48,21 @@ function decodeForTagCheck(content: string): string {
     .replace(/\\u003e/g, '>');
 }
 
-// Check if content is wrapped by matching XML/HTML tags at start and end
-function hasXmlTags(content: string): boolean {
+// Check if content is wrapped by <system-reminder> tags
+function hasSystemReminderTag(content: string): boolean {
   const decoded = decodeForTagCheck(content);
-  // Match opening tag at start: <tagName...> or <tagName ...>
-  const openMatch = decoded.match(/^<([a-zA-Z][a-zA-Z0-9-]*)[^>]*>/);
+  // Match opening <system-reminder> tag at start
+  const openMatch = /^<system-reminder[\s>]/i.test(decoded);
   if (!openMatch) return false;
 
-  const tagName = openMatch[1];
-  // Match closing tag at end: </tagName>
-  const closeRegex = new RegExp(`</${tagName}>$`);
+  // Match closing </system-reminder> tag at end
+  const closeRegex = /<\/system-reminder>$/i;
   return closeRegex.test(decoded);
 }
 
-// Extract tag name from content (only call when hasXmlTags is true)
+// Extract the tag name (always 'system-reminder')
 function extractFirstTagName(content: string): string {
-  const decoded = decodeForTagCheck(content);
-  const match = decoded.match(/^<([a-zA-Z][a-zA-Z0-9-]*)/);
-  return match ? match[1] : 'unknown';
+  return 'system-reminder';
 }
 
 // CopyButton shows a copy button that copies text to clipboard
@@ -183,16 +180,16 @@ function SingleSystemPrompt({ content }: { content: string }) {
   );
 }
 
-// Collapsible content block for XML/HTML content
+// Collapsible content block for system-reminder tags or plain text content
 function CollapsibleContent({ content, index }: { content: string; index: number }) {
-  const [collapsed, setCollapsed] = useState(true);
-
-  const hasTags = hasXmlTags(content);
-  const tagName = extractFirstTagName(content);
+  const hasTags = hasSystemReminderTag(content);
 
   if (!hasTags) {
     return <CollapsibleMarkdown content={content} index={index} />;
   }
+
+  const tagName = extractFirstTagName(content);
+  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <div className="border border-slate-200 rounded-lg overflow-hidden my-2">
@@ -201,7 +198,7 @@ function CollapsibleContent({ content, index }: { content: string; index: number
         className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-slate-50 transition-colors bg-slate-50"
       >
         <svg
-          className={`w-4 h-4 text-slate-500 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+          className={`w-4 h-4 text-slate-500 transition-transform ${collapsed ? 'rotate-90' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -212,12 +209,12 @@ function CollapsibleContent({ content, index }: { content: string; index: number
           [{index}] &lt;{tagName}&gt;
         </span>
         <span className="text-xs text-slate-400 ml-auto">
-          {collapsed ? 'Expand' : 'Collapse'}
+          {collapsed ? 'Hide' : 'Show'}
         </span>
       </button>
-      {!collapsed && (
+      {collapsed && (
         <div className="px-3 py-2 bg-slate-50 border-t border-slate-200">
-          <pre className="text-xs font-mono text-slate-700 whitespace-pre-wrap break-all">
+          <pre className="text-sm font-mono text-slate-700 whitespace-pre-wrap break-all">
             {content}
           </pre>
         </div>
@@ -226,14 +223,18 @@ function CollapsibleContent({ content, index }: { content: string; index: number
   );
 }
 
-// CollapsibleMarkdown renders markdown content that auto-collapses when too long
+// CollapsibleMarkdown renders long content with collapse functionality (plain text, no markdown)
 const COLLAPSE_THRESHOLD = 500;
 
 function CollapsibleMarkdown({ content, index }: { content: string; index: number }) {
   const [collapsed, setCollapsed] = useState(content.length > COLLAPSE_THRESHOLD);
 
   if (!collapsed) {
-    return <MarkdownContent content={content} />;
+    return (
+      <div className="text-sm text-slate-800 whitespace-pre-wrap break-all">
+        {content}
+      </div>
+    );
   }
 
   const preview = content.substring(0, COLLAPSE_THRESHOLD) + '...';
@@ -245,7 +246,7 @@ function CollapsibleMarkdown({ content, index }: { content: string; index: numbe
         className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-slate-50 transition-colors bg-slate-50"
       >
         <svg
-          className={`w-4 h-4 text-slate-500 transition-transform ${collapsed ? '' : 'rotate-90'}`}
+          className={`w-4 h-4 text-slate-500 transition-transform ${collapsed ? 'rotate-90' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -253,7 +254,7 @@ function CollapsibleMarkdown({ content, index }: { content: string; index: numbe
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
         </svg>
         <span className="text-xs text-slate-500 font-mono flex-1 text-left">
-          [{index}] {collapsed ? preview : ''}
+          [{index}] {preview}
         </span>
         <span className="text-xs text-slate-400 whitespace-nowrap">
           {collapsed ? '展开' : '收起'}
@@ -261,14 +262,16 @@ function CollapsibleMarkdown({ content, index }: { content: string; index: numbe
       </button>
       {!collapsed && (
         <div className="px-3 py-2 bg-slate-50 border-t border-slate-200">
-          <MarkdownContent content={content} />
+          <div className="text-sm text-slate-800 whitespace-pre-wrap break-all">
+            {content}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-// MarkdownContent renders markdown content with proper styling
+// MarkdownContent renders markdown content with proper styling (used for system prompts and tool descriptions)
 function MarkdownContent({ content, className = '' }: { content: string; className?: string }) {
   return (
     <div className={`markdown-content ${className}`}>
