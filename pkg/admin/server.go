@@ -303,18 +303,8 @@ data: {"message":"Connected to MITM traffic stream"}
 			if err != nil {
 				continue
 			}
-			// Determine event type based on direction
-			eventType := "traffic"
-			switch event.Direction {
-			case "llm_message":
-				eventType = "llm_message"
-			case "llm_token":
-				eventType = "llm_token"
-			case "conversation":
-				eventType = "conversation"
-			}
 			// Format SSE message
-			eventMsg := `event: ` + eventType + `
+			eventMsg := `event: traffic
 data: ` + string(eventData) + `
 
 `

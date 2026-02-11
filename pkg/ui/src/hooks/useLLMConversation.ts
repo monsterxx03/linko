@@ -1,67 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useSSEContext } from '../contexts/SSEContext';
-
-// LLM Message types
-export interface LLMMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool';
-  content: string[];
-  name?: string;
-  tool_calls?: ToolCall[];
-  system?: string[];
-  tools?: ToolDef[];
-}
-
-export interface ToolCall {
-  id: string;
-  type: string;
-  function: {
-    name: string;
-    arguments: string;
-  };
-}
-
-export interface TokenUsage {
-  input_tokens: number;
-  output_tokens: number;
-}
-
-// Conversation state
-export interface Conversation {
-  id: string;
-  model?: string;
-  status: 'streaming' | 'complete' | 'error';
-  messages: Message[];
-  total_tokens: number;
-  message_count?: number;
-  started_at: number;
-  last_updated: number;
-}
-
-export interface ToolDef {
-  name: string;
-  description?: string;
-  input_schema: Record<string, unknown>;
-}
-
-export interface StreamingToolCall {
-  id?: string;
-  name?: string;
-  arguments: string;
-}
-
-export interface Message {
-  id: string;
-  role: string;
-  content: string[];
-  tool_calls?: ToolCall[];
-  streaming_tool_calls?: StreamingToolCall[];
-  tokens?: number;
-  timestamp: number;
-  is_streaming?: boolean;
-  system_prompts?: string[];
-  tools?: ToolDef[];
-  thinking?: string;
-}
+import { useSSEContext, Conversation as ConversationType } from '../contexts/SSEContext';
 
 // Hook options
 export interface UseLLMConversationOptions {
@@ -70,7 +8,7 @@ export interface UseLLMConversationOptions {
 
 // Hook return type
 export interface UseLLMConversationReturn {
-  conversations: Conversation[];
+  conversations: ConversationType[];
   currentConversationId: string | null;
   setCurrentConversationId: (id: string | null) => void;
   isConnected: boolean;
@@ -80,8 +18,8 @@ export interface UseLLMConversationReturn {
 }
 
 export function useLLMConversation(_options: UseLLMConversationOptions = {}): UseLLMConversationReturn {
-  const { llmEvents$, llmConversations$, llmCurrentId$, isLLMConnected, clearLLM } = useSSEContext();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const { llmConversations$, llmCurrentId$, isLLMConnected, clearLLM } = useSSEContext();
+  const [conversations, setConversations] = useState<ConversationType[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [isConnected, setIsConnected] = useState(false);
 
@@ -102,9 +40,9 @@ export function useLLMConversation(_options: UseLLMConversationOptions = {}): Us
     setIsConnected(false);
   }, []);
 
-  // Subscribe to conversations from SSEContext (provides persisted data)
+  // Subscribe to conversations from SSEContext
   useEffect(() => {
-    const unsubConversations = llmConversations$.subscribe((allConversations: Conversation[]) => {
+    const unsubConversations = llmConversations$.subscribe((allConversations: ConversationType[]) => {
       setConversations([...allConversations]);
     });
 
@@ -117,27 +55,6 @@ export function useLLMConversation(_options: UseLLMConversationOptions = {}): Us
       unsubCurrentId();
     };
   }, [llmConversations$, llmCurrentId$]);
-
-  // Subscribe to LLM events for real-time updates (updates the store in SSEContext)
-  useEffect(() => {
-    const unsubMessage = llmEvents$.message.subscribe(() => {
-      // Store update is handled in SSEProvider
-    });
-
-    const unsubToken = llmEvents$.token.subscribe(() => {
-      // Store update is handled in SSEProvider
-    });
-
-    const unsubConversation = llmEvents$.conversation.subscribe(() => {
-      // Store update is handled in SSEProvider
-    });
-
-    return () => {
-      unsubMessage();
-      unsubToken();
-      unsubConversation();
-    };
-  }, [llmEvents$]);
 
   return {
     conversations,

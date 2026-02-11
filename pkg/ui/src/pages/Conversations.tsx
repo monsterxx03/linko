@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { MessageBubble } from '../components/MessageBubble';
-import { useLLMConversation, Conversation } from '../hooks/useLLMConversation';
+import { useLLMConversation } from '../hooks/useLLMConversation';
+import { Conversation } from '../contexts/SSEContext';
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
@@ -184,7 +185,7 @@ export default function Conversations() {
     reconnect,
   } = useLLMConversation();
 
-  const currentConversation = conversations.find(c => c.id === currentConversationId);
+  const currentConversation = conversations.find((c: Conversation) => c.id === currentConversationId);
 
   return (
     <div className="flex-1 flex flex-col min-h-0">

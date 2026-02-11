@@ -250,7 +250,7 @@ class TrafficEventStore {
 }
 
 // Conversation state types (needed for LLM store)
-interface Conversation {
+export interface Conversation {
   id: string;
   model?: string;
   status: 'streaming' | 'complete' | 'error';
@@ -261,7 +261,7 @@ interface Conversation {
   last_updated: number;
 }
 
-interface Message {
+export interface Message {
   id: string;
   role: string;
   content: string[];
