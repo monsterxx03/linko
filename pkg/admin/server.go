@@ -274,7 +274,7 @@ func (s *AdminServer) handleMITMTrafficSSE(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Create subscriber
-	subscriber := s.eventBus.Subscribe()
+	subscriber := s.eventBus.SubscribeWithName("mitm-traffic-sse")
 	defer s.eventBus.Unsubscribe(subscriber)
 
 	// Send welcome message
@@ -341,7 +341,7 @@ func (s *AdminServer) handleLLMConversationSSE(w http.ResponseWriter, r *http.Re
 	}
 
 	// Create subscriber
-	subscriber := s.llmEventBus.Subscribe()
+	subscriber := s.llmEventBus.SubscribeWithName("llm-conversation-sse")
 	defer s.llmEventBus.Unsubscribe(subscriber)
 
 	// Send welcome message

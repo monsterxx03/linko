@@ -52,6 +52,7 @@ type LLMResponse struct {
 	StopReason string     `json:"stop_reason"`
 	Usage      TokenUsage `json:"usage"`
 	Error      *APIError  `json:"error,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 }
 
 // TokenDelta represents incremental token updates for streaming
