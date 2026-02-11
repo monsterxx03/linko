@@ -1,7 +1,7 @@
 package mitm
 
 import (
-	"fmt"
+	"errors"
 	"io"
 	"log/slog"
 	"strconv"
@@ -22,21 +22,15 @@ func (c *InspectorChain) Add(inspector Inspector) {
 	c.inspectors = append(c.inspectors, inspector)
 }
 
-func (c *InspectorChain) Inspect(direction Direction, data []byte, hostname string, connectionID, requestID string) ([]byte, error) {
-	var err error
-	result := data
-
+func (c *InspectorChain) Inspect(direction Direction, data []byte, hostname string, connectionID, requestID string) error {
+	errs := make([]error, 0)
 	for _, inspector := range c.inspectors {
-		result, err = inspector.Inspect(direction, result, hostname, connectionID, requestID)
+		_, err := inspector.Inspect(direction, data, hostname, connectionID, requestID)
 		if err != nil {
-			return nil, fmt.Errorf("inspector %s failed: %w", inspector.Name(), err)
-		}
-		if result == nil {
-			return nil, nil
+			errs = append(errs, err)
 		}
 	}
-
-	return result, nil
+	return errors.Join(errs...)
 }
 
 func (c *InspectorChain) ShouldInspect(hostname string) bool {
@@ -114,9 +108,9 @@ func (ir *InspectReader) Read(p []byte) (n int, err error) {
 		// Determine request ID based on data direction and content
 		requestID := ir.determineRequestID(data)
 
-		_, err := ir.inspector.Inspect(ir.direction, data, ir.hostname, ir.idGenerator.ConnectionID(), requestID)
+		err := ir.inspector.Inspect(ir.direction, data, ir.hostname, ir.idGenerator.ConnectionID(), requestID)
 		if err != nil {
-			ir.logger.Debug("inspect error", "error", err)
+			ir.logger.Warn("inspect error", "error", err)
 		}
 	}
 	return n, err

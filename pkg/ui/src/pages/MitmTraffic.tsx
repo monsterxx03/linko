@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import ReactJson from 'react-json-view';
-import { useTraffic, TrafficEvent } from '../hooks/useTraffic';
+import { useTraffic } from '../hooks/useTraffic';
+import { TrafficEvent } from '../contexts/SSEContext';
 
 const METHOD_COLORS: Record<string, string> = {
   GET: 'bg-green-100 text-green-800',

@@ -60,11 +60,6 @@ function hasSystemReminderTag(content: string): boolean {
   return closeRegex.test(decoded);
 }
 
-// Extract the tag name (always 'system-reminder')
-function extractFirstTagName(content: string): string {
-  return 'system-reminder';
-}
-
 // CopyButton shows a copy button that copies text to clipboard
 function CopyButton({ text, className = '' }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false);
@@ -188,7 +183,7 @@ function CollapsibleContent({ content, index }: { content: string; index: number
     return <CollapsibleMarkdown content={content} index={index} />;
   }
 
-  const tagName = extractFirstTagName(content);
+  const tagName = 'system-reminder';
   const [collapsed, setCollapsed] = useState(false);
 
   return (

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import DnsMonitor from './pages/DnsMonitor';
 import MitmTraffic from './pages/MitmTraffic';
 import Conversations from './pages/Conversations';
+import { SSEProvider } from './contexts/SSEContext';
 
 type Tab = 'dns' | 'mitm' | 'conversations';
 
@@ -30,7 +31,8 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-bg-50">
+    <SSEProvider>
+      <div className="min-h-screen bg-bg-50">
       {/* Header */}
       <header className="bg-white border-b border-bg-200 sticky top-0 z-10">
         <div className="w-full px-6 py-4">
@@ -120,6 +122,7 @@ function App() {
         </div>
       </footer>
     </div>
+    </SSEProvider>
   );
 }
 
