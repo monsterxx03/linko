@@ -211,13 +211,23 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		// Accumulate content
 		accumulatedContent += delta.Text
 
+		// 复用流开始时生成的消息 ID
+		var msgID string
+		if val, exists := l.streamMsgIDs.Load(requestID); exists {
+			msgID = val.(string)
+		} else {
+			msgID = generateEventID()
+		}
+
 		event := &llm.LLMTokenEvent{
-			ID:             generateEventID(),
-			Timestamp:      time.Now(),
+			ID:             msgID,  // 复用同一个 ID
 			ConversationID: conversationID,
 			RequestID:      requestID,
 			Delta:          delta.Text,
 			Thinking:       delta.Thinking,
+			ToolName:       delta.ToolName,
+			ToolID:         delta.ToolID,
+			ToolData:       delta.ToolData,
 			IsComplete:     delta.IsComplete,
 			StopReason:     delta.StopReason,
 		}

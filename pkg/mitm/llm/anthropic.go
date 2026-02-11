@@ -89,9 +89,11 @@ type AnthropicStreamEvent struct {
 		Usage      AnthropicUsage     `json:"usage,omitempty"`
 	} `json:"message,omitempty"`
 	ContentBlock struct {
-		Type     string       `json:"type"`
-		Text     string       `json:"text,omitempty"`
-		Thinking string       `json:"thinking,omitempty"`
+		Type     string `json:"type"`
+		Text     string `json:"text,omitempty"`
+		Thinking string `json:"thinking,omitempty"`
+		ID       string `json:"id,omitempty"` // for tool_use
+		Name     string `json:"name,omitempty"` // for tool_use
 	} `json:"content_block,omitempty"`
 }
 
@@ -244,19 +246,33 @@ func (a anthropicProvider) ParseSSEStream(body []byte) []TokenDelta {
 					Thinking: event.Delta.Thinking,
 				})
 			case "input_json_delta":
-				// Ignore JSON structure deltas for now
-				a.logger.Debug("ignoring input_json_delta", "data", data)
+				// Tool call arguments are streaming in as partial JSON
+				// This is part of a tool_use content block
+				deltas = append(deltas, TokenDelta{
+					ToolData: event.Delta.PartialJSON,
+				})
 			default:
 				a.logger.Debug("unhandled delta type", "delta_type", event.Delta.Type, "data", data)
 			}
 		case "content_block_start":
-			// Content block started - may contain thinking block
-			if event.ContentBlock.Type == "thinking" {
+			// Content block started - may contain thinking block or tool_use
+			switch event.ContentBlock.Type {
+			case "thinking":
 				a.logger.Debug("thinking block started", "index", event.Index)
+			case "tool_use":
+				// Tool use block started - emit the tool name and ID
+				deltas = append(deltas, TokenDelta{
+					ToolName: event.ContentBlock.Name,
+					ToolID:   event.ContentBlock.ID,
+				})
 			}
 		case "content_block_stop":
-			// Content block ended
+			// Content block ended - mark as complete for tool calls
 			a.logger.Debug("content block stopped", "index", event.Index)
+			deltas = append(deltas, TokenDelta{
+				ToolData:   "",
+				IsComplete: false,
+			})
 		case "message_delta":
 			deltas = append(deltas, TokenDelta{
 				Text:       "",

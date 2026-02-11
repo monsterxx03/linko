@@ -20,6 +20,11 @@ interface MessageBubbleProps {
       arguments: string;
     };
   }>;
+  streaming_tool_calls?: Array<{
+    id?: string;
+    name?: string;
+    arguments: string;
+  }>;
   timestamp?: number;
   system_prompts?: string[];
   tools?: ToolDef[];
@@ -366,6 +371,44 @@ function ToolCallPanel({ calls }: { calls: Array<{ id: string; function: { name:
   );
 }
 
+// StreamingToolCallPanel displays tool calls being built during streaming
+function StreamingToolCallPanel({ calls, isStreaming }: { calls: Array<{ id?: string; name?: string; arguments: string }>; isStreaming?: boolean }) {
+  const [expanded, setExpanded] = useState(true);
+
+  if (!calls || calls.length === 0) return null;
+
+  return (
+    <div className="my-2">
+      {calls.map((call, index) => (
+        <div key={call.id || index} className="bg-violet-50 border border-violet-200 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-violet-100 transition-colors"
+          >
+            <svg className="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
+            </svg>
+            <span className="text-sm font-medium text-violet-800">{call.name || 'Unknown Tool'}</span>
+            {isStreaming && (
+              <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+            )}
+            <span className="text-xs text-violet-500 ml-auto">
+              {expanded ? 'Hide' : 'Show'} arguments
+            </span>
+          </button>
+          {expanded && (
+            <div className="px-3 py-2 bg-violet-100 border-t border-violet-200">
+              <pre className="text-xs font-mono text-violet-900 whitespace-pre-wrap break-all">
+                {call.arguments || '...'}
+              </pre>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // SystemMeta displays system prompts meta info (collapsible)
 function SystemMeta({ systemPrompts }: { systemPrompts?: string[] }) {
   const [expanded, setExpanded] = useState(false);
@@ -523,7 +566,7 @@ function ThinkingContent({ content, isStreaming }: { content: string; isStreamin
   );
 }
 
-export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, timestamp, system_prompts, tools, thinking }: MessageBubbleProps) {
+export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, streaming_tool_calls, timestamp, system_prompts, tools, thinking }: MessageBubbleProps) {
   const isUser = role === 'user';
   const isAssistant = role === 'assistant';
 
@@ -589,9 +632,13 @@ export function MessageBubble({ role, content, isStreaming, tokens, tool_calls, 
         </div>
 
         <div className={`rounded-xl p-4 border ${roleColors[role]} rounded-tl-sm`}>
-          {/* Tool calls */}
+          {/* Completed tool calls */}
           {tool_calls && tool_calls.length > 0 && (
             <ToolCallPanel calls={tool_calls} />
+          )}
+          {/* Streaming tool calls (being built) */}
+          {streaming_tool_calls && streaming_tool_calls.length > 0 && (
+            <StreamingToolCallPanel calls={streaming_tool_calls} isStreaming={isStreaming} />
           )}
 
           {/* Content */}

@@ -41,6 +41,9 @@ export interface LLMTokenEvent {
   request_id: string;
   delta: string;
   thinking?: string;
+  tool_data?: string;      // tool call arguments delta
+  tool_name?: string;      // tool name
+  tool_id?: string;        // tool call ID
   is_complete: boolean;
   stop_reason?: string;
 }
@@ -74,11 +77,18 @@ export interface ToolDef {
   input_schema: Record<string, unknown>;
 }
 
+export interface StreamingToolCall {
+  id?: string;
+  name?: string;
+  arguments: string;
+}
+
 export interface Message {
   id: string;
   role: string;
   content: string[];
   tool_calls?: ToolCall[];
+  streaming_tool_calls?: StreamingToolCall[]; // For incremental tool call updates during streaming
   tokens?: number;
   timestamp: number;
   is_streaming?: boolean;
@@ -175,8 +185,12 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
 
   // Handle message events
   const handleMessageEvent = useCallback((event: any) => {
-    // Extract actual event data from extra field if present
+    // event.data 解析后是 TrafficEvent，包含 Extra 字段
+    // Extra 字段才是 LLMMessageEvent
     const actualEvent = event.extra || event;
+
+    // 使用正确的 ID（来自 LLMMessageEvent.ID，不是 TrafficEvent.ID）
+    const messageId = actualEvent.id;
 
     // Defensive check: ensure message exists
     if (!actualEvent.message) {
@@ -187,6 +201,12 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
     // Defensive check: ensure conversation_id exists
     if (!actualEvent.conversation_id) {
       console.warn('Received llm_message event without conversation_id:', event);
+      return;
+    }
+
+    // Defensive check: ensure messageId exists
+    if (!messageId) {
+      console.warn('Received llm_message event without id:', event);
       return;
     }
 
@@ -208,26 +228,45 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
     // 获取或创建对话
     const conv = getOrCreateConversation(newConversationId);
 
-    // Add or update message
-    const messageIndex = conv.messages.findIndex(m => m.id === actualEvent.id);
-    const newMessage: Message = {
-      id: actualEvent.id,
-      role: actualEvent.message.role || 'unknown',
-      content: Array.isArray(actualEvent.message.content)
-        ? actualEvent.message.content
-        : typeof actualEvent.message.content === 'string'
-          ? [actualEvent.message.content]
-          : [],
-      tool_calls: actualEvent.message.tool_calls,
-      tokens: actualEvent.token_count,
-      timestamp: new Date(actualEvent.timestamp).getTime(),
-      system_prompts: actualEvent.message.system,
-      tools: actualEvent.message.tools,
-    };
+    // Add or update message - 使用正确的 messageId
+    const messageIndex = conv.messages.findIndex(m => m.id === messageId);
 
     if (messageIndex >= 0) {
-      conv.messages[messageIndex] = newMessage;
+      // 找到现有消息，更新它
+      const msg = conv.messages[messageIndex];
+
+      // 只更新非流式字段，保留 streaming_tool_calls 和 thinking
+      msg.role = actualEvent.message.role || 'unknown';
+      if (actualEvent.message.content) {
+        msg.content = Array.isArray(actualEvent.message.content)
+          ? actualEvent.message.content
+          : typeof actualEvent.message.content === 'string'
+            ? [actualEvent.message.content]
+            : [];
+      }
+      msg.tool_calls = actualEvent.message.tool_calls;
+      msg.tokens = actualEvent.token_count;
+      msg.timestamp = new Date(actualEvent.timestamp).getTime();
+      msg.system_prompts = actualEvent.message.system;
+      msg.tools = actualEvent.message.tools;
     } else {
+      // 新消息
+      const newMessage: Message = {
+        id: messageId,
+        role: actualEvent.message.role || 'unknown',
+        content: Array.isArray(actualEvent.message.content)
+          ? actualEvent.message.content
+          : typeof actualEvent.message.content === 'string'
+            ? [actualEvent.message.content]
+            : [],
+        tool_calls: actualEvent.message.tool_calls,
+        tokens: actualEvent.token_count,
+        timestamp: new Date(actualEvent.timestamp).getTime(),
+        system_prompts: actualEvent.message.system,
+        tools: actualEvent.message.tools,
+        thinking: '',
+        streaming_tool_calls: [],
+      };
       conv.messages.push(newMessage);
     }
 
@@ -255,12 +294,48 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
     }
 
     const conv = conversationsRef.current.get(actualEvent.conversation_id);
-    if (!conv || conv.messages.length === 0) return;
+    if (!conv) {
+      console.warn('[handleTokenEvent] Conversation not found:', actualEvent.conversation_id);
+      return;
+    }
 
-    const lastMessage = conv.messages[conv.messages.length - 1];
+    // 按 ID 查找消息，如果不存在就创建占位消息
+    const messageId = actualEvent.id;
+    let messageIndex = conv.messages.findIndex(m => m.id === messageId);
+    let lastMessage: Message | undefined;
+
+    if (messageIndex < 0) {
+      // 消息还不存在，创建占位消息
+      lastMessage = {
+        id: messageId,
+        role: 'assistant',
+        content: [''],
+        thinking: '',
+        streaming_tool_calls: [],
+        timestamp: Date.now(),
+      };
+      conv.messages.push(lastMessage);
+      messageIndex = conv.messages.length - 1;
+    } else {
+      lastMessage = conv.messages[messageIndex];
+    }
 
     if (actualEvent.is_complete) {
-      // Streaming complete
+      // Streaming complete - finalize tool calls if any
+      if (lastMessage.streaming_tool_calls && lastMessage.streaming_tool_calls.length > 0) {
+        // Convert streaming tool calls to final tool_calls format
+        lastMessage.tool_calls = lastMessage.streaming_tool_calls
+          .filter(tc => tc.id && tc.name)
+          .map(tc => ({
+            id: tc.id!,
+            type: 'function' as const,
+            function: {
+              name: tc.name!,
+              arguments: tc.arguments,
+            },
+          }));
+        lastMessage.streaming_tool_calls = undefined;
+      }
       lastMessage.is_streaming = false;
       updateConversation(actualEvent.conversation_id, {
         status: 'complete',
@@ -271,17 +346,51 @@ export function useLLMConversation(options: UseLLMConversationOptions = {}): Use
         // 保留 ID，便于后续可能的追加，不立即清除
       }
     } else {
-      // Append token
-      if (lastMessage.content.length > 0) {
-        lastMessage.content[lastMessage.content.length - 1] += actualEvent.delta;
+      // Handle tool call streaming (for Anthropic tool_use)
+      if (actualEvent.tool_name || actualEvent.tool_data || actualEvent.tool_id) {
+        if (!lastMessage.streaming_tool_calls) {
+          lastMessage.streaming_tool_calls = [];
+        }
+
+        // Find the current streaming tool call - try by ID first, then fallback to last
+        let currentTool = actualEvent.tool_id
+          ? lastMessage.streaming_tool_calls.find(tc => tc.id === actualEvent.tool_id)
+          : lastMessage.streaming_tool_calls[lastMessage.streaming_tool_calls.length - 1];
+
+        // Create new tool call if we have tool_name or tool_id
+        if (!currentTool && (actualEvent.tool_name || actualEvent.tool_id)) {
+          currentTool = {
+            id: actualEvent.tool_id || `temp_${Date.now()}`,
+            name: actualEvent.tool_name,
+            arguments: '',
+          };
+          lastMessage.streaming_tool_calls.push(currentTool);
+        }
+
+        // Update tool name if provided
+        if (actualEvent.tool_name && currentTool && !currentTool.name) {
+          currentTool.name = actualEvent.tool_name;
+        }
+
+        // Append tool data if provided
+        if (actualEvent.tool_data && currentTool) {
+          currentTool.arguments += actualEvent.tool_data;
+        }
       } else {
-        lastMessage.content.push(actualEvent.delta);
+        // Regular text delta - 需要深拷贝以触发 React 重渲染
+        const lastContent = lastMessage.content[lastMessage.content.length - 1] || '';
+        const newContent = [...lastMessage.content];
+        newContent[newContent.length - 1] = lastContent + actualEvent.delta;
+        lastMessage.content = newContent;
       }
+
       // Handle thinking content (for Claude)
       if (actualEvent.thinking) {
         lastMessage.thinking = (lastMessage.thinking || '') + actualEvent.thinking;
       }
       lastMessage.is_streaming = true;
+
+      // 强制创建新数组引用以确保 React 检测到变化
       updateConversation(actualEvent.conversation_id, {
         messages: [...conv.messages],
       });

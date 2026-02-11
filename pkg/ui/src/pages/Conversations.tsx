@@ -150,19 +150,23 @@ function ConversationView({
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth">
-        {conversation.messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            role={msg.role as 'user' | 'assistant' | 'system' | 'tool'}
-            content={msg.content}
-            tokens={msg.tokens}
-            tool_calls={msg.tool_calls}
-            timestamp={msg.timestamp}
-            isStreaming={msg.is_streaming}
-            system_prompts={msg.system_prompts}
-            tools={msg.tools}
-          />
-        ))}
+        {conversation.messages.map((msg) => {
+          return (
+            <MessageBubble
+              key={msg.id}
+              role={msg.role as 'user' | 'assistant' | 'system' | 'tool'}
+              content={msg.content}
+              tokens={msg.tokens}
+              tool_calls={msg.tool_calls}
+              streaming_tool_calls={msg.streaming_tool_calls}
+              timestamp={msg.timestamp}
+              isStreaming={msg.is_streaming}
+              system_prompts={msg.system_prompts}
+              tools={msg.tools}
+              thinking={msg.thinking}
+            />
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
     </div>
