@@ -141,16 +141,13 @@ func (a anthropicProvider) ExtractConversationID(body []byte) string {
 		return ""
 	}
 
-	// 优先从 metadata.user_id 获取会话 ID
+	// 从 metadata.user_id 获取会话 ID
 	if req.Metadata != nil && req.Metadata.UserID != "" {
 		return fmt.Sprintf("anthropic-%s", req.Metadata.UserID)
 	}
 
-	// 回退：提取所有消息的文本内容生成 hash
-	// 这样同一轮对话（相同的历史消息）会产生相同的 ID
-	hash := generateAnthropicMessagesHash(req.Messages)
-
-	return fmt.Sprintf("anthropic-%s", hash)
+	// 如果没有 UserID，返回固定 ID
+	return "anthropic-default"
 }
 
 func (a anthropicProvider) ParseRequest(body []byte) ([]LLMMessage, error) {
