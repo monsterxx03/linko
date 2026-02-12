@@ -494,11 +494,18 @@ export function SSEProvider({ children }: SSEProviderProps) {
           // Update existing
           const msg = conv.messages[messageIndex];
           msg.role = event.message.role || "unknown";
-          msg.content = Array.isArray(event.message.content)
+
+          // 只在有新内容时才更新 content，避免覆盖通过 llm_token 积累的内容
+          const newContent = Array.isArray(event.message.content)
             ? event.message.content
             : typeof event.message.content === "string"
               ? [event.message.content]
               : [];
+          // 只有当新内容非空时才更新
+          if (newContent.length > 0 && newContent.some(c => c && c.trim() !== '')) {
+            msg.content = newContent;
+          }
+
           msg.tool_calls = event.message.tool_calls;
           msg.tokens = event.token_count;
           msg.timestamp = new Date(event.timestamp).getTime();
@@ -602,19 +609,22 @@ export function SSEProvider({ children }: SSEProviderProps) {
             currentTool.name = event.tool_name;
           }
           if (event.tool_data && currentTool) {
-            currentTool.arguments = event.tool_data;
+            currentTool.arguments = (currentTool.arguments || "") + event.tool_data;
           }
         } else {
-          // Text delta
-          const lastContent =
-            lastMessage.content[lastMessage.content.length - 1] || "";
-          lastMessage.content = [...lastMessage.content];
-          lastMessage.content[lastMessage.content.length - 1] =
-            event.delta;
+          // Text delta - 创建新的 content 数组以确保 React 检测到变化
+          const lastIndex = lastMessage.content.length - 1;
+          const newContent = [...lastMessage.content];
+          if (lastIndex >= 0) {
+            newContent[lastIndex] = (newContent[lastIndex] || "") + event.delta;
+          } else {
+            newContent.push(event.delta);
+          }
+          lastMessage.content = newContent;
         }
 
         if (event.thinking) {
-          lastMessage.thinking = event.thinking;
+          lastMessage.thinking = (lastMessage.thinking || "") + event.thinking;
         }
         lastMessage.is_streaming = true;
 
