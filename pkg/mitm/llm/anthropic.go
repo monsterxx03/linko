@@ -149,7 +149,13 @@ func (a anthropicProvider) ExtractConversationID(body []byte) string {
 
 	// 从 metadata.user_id 获取会话 ID
 	if req.Metadata != nil && req.Metadata.UserID != "" {
-		return fmt.Sprintf("anthropic-%s", req.Metadata.UserID)
+		// 对 UserID 进行哈希处理，取前6位
+		hash := sha256.Sum256([]byte(req.Metadata.UserID))
+		hashStr := hex.EncodeToString(hash[:])
+		if len(hashStr) > 6 {
+			hashStr = hashStr[:6]
+		}
+		return fmt.Sprintf("anthropic-%s", hashStr)
 	}
 
 	// 如果没有 UserID，返回固定 ID

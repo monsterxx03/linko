@@ -2,14 +2,15 @@ package mitm
 
 import (
 	"bufio"
+	"crypto/sha256"
 	"crypto/tls"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
 	"net"
 	"sync"
-
-	"github.com/google/uuid"
+	"time"
 )
 
 // bufferPool is a sync.Pool for managing buffers used in io.CopyBuffer
@@ -166,12 +167,17 @@ func (h *ConnectionHandler) peekSNI(peekReader *PeekReader, targetIP net.IP) (st
 	return targetIP.String(), nil
 }
 
+func generateConnectionID() string {
+	hash := sha256.Sum256([]byte(time.Now().Format(time.RFC3339Nano) + "-" + randomString(8)))
+	return hex.EncodeToString(hash[:8])
+}
+
 // relayTraffic relays data between client and server
 func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname string) error {
 	var wg sync.WaitGroup
 
 	// Generate unique connection ID using UUID
-	connectionID := uuid.New().String()
+	connectionID := generateConnectionID()
 
 	// Create request ID generator for this connection
 	idGenerator := NewRequestIDGenerator(connectionID)

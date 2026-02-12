@@ -290,10 +290,6 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 			l.publishEvent("llm_message", msgEvent)
 
 			l.publishConversationUpdate(conversationID, "complete", 1, estimateTokenCount(accumulatedContent), "")
-
-			// 清理 SSE 流相关的追踪数据
-			l.processedBytes.Delete(requestID)
-			l.conversationIDs.Delete(requestID)
 		}
 	}
 
