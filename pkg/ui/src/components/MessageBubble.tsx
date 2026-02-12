@@ -421,6 +421,61 @@ function MarkdownContent({
   );
 }
 
+// Format tool call for display (tool name + key arguments)
+function formatToolCall(call: { function: { name: string; arguments: string } }): string {
+  const { name, arguments: argsStr } = call.function;
+
+  let args: Record<string, unknown>;
+  try {
+    args = JSON.parse(argsStr);
+  } catch {
+    return name;
+  }
+
+  switch (name) {
+    case "Read": {
+      const path = args.file_path;
+      return path ? `Read ${path}` : name;
+    }
+    case "Grep": {
+      const pattern = args.pattern;
+      return pattern ? `Grep "${pattern}"` : name;
+    }
+    case "Glob": {
+      const pattern = args.pattern;
+      return pattern ? `Glob ${pattern}` : name;
+    }
+    case "Edit": {
+      const path = args.file_path;
+      return path ? `Edit ${path}` : name;
+    }
+    case "Write": {
+      const path = args.file_path;
+      return path ? `Write ${path}` : name;
+    }
+    case "Bash": {
+      const cmd = args.command;
+      if (!cmd) return name;
+      const display = typeof cmd === "string" ? cmd : cmd.join(" ");
+      return `Bash ${display.substring(0, 40)}${display.length > 40 ? "..." : ""}`;
+    }
+    case "TaskCreate": {
+      const subject = args.subject;
+      return subject ? `TaskCreate ${subject}` : name;
+    }
+    case "TaskGet": {
+      const taskId = args.taskId;
+      return taskId ? `TaskGet ${taskId}` : name;
+    }
+    case "TaskUpdate": {
+      const taskId = args.taskId;
+      return taskId ? `TaskUpdate ${taskId}` : name;
+    }
+    default:
+      return name;
+  }
+}
+
 function ToolCallPanel({
   calls,
 }: {
@@ -455,7 +510,7 @@ function ToolCallPanel({
               />
             </svg>
             <span className="text-sm font-medium text-violet-800">
-              {call.function.name}
+              {formatToolCall(call)}
             </span>
             <span className="text-xs text-violet-500 ml-auto">
               {expanded ? "Hide" : "Show"} arguments
