@@ -59,9 +59,9 @@ type LLMResponse struct {
 type TokenDelta struct {
 	Text       string `json:"text"`
 	Thinking   string `json:"thinking,omitempty"`
-	ToolData   string `json:"tool_data,omitempty"`   // tool call JSON data (for input_json_delta)
-	ToolName   string `json:"tool_name,omitempty"`   // tool name for tool_calls
-	ToolID     string `json:"tool_id,omitempty"`     // tool call ID
+	ToolData   string `json:"tool_data,omitempty"` // tool call JSON data (for input_json_delta)
+	ToolName   string `json:"tool_name,omitempty"` // tool name for tool_calls
+	ToolID     string `json:"tool_id,omitempty"`   // tool call ID
 	IsComplete bool   `json:"is_complete"`
 	StopReason string `json:"stop_reason,omitempty"`
 }
@@ -79,16 +79,15 @@ type LLMMessageEvent struct {
 
 // LLMTokenEvent is published during streaming responses
 type LLMTokenEvent struct {
-	ID             string    `json:"id"`
-	Timestamp      time.Time `json:"timestamp"`
-	ConversationID string    `json:"conversation_id"`
-	Delta          string    `json:"delta"`              // new token content
-	Thinking       string    `json:"thinking,omitempty"`  // thinking content (for Claude)
-	ToolName       string    `json:"tool_name,omitempty"` // tool name for tool_calls
-	ToolID         string    `json:"tool_id,omitempty"`  // tool call ID
-	ToolData       string    `json:"tool_data,omitempty"` // tool call arguments delta
-	IsComplete     bool      `json:"is_complete"`        // true when streaming is done
-	StopReason     string    `json:"stop_reason,omitempty"`
+	ID             string `json:"id"`
+	ConversationID string `json:"conversation_id"`
+	Delta          string `json:"delta"`               // new token content
+	Thinking       string `json:"thinking,omitempty"`  // thinking content (for Claude)
+	ToolName       string `json:"tool_name,omitempty"` // tool name for tool_calls
+	ToolID         string `json:"tool_id,omitempty"`   // tool call ID
+	ToolData       string `json:"tool_data,omitempty"` // tool call arguments delta
+	IsComplete     bool   `json:"is_complete"`         // true when streaming is done
+	StopReason     string `json:"stop_reason,omitempty"`
 }
 
 // ConversationUpdateEvent is published when conversation status changes

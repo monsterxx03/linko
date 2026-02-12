@@ -18,7 +18,7 @@ type LLMInspector struct {
 	logger          *slog.Logger
 	eventBus        *EventBus
 	httpProc        *HTTPProcessor
-	requestPaths     sync.Map // requestID -> string (path)
+	requestPaths    sync.Map // requestID -> string (path)
 	conversationIDs sync.Map // requestID -> string (conversationID)
 	streamMsgIDs    sync.Map // requestID -> string (assistant message ID for streaming)
 	processedBytes  sync.Map // requestID -> int (last processed byte position)
@@ -196,7 +196,7 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 	}
 
 	// Check if this is the first chunk for this conversation
-	hasPublishedStart := false
+	// hasPublishedStart := false
 
 	// Accumulate content for streaming completion
 	accumulatedContent := ""
@@ -207,21 +207,21 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 
 	for _, delta := range deltas {
 		// 收到第一个 token 时立即更新状态为 streaming
-		if !hasPublishedStart {
+		//if !hasPublishedStart {
 
-			// 发布初始的 assistant 消息（空内容），让前端能正确追加 token
-			l.publishEvent("llm_message", &llm.LLMMessageEvent{
-				ID:             requestID,
-				Timestamp:      time.Now(),
-				ConversationID: conversationID,
-				Message: llm.LLMMessage{
-					Role:    "assistant",
-					Content: []string{""},
-				},
-			})
-			l.publishConversationUpdate(conversationID, "streaming", 0, 0, "")
-			hasPublishedStart = true
-		}
+		//	// 发布初始的 assistant 消息（空内容），让前端能正确追加 token
+		//	l.publishEvent("llm_message", &llm.LLMMessageEvent{
+		//		ID:             requestID,
+		//		Timestamp:      time.Now(),
+		//		ConversationID: conversationID,
+		//		Message: llm.LLMMessage{
+		//			Role:    "assistant",
+		//			Content: []string{""},
+		//		},
+		//	})
+		//	l.publishConversationUpdate(conversationID, "streaming", 0, 0, "")
+		//	hasPublishedStart = true
+		//}
 
 		// Accumulate content
 		accumulatedContent += delta.Text
@@ -432,7 +432,6 @@ func (l *LLMInspector) publishEvent(direction string, extra interface{}) {
 	}
 	l.eventBus.Publish(event)
 }
-
 
 // publishConversationUpdate publishes a conversation status update
 func (l *LLMInspector) publishConversationUpdate(conversationID, status string, messageCount, totalTokens int, model string) {

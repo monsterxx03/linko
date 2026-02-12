@@ -69,7 +69,6 @@ export interface LLMMessageEvent {
 
 export interface LLMTokenEvent {
   id: string;
-  timestamp: string;
   conversation_id: string;
   delta: string;
   thinking?: string;
@@ -497,7 +496,10 @@ export function SSEProvider({ children }: SSEProviderProps) {
               ? [event.message.content]
               : [];
           // 只有当新内容非空时才更新
-          if (newContent.length > 0 && newContent.some(c => c && c.trim() !== '')) {
+          if (
+            newContent.length > 0 &&
+            newContent.some((c) => c && c.trim() !== "")
+          ) {
             msg.content = newContent;
           }
 
@@ -613,7 +615,8 @@ export function SSEProvider({ children }: SSEProviderProps) {
             currentTool.name = event.tool_name;
           }
           if (event.tool_data && currentTool) {
-            currentTool.arguments = (currentTool.arguments || "") + event.tool_data;
+            currentTool.arguments =
+              (currentTool.arguments || "") + event.tool_data;
           }
         } else {
           // Text delta - 创建新的 content 数组以确保 React 检测到变化
