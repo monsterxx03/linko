@@ -20,9 +20,10 @@ type OpenAIRequest struct {
 }
 
 type OpenAIMessage struct {
-	Role    string      `json:"role"`
-	Content interface{} `json:"content"` // string or array of content parts
-	Name    string      `json:"name,omitempty"`
+	Role      string      `json:"role"`
+	Content   interface{} `json:"content"` // string or array of content parts
+	Name      string      `json:"name,omitempty"`
+	ToolCalls []ToolCall  `json:"tool_calls,omitempty"`
 }
 
 type OpenAIContentPart struct {
@@ -137,6 +138,7 @@ func (o openaiProvider) ParseResponse(path string, body []byte) (*LLMResponse, e
 			InputTokens:  resp.Usage.PromptTokens,
 			OutputTokens: resp.Usage.CompletionTokens,
 		},
+		ToolCalls: resp.Choices[0].Message.ToolCalls,
 	}, nil
 }
 
@@ -173,6 +175,25 @@ func (o openaiProvider) ParseSSEStream(body []byte) []TokenDelta {
 				deltas = append(deltas, TokenDelta{
 					Text: choice.Delta.Content,
 				})
+			}
+			// Handle tool calls
+			if len(choice.Delta.ToolCalls) > 0 {
+				for _, toolCall := range choice.Delta.ToolCalls {
+					if toolCall.ID != "" && toolCall.Function.Name != "" {
+						// Send tool call start event
+						deltas = append(deltas, TokenDelta{
+							ToolName: toolCall.Function.Name,
+							ToolID:   toolCall.ID,
+						})
+						// Send tool arguments if present
+						if toolCall.Function.Arguments != "" {
+							deltas = append(deltas, TokenDelta{
+								ToolData: toolCall.Function.Arguments,
+								ToolID:   toolCall.ID,
+							})
+						}
+					}
+				}
 			}
 			if choice.FinishReason != "" {
 				deltas = append(deltas, TokenDelta{

@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+} from "react";
 
 // Traffic Event types
 export interface TrafficEvent {
@@ -27,7 +34,7 @@ export interface TrafficEvent {
 
 // LLM Event types
 export interface LLMMessage {
-  role: 'user' | 'assistant' | 'system' | 'tool';
+  role: "user" | "assistant" | "system" | "tool";
   content: string[];
   name?: string;
   tool_calls?: ToolCall[];
@@ -79,7 +86,7 @@ export interface ConversationUpdateEvent {
   id: string;
   timestamp: string;
   conversation_id: string;
-  status: 'streaming' | 'complete' | 'error';
+  status: "streaming" | "complete" | "error";
   message_count: number;
   total_tokens: number;
   duration_ms: number;
@@ -106,7 +113,7 @@ class EventObservable<T> {
   emit(event: T): void {
     this.currentValue = event;
     this.hasValue = true;
-    this.subscribers.forEach(callback => callback(event));
+    this.subscribers.forEach((callback) => callback(event));
   }
 }
 
@@ -114,11 +121,14 @@ class EventObservable<T> {
 class SharedSSEConnection {
   private eventSource: EventSource | null = null;
   private isConnected: boolean = false;
-  private url: string = '';
+  private url: string = "";
   private eventHandlers: Map<string, (data: unknown) => void> = new Map();
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  connect(url: string, eventHandlers: Record<string, (data: unknown) => void>): void {
+  connect(
+    url: string,
+    eventHandlers: Record<string, (data: unknown) => void>,
+  ): void {
     this.url = url;
     this.eventHandlers = new Map(Object.entries(eventHandlers));
 
@@ -130,7 +140,7 @@ class SharedSSEConnection {
     this.isConnected = false;
 
     // Handle welcome event
-    this.eventSource.addEventListener('welcome', () => {
+    this.eventSource.addEventListener("welcome", () => {
       this.isConnected = true;
     });
 
@@ -147,7 +157,7 @@ class SharedSSEConnection {
     });
 
     // Handle errors
-    this.eventSource.addEventListener('error', () => {
+    this.eventSource.addEventListener("error", () => {
       this.isConnected = false;
       if (this.eventSource?.readyState === EventSource.CLOSED) {
         this.scheduleReconnect();
@@ -253,7 +263,7 @@ class TrafficEventStore {
 export interface Conversation {
   id: string;
   model?: string;
-  status: 'streaming' | 'complete' | 'error';
+  status: "streaming" | "complete" | "error";
   messages: Message[];
   total_tokens: number;
   message_count?: number;
@@ -319,7 +329,7 @@ class LLMConversationStore {
 
     const newConversation: Conversation = {
       id: conversationId,
-      status: 'streaming',
+      status: "streaming",
       messages: [],
       total_tokens: 0,
       started_at: Date.now(),
@@ -329,7 +339,10 @@ class LLMConversationStore {
     return newConversation;
   }
 
-  updateConversation(conversationId: string, update: Partial<Conversation>): void {
+  updateConversation(
+    conversationId: string,
+    update: Partial<Conversation>,
+  ): void {
     const conv = this.getOrCreate(conversationId);
     const updatedConv = { ...conv, ...update, last_updated: Date.now() };
     this.conversationsMap.set(conversationId, updatedConv);
@@ -445,7 +458,7 @@ export function SSEProvider({ children }: SSEProviderProps) {
   useEffect(() => {
     const trafficConnection = new SharedSSEConnection();
 
-    trafficConnection.connect('/api/mitm/traffic/sse', {
+    trafficConnection.connect("/api/mitm/traffic/sse", {
       traffic: (data: unknown) => {
         trafficStore.addEvent(data as TrafficEvent);
       },
@@ -465,58 +478,60 @@ export function SSEProvider({ children }: SSEProviderProps) {
 
   // Connect to LLM conversation SSE (single connection)
   useEffect(() => {
-    llmConnection.connect('/api/llm/conversation/sse');
+    llmConnection.connect("/api/llm/conversation/sse");
 
     // Process LLM events and update store
-    const unsubMessage = llmEvents$.message.subscribe((event: LLMMessageEvent) => {
-      if (!event.conversation_id || !event.message) return;
+    const unsubMessage = llmEvents$.message.subscribe(
+      (event: LLMMessageEvent) => {
+        if (!event.conversation_id || !event.message) return;
 
-      const conv = llmStore.getOrCreate(event.conversation_id);
-      const messageId = event.id;
+        const conv = llmStore.getOrCreate(event.conversation_id);
+        const messageId = event.id;
 
-      // Add or update message
-      const messageIndex = conv.messages.findIndex(m => m.id === messageId);
-      if (messageIndex >= 0) {
-        // Update existing
-        const msg = conv.messages[messageIndex];
-        msg.role = event.message.role || 'unknown';
-        msg.content = Array.isArray(event.message.content)
-          ? event.message.content
-          : typeof event.message.content === 'string'
-            ? [event.message.content]
-            : [];
-        msg.tool_calls = event.message.tool_calls;
-        msg.tokens = event.token_count;
-        msg.timestamp = new Date(event.timestamp).getTime();
-        msg.system_prompts = event.message.system;
-        msg.tools = event.message.tools;
-      } else {
-        // Add new
-        conv.messages.push({
-          id: messageId,
-          role: event.message.role || 'unknown',
-          content: Array.isArray(event.message.content)
+        // Add or update message
+        const messageIndex = conv.messages.findIndex((m) => m.id === messageId);
+        if (messageIndex >= 0) {
+          // Update existing
+          const msg = conv.messages[messageIndex];
+          msg.role = event.message.role || "unknown";
+          msg.content = Array.isArray(event.message.content)
             ? event.message.content
-            : typeof event.message.content === 'string'
+            : typeof event.message.content === "string"
               ? [event.message.content]
-              : [],
-          tool_calls: event.message.tool_calls,
-          tokens: event.token_count,
-          timestamp: new Date(event.timestamp).getTime(),
-          system_prompts: event.message.system,
-          tools: event.message.tools,
-          thinking: '',
-          streaming_tool_calls: [],
-        });
-      }
+              : [];
+          msg.tool_calls = event.message.tool_calls;
+          msg.tokens = event.token_count;
+          msg.timestamp = new Date(event.timestamp).getTime();
+          msg.system_prompts = event.message.system;
+          msg.tools = event.message.tools;
+        } else {
+          // Add new
+          conv.messages.push({
+            id: messageId,
+            role: event.message.role || "unknown",
+            content: Array.isArray(event.message.content)
+              ? event.message.content
+              : typeof event.message.content === "string"
+                ? [event.message.content]
+                : [],
+            tool_calls: event.message.tool_calls,
+            tokens: event.token_count,
+            timestamp: new Date(event.timestamp).getTime(),
+            system_prompts: event.message.system,
+            tools: event.message.tools,
+            thinking: "",
+            streaming_tool_calls: [],
+          });
+        }
 
-      llmStore.updateConversation(event.conversation_id, {
-        messages: [...conv.messages],
-        model: event.model || conv.model,
-        total_tokens: event.total_tokens || conv.total_tokens,
-      });
-      llmStore.setCurrentId(event.conversation_id);
-    });
+        llmStore.updateConversation(event.conversation_id, {
+          messages: [...conv.messages],
+          model: event.model || conv.model,
+          total_tokens: event.total_tokens || conv.total_tokens,
+        });
+        llmStore.setCurrentId(event.conversation_id);
+      },
+    );
 
     const unsubToken = llmEvents$.token.subscribe((event: LLMTokenEvent) => {
       if (!event.conversation_id) return;
@@ -525,15 +540,15 @@ export function SSEProvider({ children }: SSEProviderProps) {
       if (!conv) return;
 
       const messageId = event.id;
-      let messageIndex = conv.messages.findIndex(m => m.id === messageId);
+      let messageIndex = conv.messages.findIndex((m) => m.id === messageId);
       let lastMessage = messageIndex >= 0 ? conv.messages[messageIndex] : null;
 
       if (!lastMessage) {
         lastMessage = {
           id: messageId,
-          role: 'assistant',
-          content: [''],
-          thinking: '',
+          role: "assistant",
+          content: [""],
+          thinking: "",
           streaming_tool_calls: [],
           timestamp: Date.now(),
         };
@@ -543,19 +558,22 @@ export function SSEProvider({ children }: SSEProviderProps) {
 
       if (event.is_complete) {
         // Finalize
-        if (lastMessage.streaming_tool_calls && lastMessage.streaming_tool_calls.length > 0) {
+        if (
+          lastMessage.streaming_tool_calls &&
+          lastMessage.streaming_tool_calls.length > 0
+        ) {
           lastMessage.tool_calls = lastMessage.streaming_tool_calls
-            .filter(tc => tc.id && tc.name)
-            .map(tc => ({
+            .filter((tc) => tc.id && tc.name)
+            .map((tc) => ({
               id: tc.id!,
-              type: 'function' as const,
+              type: "function" as const,
               function: { name: tc.name!, arguments: tc.arguments },
             }));
           lastMessage.streaming_tool_calls = undefined;
         }
         lastMessage.is_streaming = false;
         llmStore.updateConversation(event.conversation_id, {
-          status: 'complete',
+          status: "complete",
           messages: [...conv.messages],
         });
       } else {
@@ -565,14 +583,18 @@ export function SSEProvider({ children }: SSEProviderProps) {
             lastMessage.streaming_tool_calls = [];
           }
           let currentTool = event.tool_id
-            ? lastMessage.streaming_tool_calls.find(tc => tc.id === event.tool_id)
-            : lastMessage.streaming_tool_calls[lastMessage.streaming_tool_calls.length - 1];
+            ? lastMessage.streaming_tool_calls.find(
+                (tc) => tc.id === event.tool_id,
+              )
+            : lastMessage.streaming_tool_calls[
+                lastMessage.streaming_tool_calls.length - 1
+              ];
 
           if (!currentTool && (event.tool_name || event.tool_id)) {
             currentTool = {
               id: event.tool_id || `temp_${Date.now()}`,
               name: event.tool_name,
-              arguments: '',
+              arguments: "",
             };
             lastMessage.streaming_tool_calls.push(currentTool);
           }
@@ -580,17 +602,19 @@ export function SSEProvider({ children }: SSEProviderProps) {
             currentTool.name = event.tool_name;
           }
           if (event.tool_data && currentTool) {
-            currentTool.arguments += event.tool_data;
+            currentTool.arguments = event.tool_data;
           }
         } else {
           // Text delta
-          const lastContent = lastMessage.content[lastMessage.content.length - 1] || '';
+          const lastContent =
+            lastMessage.content[lastMessage.content.length - 1] || "";
           lastMessage.content = [...lastMessage.content];
-          lastMessage.content[lastMessage.content.length - 1] = lastContent + event.delta;
+          lastMessage.content[lastMessage.content.length - 1] =
+            event.delta;
         }
 
         if (event.thinking) {
-          lastMessage.thinking = (lastMessage.thinking || '') + event.thinking;
+          lastMessage.thinking = event.thinking;
         }
         lastMessage.is_streaming = true;
 
@@ -600,15 +624,17 @@ export function SSEProvider({ children }: SSEProviderProps) {
       }
     });
 
-    const unsubConversation = llmEvents$.conversation.subscribe((event: ConversationUpdateEvent) => {
-      if (!event.conversation_id) return;
-      llmStore.updateConversation(event.conversation_id, {
-        status: event.status,
-        total_tokens: event.total_tokens,
-        message_count: event.message_count,
-        model: event.model,
-      });
-    });
+    const unsubConversation = llmEvents$.conversation.subscribe(
+      (event: ConversationUpdateEvent) => {
+        if (!event.conversation_id) return;
+        llmStore.updateConversation(event.conversation_id, {
+          status: event.status,
+          total_tokens: event.total_tokens,
+          message_count: event.message_count,
+          model: event.model,
+        });
+      },
+    );
 
     // Update connection status
     const checkConnection = setInterval(() => {
@@ -636,17 +662,13 @@ export function SSEProvider({ children }: SSEProviderProps) {
     isLLMConnected,
   };
 
-  return (
-    <SSEContext.Provider value={value}>
-      {children}
-    </SSEContext.Provider>
-  );
+  return <SSEContext.Provider value={value}>{children}</SSEContext.Provider>;
 }
 
 export function useSSEContext(): SSEContextType {
   const context = useContext(SSEContext);
   if (!context) {
-    throw new Error('useSSEContext must be used within SSEProvider');
+    throw new Error("useSSEContext must be used within SSEProvider");
   }
   return context;
 }

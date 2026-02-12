@@ -186,16 +186,17 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 	// Accumulate content for streaming completion
 	accumulatedContent := ""
 
+	// Accumulate tool calls for streaming completion
+	toolCallsByID := make(map[string]*llm.ToolCall)
+	var currentToolID string
+
 	for _, delta := range deltas {
 		// 收到第一个 token 时立即更新状态为 streaming
 		if !hasPublishedStart {
-			// 生成并缓存消息 ID，流结束时复用同一个 ID
-			msgID := generateEventID()
-			l.streamMsgIDs.Store(requestID, msgID)
 
 			// 发布初始的 assistant 消息（空内容），让前端能正确追加 token
 			l.publishEvent("llm_message", &llm.LLMMessageEvent{
-				ID:             msgID,
+				ID:             requestID,
 				Timestamp:      time.Now(),
 				ConversationID: conversationID,
 				RequestID:      requestID,
@@ -211,16 +212,34 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		// Accumulate content
 		accumulatedContent += delta.Text
 
-		// 复用流开始时生成的消息 ID
-		var msgID string
-		if val, exists := l.streamMsgIDs.Load(requestID); exists {
-			msgID = val.(string)
-		} else {
-			msgID = generateEventID()
+		// Accumulate tool calls
+		if delta.ToolName != "" && delta.ToolID != "" {
+			// New tool call started
+			toolCallsByID[delta.ToolID] = &llm.ToolCall{
+				ID:   delta.ToolID,
+				Type: "function",
+				Function: llm.FunctionCall{
+					Name:      delta.ToolName,
+					Arguments: "",
+				},
+			}
+			currentToolID = delta.ToolID
+		}
+		if delta.ToolData != "" {
+			// Append tool arguments data
+			toolID := delta.ToolID
+			if toolID == "" {
+				toolID = currentToolID
+			}
+			if toolID != "" {
+				if toolCall, exists := toolCallsByID[toolID]; exists {
+					toolCall.Function.Arguments += delta.ToolData
+				}
+			}
 		}
 
 		event := &llm.LLMTokenEvent{
-			ID:             msgID,  // 复用同一个 ID
+			ID:             requestID, // 复用同一个 ID
 			ConversationID: conversationID,
 			RequestID:      requestID,
 			Delta:          delta.Text,
@@ -235,24 +254,25 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		l.publishEvent("llm_token", event)
 
 		if delta.IsComplete {
-			// 获取流开始时生成的消息 ID（保持同一消息）
-			var msgID string
-			if val, exists := l.streamMsgIDs.Load(requestID); exists {
-				msgID = val.(string)
-				l.streamMsgIDs.Delete(requestID)
-			} else {
-				msgID = generateEventID()
+			// Convert accumulated tool calls to slice
+			var toolCallsSlice []llm.ToolCall
+			if len(toolCallsByID) > 0 {
+				toolCallsSlice = make([]llm.ToolCall, 0, len(toolCallsByID))
+				for _, toolCall := range toolCallsByID {
+					toolCallsSlice = append(toolCallsSlice, *toolCall)
+				}
 			}
 
 			// Publish message event for streaming completion (使用相同 ID，前端会更新)
 			msgEvent := &llm.LLMMessageEvent{
-				ID:             msgID,
+				ID:             requestID,
 				Timestamp:      time.Now(),
 				ConversationID: conversationID,
 				RequestID:      requestID,
 				Message: llm.LLMMessage{
-					Role:    "assistant",
-					Content: []string{accumulatedContent},
+					Role:      "assistant",
+					Content:   []string{accumulatedContent},
+					ToolCalls: toolCallsSlice,
 				},
 			}
 			l.publishEvent("llm_message", msgEvent)
@@ -313,8 +333,9 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 
 	// Create assistant message from response
 	msg := llm.LLMMessage{
-		Role:    "assistant",
-		Content: []string{resp.Content},
+		Role:      "assistant",
+		Content:   []string{resp.Content},
+		ToolCalls: resp.ToolCalls,
 	}
 
 	event := &llm.LLMMessageEvent{

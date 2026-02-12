@@ -44,6 +44,7 @@ type HTTPResponse struct {
 // Subscriber represents an event subscriber
 type Subscriber struct {
 	ID      string             // Unique subscriber ID
+	Name    string             // Subscriber name for logging
 	Channel chan *TrafficEvent // Channel for receiving events
 }
 
@@ -98,6 +99,7 @@ func (eb *EventBus) Publish(event *TrafficEvent) {
 		default:
 			eb.logger.Warn("Subscriber channel is full, skipping event",
 				"subscriber_id", subscriber.ID,
+				"subscriber_name", subscriber.Name,
 				"event_id", event.ID,
 				"hostname", event.Hostname)
 		}
@@ -110,6 +112,7 @@ func (eb *EventBus) Publish(event *TrafficEvent) {
 func (eb *EventBus) Subscribe() *Subscriber {
 	subscriber := &Subscriber{
 		ID:      time.Now().Format("20060102150405.000000") + "-sub",
+		Name:    "", // Name can be set by caller for logging
 		Channel: make(chan *TrafficEvent, 100), // Buffered channel to prevent blocking
 	}
 
@@ -132,6 +135,13 @@ func (eb *EventBus) Subscribe() *Subscriber {
 		}
 	}()
 
+	return subscriber
+}
+
+// SubscribeWithName creates a new subscriber with a given name for logging
+func (eb *EventBus) SubscribeWithName(name string) *Subscriber {
+	subscriber := eb.Subscribe()
+	subscriber.Name = name
 	return subscriber
 }
 
