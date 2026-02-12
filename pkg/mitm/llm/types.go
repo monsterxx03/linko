@@ -6,12 +6,13 @@ import (
 
 // LLMMessage represents a message in an LLM conversation
 type LLMMessage struct {
-	Role      string     `json:"role"`                 // "user", "assistant", "system", "tool"
-	Content   []string   `json:"content"`              // message content
-	Name      string     `json:"name,omitempty"`       // optional name for the message
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
-	System    []string   `json:"system,omitempty"`     // system prompt (extracted from request)
-	Tools     []ToolDef  `json:"tools,omitempty"`      // available tools (extracted from request)
+	Role        string      `json:"role"`                 // "user", "assistant", "system", "tool"
+	Content     []string    `json:"content"`              // message content
+	Name        string      `json:"name,omitempty"`       // optional name for the message
+	ToolCalls   []ToolCall  `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
+	ToolResults []ToolResult `json:"tool_results,omitempty"` // tool results (for user messages)
+	System      []string    `json:"system,omitempty"`     // system prompt (extracted from request)
+	Tools       []ToolDef   `json:"tools,omitempty"`      // available tools (extracted from request)
 }
 
 // ToolDef represents a tool definition
@@ -19,6 +20,12 @@ type ToolDef struct {
 	Name        string                 `json:"name"`
 	Description string                 `json:"description,omitempty"`
 	InputSchema map[string]interface{} `json:"input_schema"`
+}
+
+// ToolResult represents a tool execution result
+type ToolResult struct {
+	ToolUseID string `json:"tool_use_id"`
+	Content   string `json:"content"`
 }
 
 // ToolCall represents a tool call in an LLM message

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { MessageBubble } from '../components/MessageBubble';
 import { useLLMConversation } from '../hooks/useLLMConversation';
 import { Conversation } from '../contexts/SSEContext';
@@ -159,6 +159,7 @@ function ConversationView({
               tokens={msg.tokens}
               tool_calls={msg.tool_calls}
               streaming_tool_calls={msg.streaming_tool_calls}
+              tool_results={msg.tool_results}
               timestamp={msg.timestamp}
               isStreaming={msg.is_streaming}
               system_prompts={msg.system_prompts}

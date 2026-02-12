@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 )
 
 func generateConversationHash(messages []AnthropicMessage) string {
@@ -41,6 +40,7 @@ func convertAnthropicMessages(messages []AnthropicMessage) []LLMMessage {
 	for _, m := range messages {
 		var contentParts []string
 		var toolCalls []ToolCall
+		var toolResults []ToolResult
 
 		switch c := m.Content.(type) {
 		case string:
@@ -78,20 +78,21 @@ func convertAnthropicMessages(messages []AnthropicMessage) []LLMMessage {
 					case "tool_result":
 						toolUseID, _ := itemMap["tool_use_id"].(string)
 						content, _ := itemMap["content"].(string)
-						if content != "" {
-							contentParts = append(contentParts, fmt.Sprintf("[Tool Result for %s]\n%s", toolUseID, content))
-						} else {
-							contentParts = append(contentParts, fmt.Sprintf("[Tool Result for %s]", toolUseID))
-						}
+						// Extract to ToolResults field instead of contentParts
+						toolResults = append(toolResults, ToolResult{
+							ToolUseID: toolUseID,
+							Content:   content,
+						})
 					}
 				}
 			}
 		}
 
 		result = append(result, LLMMessage{
-			Role:      m.Role,
-			Content:   contentParts,
-			ToolCalls: toolCalls,
+			Role:        m.Role,
+			Content:     contentParts,
+			ToolCalls:   toolCalls,
+			ToolResults: toolResults,
 		})
 	}
 	return result

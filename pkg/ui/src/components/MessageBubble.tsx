@@ -25,6 +25,10 @@ interface MessageBubbleProps {
     name?: string;
     arguments: string;
   }>;
+  tool_results?: Array<{
+    tool_use_id: string;
+    content: string;
+  }>;
   timestamp?: number;
   system_prompts?: string[];
   tools?: ToolDef[];
@@ -456,8 +460,8 @@ function formatToolCall(call: { function: { name: string; arguments: string } })
     case "Bash": {
       const cmd = args.command;
       if (!cmd) return name;
-      const display = typeof cmd === "string" ? cmd : cmd.join(" ");
-      return `Bash ${display.substring(0, 40)}${display.length > 40 ? "..." : ""}`;
+      const cmdStr = typeof cmd === "string" ? cmd : (cmd as string[]).join(" ");
+      return `Bash ${cmdStr.substring(0, 40)}${cmdStr.length > 40 ? "..." : ""}`;
     }
     case "TaskCreate": {
       const subject = args.subject;
@@ -509,9 +513,14 @@ function ToolCallPanel({
                 d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
               />
             </svg>
-            <span className="text-sm font-medium text-violet-800">
-              {formatToolCall(call)}
-            </span>
+            <div className="flex flex-col">
+              <span className="text-sm font-medium text-violet-800">
+                {formatToolCall(call)}
+              </span>
+              <span className="text-[10px] text-violet-400 font-mono">
+                {call.id}
+              </span>
+            </div>
             <span className="text-xs text-violet-500 ml-auto">
               {expanded ? "Hide" : "Show"} arguments
             </span>
@@ -525,6 +534,53 @@ function ToolCallPanel({
           )}
         </div>
       ))}
+    </div>
+  );
+}
+
+// ToolResultItem displays a tool result (collapsible)
+function ToolResultItem({
+  result,
+}: {
+  result: { tool_use_id: string; content: string };
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div className="bg-violet-50 border border-violet-200 rounded-lg overflow-hidden my-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-violet-100 transition-colors"
+      >
+        <svg
+          className={`w-4 h-4 text-violet-500 transition-transform ${expanded ? "rotate-90" : ""}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M9 5l7 7-7 7"
+          />
+        </svg>
+        <div className="flex flex-col flex-1">
+          <span className="text-xs text-violet-400 font-mono">
+            {result.tool_use_id}
+          </span>
+        </div>
+        <span className="text-xs text-violet-500">
+          {expanded ? "收起" : "展开"}
+        </span>
+      </button>
+      {expanded && (
+        <div className="px-3 py-2 bg-violet-100 border-t border-violet-200">
+          <pre className="text-sm text-violet-900 whitespace-pre-wrap break-all">
+            {result.content}
+          </pre>
+        </div>
+      )}
     </div>
   );
 }
@@ -803,6 +859,7 @@ export function MessageBubble({
   tokens,
   tool_calls,
   streaming_tool_calls,
+  tool_results,
   timestamp,
   system_prompts,
   tools,
@@ -995,7 +1052,16 @@ export function MessageBubble({
 
         {/* System/Tools meta for user messages */}
         {isUser && (
-          <UserMessageMeta systemPrompts={system_prompts} tools={tools} />
+          <>
+            {tool_results && tool_results.length > 0 && (
+              <div className="mt-2 space-y-1">
+                {tool_results.map((result, i) => (
+                  <ToolResultItem key={i} result={result} />
+                ))}
+              </div>
+            )}
+            <UserMessageMeta systemPrompts={system_prompts} tools={tools} />
+          </>
         )}
       </div>
     </div>

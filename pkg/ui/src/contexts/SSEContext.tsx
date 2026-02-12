@@ -38,6 +38,10 @@ export interface LLMMessage {
   content: string[];
   name?: string;
   tool_calls?: ToolCall[];
+  tool_results?: Array<{
+    tool_use_id: string;
+    content: string;
+  }>;
   system?: string[];
   tools?: ToolDef[];
 }
@@ -274,6 +278,10 @@ export interface Message {
   content: string[];
   tool_calls?: ToolCall[];
   streaming_tool_calls?: StreamingToolCall[];
+  tool_results?: Array<{
+    tool_use_id: string;
+    content: string;
+  }>;
   tokens?: number;
   timestamp: number;
   is_streaming?: boolean;
@@ -517,6 +525,10 @@ export function SSEProvider({ children }: SSEProviderProps) {
           if (event.message.tools && event.message.tools.length > 0) {
             msg.tools = event.message.tools;
           }
+          // 只在有新 tool_results 时才更新
+          if (event.message.tool_results && event.message.tool_results.length > 0) {
+            msg.tool_results = event.message.tool_results;
+          }
         } else {
           // Add new
           conv.messages.push({
@@ -528,6 +540,7 @@ export function SSEProvider({ children }: SSEProviderProps) {
                 ? [event.message.content]
                 : [],
             tool_calls: event.message.tool_calls,
+            tool_results: event.message.tool_results,
             tokens: event.token_count,
             timestamp: new Date(event.timestamp).getTime(),
             system_prompts: event.message.system,
