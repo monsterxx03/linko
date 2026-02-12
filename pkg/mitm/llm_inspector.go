@@ -18,9 +18,10 @@ type LLMInspector struct {
 	logger          *slog.Logger
 	eventBus        *EventBus
 	httpProc        *HTTPProcessor
-	requestPaths    sync.Map // requestID -> string (path)
+	requestPaths     sync.Map // requestID -> string (path)
 	conversationIDs sync.Map // requestID -> string (conversationID)
 	streamMsgIDs    sync.Map // requestID -> string (assistant message ID for streaming)
+	processedBytes  sync.Map // requestID -> int (last processed byte position)
 }
 
 type conversationState struct {
@@ -160,6 +161,17 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		return bodyBytes, nil
 	}
 
+	// Get the starting position for incremental parsing
+	startPos := 0
+	if val, exists := l.processedBytes.Load(requestID); exists {
+		startPos = val.(int)
+	}
+
+	// Skip if no new data
+	if startPos >= len(bodyBytes) {
+		return bodyBytes, nil
+	}
+
 	// 从缓存中获取路径信息
 	path := ""
 	if val, exists := l.requestPaths.Load(requestID); exists {
@@ -172,8 +184,12 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		return bodyBytes, nil
 	}
 
-	// Parse SSE stream tokens
-	deltas := provider.ParseSSEStream(bodyBytes)
+	// Parse SSE stream tokens incrementally
+	deltas := provider.ParseSSEStreamFrom(bodyBytes, startPos)
+
+	// Update processed position
+	l.processedBytes.Store(requestID, len(bodyBytes))
+
 	// 从缓存中获取 conversationID（与请求时一致）
 	conversationID := ""
 	if val, exists := l.conversationIDs.Load(requestID); exists {
@@ -278,6 +294,10 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 			l.publishEvent("llm_message", msgEvent)
 
 			l.publishConversationUpdate(conversationID, "complete", 1, estimateTokenCount(accumulatedContent), "")
+
+			// 清理 SSE 流相关的追踪数据
+			l.processedBytes.Delete(requestID)
+			l.conversationIDs.Delete(requestID)
 		}
 	}
 
@@ -298,6 +318,9 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 		// 处理完响应后清理缓存
 		l.requestPaths.Delete(requestID)
 	}
+
+	// 清理 processedBytes（对于 SSE 流）
+	l.processedBytes.Delete(requestID)
 
 	// Try to find a provider using the hostname from the connection and cached path
 	provider := llm.FindProvider(hostname, path, bodyBytes, l.logger)
@@ -358,6 +381,9 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 		"content_length", len(resp.Content),
 		"stop_reason", resp.StopReason,
 	)
+
+	// 清理 conversationIDs（对于非 SSE 响应）
+	l.conversationIDs.Delete(requestID)
 }
 
 // publishLLMError publishes an LLM API error event and a message with error content
@@ -392,6 +418,10 @@ func (l *LLMInspector) publishLLMError(conversationID, requestID string, apiErro
 		},
 	}
 	l.publishEvent("llm_message", errorMsgEvent)
+
+	// 清理缓存
+	l.conversationIDs.Delete(requestID)
+	l.processedBytes.Delete(requestID)
 }
 
 // publishEvent publishes an event to the event bus

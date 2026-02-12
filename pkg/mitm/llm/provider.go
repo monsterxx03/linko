@@ -8,7 +8,8 @@ type Provider interface {
 	ExtractConversationID(body []byte) string
 	ParseRequest(body []byte) ([]LLMMessage, error)
 	ParseResponse(path string, body []byte) (*LLMResponse, error)
-	ParseSSEStream(body []byte) []TokenDelta
+	// ParseSSEStreamFrom parses SSE stream from a specific position (for incremental processing)
+	ParseSSEStreamFrom(body []byte, startPos int) []TokenDelta
 	ExtractSystemPrompt(body []byte) []string
 	ExtractTools(body []byte) []ToolDef
 }

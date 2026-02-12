@@ -142,72 +142,6 @@ func (o openaiProvider) ParseResponse(path string, body []byte) (*LLMResponse, e
 	}, nil
 }
 
-func (o openaiProvider) ParseSSEStream(body []byte) []TokenDelta {
-	var deltas []TokenDelta
-	lines := strings.Split(string(body), "\n")
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "" {
-			continue
-		}
-		if data == "[DONE]" {
-			deltas = append(deltas, TokenDelta{
-				Text:       "",
-				IsComplete: true,
-			})
-			continue
-		}
-
-		var chunk OpenAIStreamChunk
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			o.logger.Warn("failed to parse OpenAI SSE event", "error", err, "data", data)
-			continue
-		}
-
-		for _, choice := range chunk.Choices {
-			if choice.Delta.Content != "" {
-				deltas = append(deltas, TokenDelta{
-					Text: choice.Delta.Content,
-				})
-			}
-			// Handle tool calls
-			if len(choice.Delta.ToolCalls) > 0 {
-				for _, toolCall := range choice.Delta.ToolCalls {
-					if toolCall.ID != "" && toolCall.Function.Name != "" {
-						// Send tool call start event
-						deltas = append(deltas, TokenDelta{
-							ToolName: toolCall.Function.Name,
-							ToolID:   toolCall.ID,
-						})
-						// Send tool arguments if present
-						if toolCall.Function.Arguments != "" {
-							deltas = append(deltas, TokenDelta{
-								ToolData: toolCall.Function.Arguments,
-								ToolID:   toolCall.ID,
-							})
-						}
-					}
-				}
-			}
-			if choice.FinishReason != "" {
-				deltas = append(deltas, TokenDelta{
-					Text:       "",
-					IsComplete: true,
-					StopReason: choice.FinishReason,
-				})
-			}
-		}
-	}
-
-	return deltas
-}
-
 func (o openaiProvider) ExtractSystemPrompt(body []byte) []string {
 	var req OpenAIRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -240,4 +174,74 @@ func (o openaiProvider) ExtractTools(body []byte) []ToolDef {
 		})
 	}
 	return tools
+}
+
+// ParseSSEStreamFrom parses SSE stream from a specific position for incremental processing
+func (o openaiProvider) ParseSSEStreamFrom(body []byte, startPos int) []TokenDelta {
+	if startPos >= len(body) {
+		return nil
+	}
+
+	remaining := string(body[startPos:])
+	lines := strings.Split(remaining, "\n")
+
+	var deltas []TokenDelta
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "" {
+			continue
+		}
+		if data == "[DONE]" {
+			deltas = append(deltas, TokenDelta{
+				Text:       "",
+				IsComplete: true,
+			})
+			continue
+		}
+
+		var chunk OpenAIStreamChunk
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			o.logger.Warn("failed to parse OpenAI SSE event", "error", err, "data", data)
+			continue
+		}
+
+		for _, choice := range chunk.Choices {
+			if choice.Delta.Content != "" {
+				deltas = append(deltas, TokenDelta{
+					Text: choice.Delta.Content,
+				})
+			}
+			if len(choice.Delta.ToolCalls) > 0 {
+				for _, toolCall := range choice.Delta.ToolCalls {
+					if toolCall.ID != "" && toolCall.Function.Name != "" {
+						deltas = append(deltas, TokenDelta{
+							ToolName: toolCall.Function.Name,
+							ToolID:   toolCall.ID,
+						})
+						if toolCall.Function.Arguments != "" {
+							deltas = append(deltas, TokenDelta{
+								ToolData: toolCall.Function.Arguments,
+								ToolID:   toolCall.ID,
+							})
+						}
+					}
+				}
+			}
+			if choice.FinishReason != "" {
+				deltas = append(deltas, TokenDelta{
+					Text:       "",
+					IsComplete: true,
+					StopReason: choice.FinishReason,
+				})
+			}
+		}
+	}
+
+	return deltas
 }

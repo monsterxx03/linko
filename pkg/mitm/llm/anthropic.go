@@ -216,204 +216,6 @@ func (a anthropicProvider) ParseResponse(path string, body []byte) (*LLMResponse
 	}, nil
 }
 
-func (a anthropicProvider) ParseSSEStream(body []byte) []TokenDelta {
-	var deltas []TokenDelta
-	lines := strings.Split(string(body), "\n")
-
-	// Track tool information by content block index
-	toolInfoByIndex := make(map[int]struct {
-		toolID   string
-		toolName string
-	})
-
-	// Helper function to merge deltas of the same type
-	tryMergeDelta := func(newDelta TokenDelta) {
-		if len(deltas) == 0 {
-			deltas = append(deltas, newDelta)
-			return
-		}
-
-		lastDelta := &deltas[len(deltas)-1]
-
-		// Merge text deltas
-		if newDelta.Text != "" && lastDelta.Text != "" &&
-		   newDelta.Thinking == "" && lastDelta.Thinking == "" &&
-		   newDelta.ToolData == "" && lastDelta.ToolData == "" &&
-		   newDelta.ToolName == "" && lastDelta.ToolName == "" &&
-		   newDelta.ToolID == "" && lastDelta.ToolID == "" &&
-		   !newDelta.IsComplete && !lastDelta.IsComplete {
-			// Merge consecutive text deltas
-			// Check if new text is already a suffix of current text (avoid duplicates)
-			currentText := lastDelta.Text
-			newText := newDelta.Text
-			if !strings.HasSuffix(currentText, newText) {
-				lastDelta.Text = currentText + newText
-			}
-			return
-		}
-
-		// Merge thinking deltas
-		if newDelta.Thinking != "" && lastDelta.Thinking != "" &&
-		   newDelta.Text == "" && lastDelta.Text == "" &&
-		   newDelta.ToolData == "" && lastDelta.ToolData == "" &&
-		   newDelta.ToolName == "" && lastDelta.ToolName == "" &&
-		   newDelta.ToolID == "" && lastDelta.ToolID == "" &&
-		   !newDelta.IsComplete && !lastDelta.IsComplete {
-			// Merge consecutive thinking deltas
-			// Check if new thinking is already a suffix of current thinking (avoid duplicates)
-			currentThinking := lastDelta.Thinking
-			newThinking := newDelta.Thinking
-			if !strings.HasSuffix(currentThinking, newThinking) {
-				lastDelta.Thinking = currentThinking + newThinking
-			}
-			return
-		}
-
-		// Merge tool data deltas (must have same ToolID if specified)
-		if newDelta.ToolData != "" && lastDelta.ToolData != "" &&
-		   newDelta.Text == "" && lastDelta.Text == "" &&
-		   newDelta.Thinking == "" && lastDelta.Thinking == "" &&
-		   !newDelta.IsComplete && !lastDelta.IsComplete {
-			// Check if ToolIDs match (both empty or same)
-			// Allow newDelta.ToolID to be empty even if lastDelta.ToolID is set
-			toolIDsMatch := (newDelta.ToolID == "" && lastDelta.ToolID == "") ||
-			                (newDelta.ToolID != "" && lastDelta.ToolID != "" && newDelta.ToolID == lastDelta.ToolID) ||
-			                (newDelta.ToolID == "" && lastDelta.ToolID != "")
-
-			// Allow newDelta.ToolName to be empty even if lastDelta.ToolName is set
-			toolNamesMatch := (newDelta.ToolName == "" && lastDelta.ToolName == "") ||
-			                  (newDelta.ToolName != "" && lastDelta.ToolName != "" && newDelta.ToolName == lastDelta.ToolName) ||
-			                  (newDelta.ToolName == "" && lastDelta.ToolName != "")
-
-			if toolIDsMatch && toolNamesMatch {
-				// Merge consecutive tool data deltas
-				// Check if new tool data is already a suffix of current tool data (avoid duplicates)
-				currentToolData := lastDelta.ToolData
-				newToolData := newDelta.ToolData
-				if !strings.HasSuffix(currentToolData, newToolData) {
-					lastDelta.ToolData = currentToolData + newToolData
-				}
-				// Preserve ToolID/ToolName from last delta (in case new delta has empty values)
-				if newDelta.ToolID == "" && lastDelta.ToolID != "" {
-					// ToolID already set in lastDelta, keep it
-				}
-				if newDelta.ToolName == "" && lastDelta.ToolName != "" {
-					// ToolName already set in lastDelta, keep it
-				}
-				return
-			}
-		}
-
-		// Cannot merge, add as new delta
-		deltas = append(deltas, newDelta)
-	}
-
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "" || data == "[DONE]" {
-			continue
-		}
-
-		var event AnthropicStreamEvent
-		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			a.logger.Warn("failed to parse Anthropic SSE event", "error", err, "data", data)
-			continue
-		}
-
-		switch event.Type {
-		case "content_block_delta":
-			switch event.Delta.Type {
-			case "text_delta":
-				tryMergeDelta(TokenDelta{
-					Text: event.Delta.Text,
-				})
-			case "thinking_delta":
-				tryMergeDelta(TokenDelta{
-					Thinking: event.Delta.Thinking,
-				})
-			case "input_json_delta":
-				// Tool call arguments are streaming in as partial JSON
-				// This is part of a tool_use content block
-				toolDelta := TokenDelta{
-					ToolData: event.Delta.PartialJSON,
-				}
-				// Look up tool information for this index
-				if toolInfo, exists := toolInfoByIndex[event.Index]; exists {
-					toolDelta.ToolID = toolInfo.toolID
-					toolDelta.ToolName = toolInfo.toolName
-				}
-				tryMergeDelta(toolDelta)
-			default:
-				a.logger.Debug("unhandled delta type", "delta_type", event.Delta.Type, "data", data)
-			}
-		case "content_block_start":
-			// Content block started - may contain thinking block or tool_use
-			switch event.ContentBlock.Type {
-			case "thinking":
-				a.logger.Debug("thinking block started", "index", event.Index)
-			case "tool_use":
-				// Store tool information for this index
-				toolInfoByIndex[event.Index] = struct {
-					toolID   string
-					toolName string
-				}{
-					toolID:   event.ContentBlock.ID,
-					toolName: event.ContentBlock.Name,
-				}
-				// Tool use block started - emit the tool name and ID
-				tryMergeDelta(TokenDelta{
-					ToolName: event.ContentBlock.Name,
-					ToolID:   event.ContentBlock.ID,
-				})
-			}
-		case "content_block_stop":
-			// Content block ended - mark as complete for tool calls
-			a.logger.Debug("content block stopped", "index", event.Index)
-			tryMergeDelta(TokenDelta{
-				ToolData:   "",
-				IsComplete: false,
-			})
-		case "message_delta":
-			tryMergeDelta(TokenDelta{
-				Text:       "",
-				IsComplete: true,
-				StopReason: event.Message.StopReason,
-			})
-		case "message_start":
-			// Message started - contains role info, not useful for deltas
-			a.logger.Debug("message started", "role", event.Message.Role)
-		case "message_stop":
-			// Message ended - final event, handled by message_delta
-			a.logger.Debug("message stopped")
-		case "error":
-			// Error event - parse error details
-			var errData struct {
-				Error struct {
-					Type    string `json:"type"`
-					Message string `json:"message"`
-				} `json:"error"`
-			}
-			if json.Unmarshal([]byte(data), &errData) == nil {
-				a.logger.Warn("Anthropic API error", "type", errData.Error.Type, "message", errData.Error.Message)
-				tryMergeDelta(TokenDelta{
-					Text:       fmt.Sprintf("[Error: %s] %s", errData.Error.Type, errData.Error.Message),
-					IsComplete: true,
-					StopReason: "error",
-				})
-			}
-		default:
-			a.logger.Debug("unhandled Anthropic event", "type", event.Type, "data", data)
-		}
-	}
-
-	return deltas
-}
-
 func (a anthropicProvider) ExtractSystemPrompt(body []byte) []string {
 	var req AnthropicRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -460,4 +262,182 @@ func (a anthropicProvider) ExtractTools(body []byte) []ToolDef {
 		})
 	}
 	return tools
+}
+
+// ParseSSEStreamFrom parses SSE stream from a specific position for incremental processing
+func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []TokenDelta {
+	if startPos >= len(body) {
+		return nil
+	}
+
+	// Extract new lines from start position
+	remaining := string(body[startPos:])
+	lines := strings.Split(remaining, "\n")
+
+	// Track tool information by content block index
+	toolInfoByIndex := make(map[int]struct {
+		toolID   string
+		toolName string
+	})
+
+	var deltas []TokenDelta
+
+	// Helper function to merge deltas of the same type
+	tryMergeDelta := func(newDelta TokenDelta) {
+		if len(deltas) == 0 {
+			deltas = append(deltas, newDelta)
+			return
+		}
+
+		lastDelta := &deltas[len(deltas)-1]
+
+		// Merge text deltas
+		if newDelta.Text != "" && lastDelta.Text != "" &&
+			newDelta.Thinking == "" && lastDelta.Thinking == "" &&
+			newDelta.ToolData == "" && lastDelta.ToolData == "" &&
+			newDelta.ToolName == "" && lastDelta.ToolName == "" &&
+			newDelta.ToolID == "" && lastDelta.ToolID == "" &&
+			!newDelta.IsComplete && !lastDelta.IsComplete {
+			currentText := lastDelta.Text
+			newText := newDelta.Text
+			if !strings.HasSuffix(currentText, newText) {
+				lastDelta.Text = currentText + newText
+			}
+			return
+		}
+
+		// Merge thinking deltas
+		if newDelta.Thinking != "" && lastDelta.Thinking != "" &&
+			newDelta.Text == "" && lastDelta.Text == "" &&
+			newDelta.ToolData == "" && lastDelta.ToolData == "" &&
+			newDelta.ToolName == "" && lastDelta.ToolName == "" &&
+			newDelta.ToolID == "" && lastDelta.ToolID == "" &&
+			!newDelta.IsComplete && !lastDelta.IsComplete {
+			currentThinking := lastDelta.Thinking
+			newThinking := newDelta.Thinking
+			if !strings.HasSuffix(currentThinking, newThinking) {
+				lastDelta.Thinking = currentThinking + newThinking
+			}
+			return
+		}
+
+		// Merge tool data deltas
+		if newDelta.ToolData != "" && lastDelta.ToolData != "" &&
+			newDelta.Text == "" && lastDelta.Text == "" &&
+			newDelta.Thinking == "" && lastDelta.Thinking == "" &&
+			!newDelta.IsComplete && !lastDelta.IsComplete {
+			toolIDsMatch := (newDelta.ToolID == "" && lastDelta.ToolID == "") ||
+				(newDelta.ToolID != "" && lastDelta.ToolID != "" && newDelta.ToolID == lastDelta.ToolID) ||
+				(newDelta.ToolID == "" && lastDelta.ToolID != "")
+			toolNamesMatch := (newDelta.ToolName == "" && lastDelta.ToolName == "") ||
+				(newDelta.ToolName != "" && lastDelta.ToolName != "" && newDelta.ToolName == lastDelta.ToolName) ||
+				(newDelta.ToolName == "" && lastDelta.ToolName != "")
+
+			if toolIDsMatch && toolNamesMatch {
+				currentToolData := lastDelta.ToolData
+				newToolData := newDelta.ToolData
+				if !strings.HasSuffix(currentToolData, newToolData) {
+					lastDelta.ToolData = currentToolData + newToolData
+				}
+				return
+			}
+		}
+
+		deltas = append(deltas, newDelta)
+	}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "" || data == "[DONE]" {
+			continue
+		}
+
+		var event AnthropicStreamEvent
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			a.logger.Warn("failed to parse Anthropic SSE event", "error", err, "data", data)
+			continue
+		}
+
+		switch event.Type {
+		case "content_block_delta":
+			switch event.Delta.Type {
+			case "text_delta":
+				tryMergeDelta(TokenDelta{
+					Text: event.Delta.Text,
+				})
+			case "thinking_delta":
+				tryMergeDelta(TokenDelta{
+					Thinking: event.Delta.Thinking,
+				})
+			case "input_json_delta":
+				toolDelta := TokenDelta{
+					ToolData: event.Delta.PartialJSON,
+				}
+				if toolInfo, exists := toolInfoByIndex[event.Index]; exists {
+					toolDelta.ToolID = toolInfo.toolID
+					toolDelta.ToolName = toolInfo.toolName
+				}
+				tryMergeDelta(toolDelta)
+			default:
+				a.logger.Debug("unhandled delta type", "delta_type", event.Delta.Type, "data", data)
+			}
+		case "content_block_start":
+			switch event.ContentBlock.Type {
+			case "thinking":
+				a.logger.Debug("thinking block started", "index", event.Index)
+			case "tool_use":
+				toolInfoByIndex[event.Index] = struct {
+					toolID   string
+					toolName string
+				}{
+					toolID:   event.ContentBlock.ID,
+					toolName: event.ContentBlock.Name,
+				}
+				tryMergeDelta(TokenDelta{
+					ToolName: event.ContentBlock.Name,
+					ToolID:   event.ContentBlock.ID,
+				})
+			}
+		case "content_block_stop":
+			a.logger.Debug("content block stopped", "index", event.Index)
+			tryMergeDelta(TokenDelta{
+				ToolData:   "",
+				IsComplete: false,
+			})
+		case "message_delta":
+			tryMergeDelta(TokenDelta{
+				Text:       "",
+				IsComplete: true,
+				StopReason: event.Message.StopReason,
+			})
+		case "message_start":
+			a.logger.Debug("message started", "role", event.Message.Role)
+		case "message_stop":
+			a.logger.Debug("message stopped")
+		case "error":
+			var errData struct {
+				Error struct {
+					Type    string `json:"type"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if json.Unmarshal([]byte(data), &errData) == nil {
+				a.logger.Warn("Anthropic API error", "type", errData.Error.Type, "message", errData.Error.Message)
+				tryMergeDelta(TokenDelta{
+					Text:       fmt.Sprintf("[Error: %s] %s", errData.Error.Type, errData.Error.Message),
+					IsComplete: true,
+					StopReason: "error",
+				})
+			}
+		default:
+			a.logger.Debug("unhandled Anthropic event", "type", event.Type, "data", data)
+		}
+	}
+
+	return deltas
 }
