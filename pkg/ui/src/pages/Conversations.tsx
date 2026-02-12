@@ -94,9 +94,7 @@ function ConversationView({
 }) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversation?.messages]);
+  // 已禁用自动滚动：messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
 
   if (!conversation) {
     return (
@@ -155,6 +153,7 @@ function ConversationView({
           return (
             <MessageBubble
               key={msg.id}
+              id={msg.id}
               role={msg.role as 'user' | 'assistant' | 'system' | 'tool'}
               content={msg.content}
               tokens={msg.tokens}
