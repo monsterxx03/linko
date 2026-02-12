@@ -119,7 +119,6 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 		ID:             generateEventID(),
 		Timestamp:      time.Now(),
 		ConversationID: conversationID,
-		RequestID:      requestID,
 		Message:        lastMsg,
 	}
 
@@ -215,7 +214,6 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 				ID:             requestID,
 				Timestamp:      time.Now(),
 				ConversationID: conversationID,
-				RequestID:      requestID,
 				Message: llm.LLMMessage{
 					Role:    "assistant",
 					Content: []string{""},
@@ -257,7 +255,6 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		event := &llm.LLMTokenEvent{
 			ID:             requestID, // 复用同一个 ID
 			ConversationID: conversationID,
-			RequestID:      requestID,
 			Delta:          delta.Text,
 			Thinking:       delta.Thinking,
 			ToolName:       delta.ToolName,
@@ -284,7 +281,6 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 				ID:             requestID,
 				Timestamp:      time.Now(),
 				ConversationID: conversationID,
-				RequestID:      requestID,
 				Message: llm.LLMMessage{
 					Role:      "assistant",
 					Content:   []string{accumulatedContent},
@@ -365,7 +361,6 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 		ID:             generateEventID(),
 		Timestamp:      time.Now(),
 		ConversationID: conversationID,
-		RequestID:      requestID,
 		Message:        msg,
 		TokenCount:     resp.Usage.OutputTokens,
 		TotalTokens:    resp.Usage.InputTokens + resp.Usage.OutputTokens,
@@ -411,7 +406,6 @@ func (l *LLMInspector) publishLLMError(conversationID, requestID string, apiErro
 		ID:             generateEventID(),
 		Timestamp:      time.Now(),
 		ConversationID: conversationID,
-		RequestID:      requestID,
 		Message: llm.LLMMessage{
 			Role:    "assistant",
 			Content: []string{fmt.Sprintf("[Error: %s] %s", apiError.Type, apiError.Message)},
@@ -438,6 +432,7 @@ func (l *LLMInspector) publishEvent(direction string, extra interface{}) {
 	}
 	l.eventBus.Publish(event)
 }
+
 
 // publishConversationUpdate publishes a conversation status update
 func (l *LLMInspector) publishConversationUpdate(conversationID, status string, messageCount, totalTokens int, model string) {

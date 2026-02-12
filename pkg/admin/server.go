@@ -365,21 +365,37 @@ data: {"message":"Connected to LLM conversation stream"}
 			if !ok {
 				return
 			}
-			// Marshal event to JSON
-			eventData, err := json.Marshal(event)
+			// Extract the actual event data from Extra field
+			var actualEvent interface{}
+			var eventType string
+
+			// Check if this is a TrafficEvent with Extra field
+			if event.Extra != nil {
+				// Use the Extra field as the actual event
+				actualEvent = event.Extra
+				// Determine event type based on direction
+				switch event.Direction {
+				case "llm_message":
+					eventType = "llm_message"
+				case "llm_token":
+					eventType = "llm_token"
+				case "conversation":
+					eventType = "conversation"
+				default:
+					eventType = "traffic"
+				}
+			} else {
+				// If no Extra field, use the event itself (for backward compatibility)
+				actualEvent = event
+				eventType = "traffic"
+			}
+
+			// Marshal the actual event to JSON
+			eventData, err := json.Marshal(actualEvent)
 			if err != nil {
 				continue
 			}
-			// Determine event type based on direction
-			eventType := "traffic"
-			switch event.Direction {
-			case "llm_message":
-				eventType = "llm_message"
-			case "llm_token":
-				eventType = "llm_token"
-			case "conversation":
-				eventType = "conversation"
-			}
+
 			// Format SSE message
 			eventMsg := `event: ` + eventType + `
 data: ` + string(eventData) + `

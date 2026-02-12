@@ -71,7 +71,6 @@ type LLMMessageEvent struct {
 	ID             string     `json:"id"`
 	Timestamp      time.Time  `json:"timestamp"`
 	ConversationID string     `json:"conversation_id"`
-	RequestID      string     `json:"request_id"` // HTTP request ID for correlation
 	Message        LLMMessage `json:"message"`
 	TokenCount     int        `json:"token_count,omitempty"`  // token count for this message
 	TotalTokens    int        `json:"total_tokens,omitempty"` // total tokens in conversation
@@ -83,7 +82,6 @@ type LLMTokenEvent struct {
 	ID             string    `json:"id"`
 	Timestamp      time.Time `json:"timestamp"`
 	ConversationID string    `json:"conversation_id"`
-	RequestID      string    `json:"request_id"`
 	Delta          string    `json:"delta"`              // new token content
 	Thinking       string    `json:"thinking,omitempty"`  // thinking content (for Claude)
 	ToolName       string    `json:"tool_name,omitempty"` // tool name for tool_calls

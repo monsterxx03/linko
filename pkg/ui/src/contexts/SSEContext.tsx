@@ -61,7 +61,6 @@ export interface LLMMessageEvent {
   id: string;
   timestamp: string;
   conversation_id: string;
-  request_id: string;
   message: LLMMessage;
   token_count?: number;
   total_tokens?: number;
@@ -72,7 +71,6 @@ export interface LLMTokenEvent {
   id: string;
   timestamp: string;
   conversation_id: string;
-  request_id: string;
   delta: string;
   thinking?: string;
   tool_data?: string;
@@ -377,16 +375,13 @@ class LLMSSEConnection {
   connect(url: string): void {
     this.connection.connect(url, {
       llm_message: (data: unknown) => {
-        const actualEvent = (data as { extra?: unknown }).extra || data;
-        this.messageEvents$.emit(actualEvent as LLMMessageEvent);
+        this.messageEvents$.emit(data as LLMMessageEvent);
       },
       llm_token: (data: unknown) => {
-        const actualEvent = (data as { extra?: unknown }).extra || data;
-        this.tokenEvents$.emit(actualEvent as LLMTokenEvent);
+        this.tokenEvents$.emit(data as LLMTokenEvent);
       },
       conversation: (data: unknown) => {
-        const actualEvent = (data as { extra?: unknown }).extra || data;
-        this.conversationEvents$.emit(actualEvent as ConversationUpdateEvent);
+        this.conversationEvents$.emit(data as ConversationUpdateEvent);
       },
       welcome: () => {
         // Welcome is handled by SharedSSEConnection
