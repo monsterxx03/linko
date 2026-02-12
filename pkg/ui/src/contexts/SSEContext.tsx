@@ -506,11 +506,20 @@ export function SSEProvider({ children }: SSEProviderProps) {
             msg.content = newContent;
           }
 
-          msg.tool_calls = event.message.tool_calls;
+          // 只在有新 tool_calls 时才更新，避免覆盖通过 llm_token 积累的内容
+          if (event.message.tool_calls && event.message.tool_calls.length > 0) {
+            msg.tool_calls = event.message.tool_calls;
+          }
           msg.tokens = event.token_count;
           msg.timestamp = new Date(event.timestamp).getTime();
-          msg.system_prompts = event.message.system;
-          msg.tools = event.message.tools;
+          // 只在有新 system 时才更新
+          if (event.message.system && event.message.system.length > 0) {
+            msg.system_prompts = event.message.system;
+          }
+          // 只在有新 tools 时才更新
+          if (event.message.tools && event.message.tools.length > 0) {
+            msg.tools = event.message.tools;
+          }
         } else {
           // Add new
           conv.messages.push({
