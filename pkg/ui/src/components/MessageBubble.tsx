@@ -1,6 +1,140 @@
 import React, { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 
+// String constants
+const STRINGS = {
+  EXPAND: "Expand",
+  COLLAPSE: "Collapse",
+  SHOW: "Show",
+  HIDE: "Hide",
+  SYSTEM_REMINDER_TAG: "system-reminder",
+} as const;
+
+
+// Reusable icon components
+function ChevronIcon({
+  expanded,
+  className = "",
+  size = "md"
+}: {
+  expanded: boolean;
+  className?: string;
+  size?: "sm" | "md" | "lg";
+}) {
+  const sizeClasses = {
+    sm: "w-3 h-3",
+    md: "w-4 h-4",
+    lg: "w-5 h-5",
+  };
+
+  return (
+    <svg
+      className={`${sizeClasses[size]} transition-transform ${expanded ? "rotate-90" : ""} ${className}`}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M9 5l7 7-7 7"
+      />
+    </svg>
+  );
+}
+
+// Tool icon component
+function ToolIcon({ className = "", size = "md" }: { className?: string; size?: "sm" | "md" | "lg" }) {
+  const sizeClasses = {
+    sm: "w-3 h-3",
+    md: "w-4 h-4",
+    lg: "w-5 h-5",
+  };
+
+  return (
+    <svg
+      className={`${sizeClasses[size]} text-violet-500 ${className}`}
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth={2}
+        d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
+      />
+    </svg>
+  );
+}
+
+// Reusable collapsible panel component
+interface CollapsiblePanelProps {
+  title: React.ReactNode;
+  children: React.ReactNode;
+  defaultExpanded?: boolean;
+  expanded?: boolean;
+  onToggle?: () => void;
+  className?: string;
+  buttonClassName?: string;
+  contentClassName?: string;
+  showChevron?: boolean;
+  chevronSize?: "sm" | "md" | "lg";
+  chevronClassName?: string;
+  headerRight?: React.ReactNode | ((expanded: boolean) => React.ReactNode);
+  borderColor?: string;
+  bgColor?: string;
+}
+
+function CollapsiblePanel({
+  title,
+  children,
+  defaultExpanded = false,
+  expanded: controlledExpanded,
+  onToggle,
+  className = "",
+  buttonClassName = "",
+  contentClassName = "",
+  showChevron = true,
+  chevronSize = "md",
+  chevronClassName = "text-slate-500",
+  headerRight,
+  borderColor = "border-slate-200",
+  bgColor = "bg-slate-50",
+}: CollapsiblePanelProps) {
+  const [internalExpanded, setInternalExpanded] = useState(defaultExpanded);
+  const expanded = controlledExpanded !== undefined ? controlledExpanded : internalExpanded;
+
+  const handleToggle = () => {
+    if (onToggle) {
+      onToggle();
+    } else if (controlledExpanded === undefined) {
+      setInternalExpanded(!expanded);
+    }
+  };
+
+  return (
+    <div className={`border ${borderColor} rounded-lg overflow-hidden my-2 ${className}`}>
+      <button
+        onClick={handleToggle}
+        className={`w-full px-3 py-2 flex items-center gap-2 text-left transition-colors ${bgColor} ${buttonClassName}`}
+      >
+        {showChevron && (
+          <ChevronIcon expanded={expanded} size={chevronSize} className={chevronClassName} />
+        )}
+        <div className="flex-1">{title}</div>
+        {typeof headerRight === "function" ? headerRight(expanded) : headerRight}
+      </button>
+      {expanded && (
+        <div className={`px-3 py-2 ${bgColor} border-t ${borderColor} ${contentClassName}`}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export interface ToolDef {
   name: string;
   description?: string;
@@ -209,7 +343,7 @@ function SingleSystemPrompt({ content }: { content: string }) {
           {collapsed ? preview : ""}
         </span>
         <span className="text-xs text-amber-500 whitespace-nowrap">
-          {collapsed ? "展开" : "折叠"}
+          {collapsed ? "Expand" : "Collapse"}
         </span>
       </button>
       {!collapsed && (
@@ -327,7 +461,7 @@ function CollapsibleMarkdown({
           [{index}] {preview}
         </span>
         <span className="text-xs text-slate-400 whitespace-nowrap">
-          {collapsed ? "展开" : "收起"}
+          {collapsed ? "Expand" : "Collapse"}
         </span>
       </button>
       {!collapsed && (
@@ -434,57 +568,33 @@ function MarkdownContent({
 }
 
 // Format tool call for display (tool name + key arguments)
+// Tool formatters for display
+const TOOL_FORMATTERS: Record<string, (args: Record<string, unknown>) => string> = {
+  Read: (args) => args.file_path ? `Read ${args.file_path}` : "Read",
+  Grep: (args) => args.pattern ? `Grep "${args.pattern}"` : "Grep",
+  Glob: (args) => args.pattern ? `Glob ${args.pattern}` : "Glob",
+  Edit: (args) => args.file_path ? `Edit ${args.file_path}` : "Edit",
+  Write: (args) => args.file_path ? `Write ${args.file_path}` : "Write",
+  Bash: (args) => {
+    const cmd = args.command;
+    if (!cmd) return "Bash";
+    const cmdStr = typeof cmd === "string" ? cmd : (cmd as string[]).join(" ");
+    return `Bash ${cmdStr.substring(0, 40)}${cmdStr.length > 40 ? "..." : ""}`;
+  },
+  TaskCreate: (args) => args.subject ? `TaskCreate ${args.subject}` : "TaskCreate",
+  TaskGet: (args) => args.taskId ? `TaskGet ${args.taskId}` : "TaskGet",
+  TaskUpdate: (args) => args.taskId ? `TaskUpdate ${args.taskId}` : "TaskUpdate",
+};
+
 function formatToolCall(call: { function: { name: string; arguments: string } }): string {
   const { name, arguments: argsStr } = call.function;
 
-  let args: Record<string, unknown>;
   try {
-    args = JSON.parse(argsStr);
+    const args = JSON.parse(argsStr);
+    const formatter = TOOL_FORMATTERS[name];
+    return formatter ? formatter(args) : name;
   } catch {
     return name;
-  }
-
-  switch (name) {
-    case "Read": {
-      const path = args.file_path;
-      return path ? `Read ${path}` : name;
-    }
-    case "Grep": {
-      const pattern = args.pattern;
-      return pattern ? `Grep "${pattern}"` : name;
-    }
-    case "Glob": {
-      const pattern = args.pattern;
-      return pattern ? `Glob ${pattern}` : name;
-    }
-    case "Edit": {
-      const path = args.file_path;
-      return path ? `Edit ${path}` : name;
-    }
-    case "Write": {
-      const path = args.file_path;
-      return path ? `Write ${path}` : name;
-    }
-    case "Bash": {
-      const cmd = args.command;
-      if (!cmd) return name;
-      const cmdStr = typeof cmd === "string" ? cmd : (cmd as string[]).join(" ");
-      return `Bash ${cmdStr.substring(0, 40)}${cmdStr.length > 40 ? "..." : ""}`;
-    }
-    case "TaskCreate": {
-      const subject = args.subject;
-      return subject ? `TaskCreate ${subject}` : name;
-    }
-    case "TaskGet": {
-      const taskId = args.taskId;
-      return taskId ? `TaskGet ${taskId}` : name;
-    }
-    case "TaskUpdate": {
-      const taskId = args.taskId;
-      return taskId ? `TaskUpdate ${taskId}` : name;
-    }
-    default:
-      return name;
   }
 }
 
@@ -508,19 +618,7 @@ function ToolCallPanel({
             onClick={() => setExpanded(!expanded)}
             className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-violet-100 transition-colors"
           >
-            <svg
-              className="w-4 h-4 text-violet-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-              />
-            </svg>
+            <ToolIcon />
             <div className="flex flex-col">
               <span className="text-sm font-medium text-violet-800">
                 {formatToolCall(call)}
@@ -552,44 +650,31 @@ function ToolResultItem({
 }: {
   result: { tool_use_id: string; content: string };
 }) {
-  const [expanded, setExpanded] = useState(false);
-
   return (
-    <div className="bg-violet-50 border border-violet-200 rounded-lg overflow-hidden my-1">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-violet-100 transition-colors"
-      >
-        <svg
-          className={`w-4 h-4 text-violet-500 transition-transform ${expanded ? "rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5l7 7-7 7"
-          />
-        </svg>
+    <CollapsiblePanel
+      title={
         <div className="flex flex-col flex-1">
           <span className="text-xs text-violet-400 font-mono">
             {result.tool_use_id}
           </span>
         </div>
+      }
+      headerRight={(expanded) => (
         <span className="text-xs text-violet-500">
-          {expanded ? "收起" : "展开"}
+          {expanded ? STRINGS.COLLAPSE : STRINGS.EXPAND}
         </span>
-      </button>
-      {expanded && (
-        <div className="px-3 py-2 bg-violet-100 border-t border-violet-200">
-          <pre className="text-sm text-violet-900 whitespace-pre-wrap break-all">
-            {result.content}
-          </pre>
-        </div>
       )}
-    </div>
+      className="my-1"
+      borderColor="border-violet-200"
+      bgColor="bg-violet-50"
+      buttonClassName="hover:bg-violet-100"
+      contentClassName="bg-violet-100"
+      chevronClassName="text-violet-500"
+    >
+      <pre className="text-sm text-violet-900 whitespace-pre-wrap break-all">
+        {result.content}
+      </pre>
+    </CollapsiblePanel>
   );
 }
 
@@ -616,19 +701,7 @@ function StreamingToolCallPanel({
             onClick={() => setExpanded(!expanded)}
             className="w-full px-3 py-2 flex items-center gap-2 text-left hover:bg-violet-100 transition-colors"
           >
-            <svg
-              className="w-4 h-4 text-violet-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
-              />
-            </svg>
+            <ToolIcon />
             <span className="text-sm font-medium text-violet-800">
               {call.name || "Unknown Tool"}
             </span>
@@ -664,19 +737,7 @@ function SystemMeta({ systemPrompts }: { systemPrompts?: string[] }) {
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 text-xs hover:bg-amber-200 transition-colors"
       >
-        <svg
-          className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5l7 7-7 7"
-          />
-        </svg>
+        <ChevronIcon expanded={expanded} size="sm" className="text-amber-600" />
         <span className="font-medium">{systemPrompts.length} System</span>
       </button>
 
@@ -702,19 +763,7 @@ function ToolDefItem({ tool }: { tool: ToolDef }) {
         onClick={() => setExpanded(!expanded)}
         className="w-full px-2 py-1 flex items-center gap-1 bg-violet-50 hover:bg-violet-100 transition-colors"
       >
-        <svg
-          className={`w-3 h-3 text-violet-500 transition-transform ${expanded ? "rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5l7 7-7 7"
-          />
-        </svg>
+        <ChevronIcon expanded={expanded} size="sm" className="text-violet-500" />
         <span className="font-medium text-violet-800 text-xs flex-1 text-left">
           {tool.name}
         </span>
@@ -754,19 +803,7 @@ function ToolsMeta({ tools }: { tools?: ToolDef[] }) {
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-xs hover:bg-violet-200 transition-colors"
       >
-        <svg
-          className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5l7 7-7 7"
-          />
-        </svg>
+        <ChevronIcon expanded={expanded} size="sm" className="text-violet-600" />
         <span className="font-medium">{tools.length} Tools</span>
       </button>
 
@@ -831,19 +868,7 @@ function ThinkingContent({
         onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-1.5 px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 transition-colors text-xs"
       >
-        <svg
-          className={`w-3.5 h-3.5 text-slate-500 transition-transform ${expanded ? "rotate-90" : ""}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 5l7 7-7 7"
-          />
-        </svg>
+        <ChevronIcon expanded={expanded} size="md" className="text-slate-500 w-3.5 h-3.5" />
         <span className="font-medium text-slate-600">Thinking</span>
         {isStreaming && (
           <span className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
