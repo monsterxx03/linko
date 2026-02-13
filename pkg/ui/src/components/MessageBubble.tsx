@@ -41,6 +41,14 @@ function formatTime(ts?: number): string {
   return new Date(ts).toLocaleTimeString();
 }
 
+// Check if content is empty (whitespace-only or empty array)
+function isEmptyContent(content: string | string[]): boolean {
+  if (Array.isArray(content)) {
+    return content.length === 0 || content.every(c => !c.trim());
+  }
+  return !content.trim();
+}
+
 // Decode HTML entities and Unicode escapes for tag detection
 function decodeForTagCheck(content: string): string {
   return content
@@ -869,6 +877,23 @@ export function MessageBubble({
   const isUser = role === "user";
   const isAssistant = role === "assistant";
 
+  // Check if we should show content area for user messages
+  const shouldShowContent = !(
+    isUser &&
+    isEmptyContent(content) &&
+    (!tool_calls || tool_calls.length === 0) &&
+    (!streaming_tool_calls || streaming_tool_calls.length === 0)
+  );
+
+  // Check if we should show the message bubble (background/border)
+  // Show bubble if there's any content: tool calls, thinking, tokens, or actual content
+  const shouldShowBubble =
+    (tool_calls && tool_calls.length > 0) ||
+    (streaming_tool_calls && streaming_tool_calls.length > 0) ||
+    shouldShowContent ||
+    (thinking && thinking.trim().length > 0) ||
+    (tokens && tokens > 0);
+
   const roleColors = {
     user: "bg-indigo-50 border-indigo-200",
     assistant: "bg-white border-slate-200",
@@ -981,74 +1006,78 @@ export function MessageBubble({
           )}
         </div>
 
-        <div
-          className={`rounded-xl p-4 border ${roleColors[role]} rounded-tl-sm`}
-        >
-          {/* Completed tool calls */}
-          {tool_calls && tool_calls.length > 0 && (
-            <ToolCallPanel calls={tool_calls} />
-          )}
-          {/* Streaming tool calls (being built) */}
-          {streaming_tool_calls && streaming_tool_calls.length > 0 && (
-            <StreamingToolCallPanel
-              calls={streaming_tool_calls}
-              isStreaming={isStreaming}
-            />
-          )}
-
-          {/* Content */}
+        {shouldShowBubble && (
           <div
-            className={`text-sm leading-relaxed ${isUser ? "text-indigo-900" : "text-slate-800"}`}
+            className={`rounded-xl p-4 border ${roleColors[role]} rounded-tl-sm`}
           >
-            {/* System prompt uses special collapsible view */}
-            {role === "system" ? (
-              <SystemContent
-                content={Array.isArray(content) ? content : [String(content)]}
-              />
-            ) : Array.isArray(content) ? (
-              <div className="space-y-2">
-                {content.map((c, i) => (
-                  <div
-                    key={i}
-                    className="pb-2 border-b border-slate-200 last:border-0 last:pb-0"
-                  >
-                    <CollapsibleContent content={c} index={i} />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <CollapsibleContent content={content} index={0} />
+            {/* Completed tool calls */}
+            {tool_calls && tool_calls.length > 0 && (
+              <ToolCallPanel calls={tool_calls} />
             )}
-            {isStreaming && (
-              <span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse" />
+            {/* Streaming tool calls (being built) */}
+            {streaming_tool_calls && streaming_tool_calls.length > 0 && (
+              <StreamingToolCallPanel
+                calls={streaming_tool_calls}
+                isStreaming={isStreaming}
+              />
+            )}
+
+            {/* Content */}
+            {shouldShowContent && (
+              <div
+                className={`text-sm leading-relaxed ${isUser ? "text-indigo-900" : "text-slate-800"}`}
+              >
+                {/* System prompt uses special collapsible view */}
+                {role === "system" ? (
+                  <SystemContent
+                    content={Array.isArray(content) ? content : [String(content)]}
+                  />
+                ) : Array.isArray(content) ? (
+                  <div className="space-y-2">
+                    {content.map((c, i) => (
+                      <div
+                        key={i}
+                        className="pb-2 border-b border-slate-200 last:border-0 last:pb-0"
+                      >
+                        <CollapsibleContent content={c} index={i} />
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <CollapsibleContent content={content} index={0} />
+                )}
+                {isStreaming && (
+                  <span className="inline-block w-2 h-4 ml-1 bg-emerald-500 animate-pulse" />
+                )}
+              </div>
+            )}
+
+            {/* Thinking content (for Claude) */}
+            {isAssistant && thinking && (
+              <ThinkingContent content={thinking} isStreaming={isStreaming} />
+            )}
+
+            {/* Token count */}
+            {tokens && tokens > 0 && (
+              <div className="mt-2 pt-2 border-t border-slate-200/50 flex items-center gap-2 text-xs text-slate-400">
+                <svg
+                  className="w-3 h-3"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
+                  />
+                </svg>
+                <span>{tokens} tokens</span>
+              </div>
             )}
           </div>
-
-          {/* Thinking content (for Claude) */}
-          {isAssistant && thinking && (
-            <ThinkingContent content={thinking} isStreaming={isStreaming} />
-          )}
-
-          {/* Token count */}
-          {tokens && tokens > 0 && (
-            <div className="mt-2 pt-2 border-t border-slate-200/50 flex items-center gap-2 text-xs text-slate-400">
-              <svg
-                className="w-3 h-3"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"
-                />
-              </svg>
-              <span>{tokens} tokens</span>
-            </div>
-          )}
-        </div>
+        )}
 
         {/* System/Tools meta for user messages */}
         {isUser && (
