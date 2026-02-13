@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { memo, useCallback } from 'react';
 import { MessageBubble } from '../components/MessageBubble';
 import { useLLMConversation } from '../hooks/useLLMConversation';
 import { Conversation } from '../contexts/SSEContext';
@@ -9,7 +9,32 @@ function formatDuration(ms: number): string {
   return `${(ms / 60000).toFixed(1)}m`;
 }
 
-function ConversationList({
+const StatusBadge = memo(({ status, model }: { status: Conversation['status']; model?: string }) => (
+  <div className="flex items-center gap-2 mb-1">
+    {status === 'streaming' ? (
+      <span className="flex items-center gap-1">
+        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+        <span className="text-xs text-emerald-600">Streaming</span>
+      </span>
+    ) : status === 'error' ? (
+      <span className="flex items-center gap-1">
+        <span className="w-2 h-2 rounded-full bg-red-500" />
+        <span className="text-xs text-red-600">Error</span>
+      </span>
+    ) : (
+      <span className="text-xs text-bg-400">Done</span>
+    )}
+    {model && (
+      <span className="text-xs px-1.5 py-0.5 bg-bg-200 text-bg-600 rounded">
+        {model}
+      </span>
+    )}
+  </div>
+));
+
+StatusBadge.displayName = 'StatusBadge';
+
+const ConversationList = memo(function ConversationList({
   conversations,
   currentId,
   onSelect
@@ -18,6 +43,8 @@ function ConversationList({
   currentId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const handleSelect = useCallback((id: string) => onSelect(id), [onSelect]);
+
   if (conversations.length === 0) {
     return (
       <div className="p-6 text-center">
@@ -35,37 +62,19 @@ function ConversationList({
       {conversations.map((conv) => {
         const isSelected = conv.id === currentId;
         const lastMessage = conv.messages[conv.messages.length - 1];
+        const duration = Date.now() - conv.started_at;
 
         return (
           <li key={conv.id}>
             <button
-              onClick={() => onSelect(conv.id)}
+              type="button"
+              onClick={() => handleSelect(conv.id)}
               className={`w-full p-4 text-left hover:bg-bg-50 transition-colors ${
                 isSelected ? 'bg-bg-100' : ''
               }`}
             >
-              <div className="flex items-center gap-2 mb-1">
-                {conv.status === 'streaming' ? (
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-xs text-emerald-600">Streaming</span>
-                  </span>
-                ) : conv.status === 'error' ? (
-                  <span className="flex items-center gap-1">
-                    <span className="w-2 h-2 rounded-full bg-red-500" />
-                    <span className="text-xs text-red-600">Error</span>
-                  </span>
-                ) : (
-                  <span className="text-xs text-bg-400">Done</span>
-                )}
-                {conv.model && (
-                  <span className="text-xs px-1.5 py-0.5 bg-bg-200 text-bg-600 rounded">
-                    {conv.model}
-                  </span>
-                )}
-              </div>
+              <StatusBadge status={conv.status} model={conv.model} />
 
-              {/* Debug: 显示 conversation ID */}
               <p className="text-xs text-bg-400 font-mono truncate mb-1" title={conv.id}>
                 {conv.id}
               </p>
@@ -77,7 +86,7 @@ function ConversationList({
               <div className="flex items-center gap-3 text-xs text-bg-400">
                 <span>{conv.messages.length} messages</span>
                 <span>{conv.total_tokens} tokens</span>
-                <span>{formatDuration(Date.now() - conv.started_at)}</span>
+                <span>{formatDuration(duration)}</span>
               </div>
             </button>
           </li>
@@ -85,17 +94,13 @@ function ConversationList({
       })}
     </ul>
   );
-}
+});
 
-function ConversationView({
+const ConversationView = memo(function ConversationView({
   conversation
 }: {
   conversation: Conversation | undefined;
 }) {
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // 已禁用自动滚动：messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center text-bg-400">
@@ -149,30 +154,27 @@ function ConversationView({
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth">
-        {conversation.messages.map((msg) => {
-          return (
-            <MessageBubble
-              key={msg.id}
-              id={msg.id}
-              role={msg.role as 'user' | 'assistant' | 'system' | 'tool'}
-              content={msg.content}
-              tokens={msg.tokens}
-              tool_calls={msg.tool_calls}
-              streaming_tool_calls={msg.streaming_tool_calls}
-              tool_results={msg.tool_results}
-              timestamp={msg.timestamp}
-              isStreaming={msg.is_streaming}
-              system_prompts={msg.system_prompts}
-              tools={msg.tools}
-              thinking={msg.thinking}
-            />
-          );
-        })}
-        <div ref={messagesEndRef} />
+        {conversation.messages.map((msg) => (
+          <MessageBubble
+            key={msg.id}
+            id={msg.id}
+            role={msg.role as 'user' | 'assistant' | 'system' | 'tool'}
+            content={msg.content}
+            tokens={msg.tokens}
+            tool_calls={msg.tool_calls}
+            streaming_tool_calls={msg.streaming_tool_calls}
+            tool_results={msg.tool_results}
+            timestamp={msg.timestamp}
+            isStreaming={msg.is_streaming}
+            system_prompts={msg.system_prompts}
+            tools={msg.tools}
+            thinking={msg.thinking}
+          />
+        ))}
       </div>
     </div>
   );
-}
+});
 
 export default function Conversations() {
   const {
@@ -186,6 +188,10 @@ export default function Conversations() {
   } = useLLMConversation();
 
   const currentConversation = conversations.find((c: Conversation) => c.id === currentConversationId);
+
+  const handleClear = useCallback(() => clear(), [clear]);
+  const handleReconnect = useCallback(() => reconnect(), [reconnect]);
+  const handleSelect = useCallback((id: string) => setCurrentConversationId(id), [setCurrentConversationId]);
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -213,13 +219,15 @@ export default function Conversations() {
           </div>
 
           <button
-            onClick={clear}
+            type="button"
+            onClick={handleClear}
             className="px-3 py-1.5 text-sm text-bg-600 hover:text-bg-800 hover:bg-bg-100 rounded-lg transition-colors"
           >
             Clear
           </button>
           <button
-            onClick={reconnect}
+            type="button"
+            onClick={handleReconnect}
             className="px-3 py-1.5 text-sm text-bg-600 hover:text-bg-800 hover:bg-bg-100 rounded-lg transition-colors"
           >
             Reconnect
@@ -234,7 +242,7 @@ export default function Conversations() {
           <ConversationList
             conversations={conversations}
             currentId={currentConversationId}
-            onSelect={setCurrentConversationId}
+            onSelect={handleSelect}
           />
         </div>
 
