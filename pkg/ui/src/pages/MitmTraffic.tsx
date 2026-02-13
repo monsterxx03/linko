@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import ReactJson from 'react-json-view';
 import { useTraffic } from '../hooks/useTraffic';
 import { TrafficEvent } from '../contexts/SSEContext';
@@ -25,18 +25,109 @@ function formatTime(ts: number): string {
   return new Date(ts).toLocaleTimeString();
 }
 
-function formatMethod(m?: string): string {
-  const c = METHOD_COLORS[m || ''] || 'bg-gray-100 text-gray-800';
-  return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${c}">${m || ''}</span>`;
+interface BadgeProps {
+  children: React.ReactNode;
+  colorClass: string;
 }
 
-function formatStatus(s?: number): string {
-  const c = s ? STATUS_COLORS[Math.floor(s / 100)] || 'bg-gray-100 text-gray-800' : 'bg-gray-100 text-gray-800';
-  return `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${c}">${s || ''}</span>`;
+function Badge({ children, colorClass }: BadgeProps) {
+  return (
+    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${colorClass}`}>
+      {children}
+    </span>
+  );
 }
 
-function formatHeaders(h?: Record<string, string>): string {
-  return h ? Object.entries(h).map(([k, v]) => `${k}: ${v}`).join('\n') : '';
+function MethodBadge({ method }: { method?: string }) {
+  const colorClass = METHOD_COLORS[method || ''] || 'bg-gray-100 text-gray-800';
+  return <Badge colorClass={colorClass}>{method || ''}</Badge>;
+}
+
+function StatusBadge({ status }: { status?: number }) {
+  const statusCode = status || 0;
+  const statusClass = statusCode > 0
+    ? STATUS_COLORS[Math.floor(statusCode / 100)] || 'bg-gray-100 text-gray-800'
+    : 'bg-gray-100 text-gray-800';
+  return <Badge colorClass={statusClass}>{statusCode > 0 ? statusCode : ''}</Badge>;
+}
+
+
+const SENSITIVE_HEADERS = new Set([
+  'authorization',
+  'cookie',
+  'set-cookie',
+  'x-api-key',
+  'x-access-token',
+  'x-csrf-token',
+  'proxy-authorization',
+  'x-auth-token',
+  'authentication',
+  'token',
+  'x-token',
+  'api-key',
+  'api-key-id',
+  'api-secret',
+  'x-secret',
+  'x-password',
+  'password',
+  'session',
+  'session-id',
+  'x-session-id',
+]);
+
+function maskSensitiveHeaderValue(key: string, value: string): string {
+  const lowerKey = key.toLowerCase();
+  if (SENSITIVE_HEADERS.has(lowerKey)) {
+    // 保留前缀信息但隐藏实际内容
+    if (lowerKey === 'authorization') {
+      const parts = value.split(' ');
+      if (parts.length > 1) {
+        return `${parts[0]} ***`;
+      }
+    }
+    return '***';
+  }
+  return value;
+}
+
+interface HeadersDisplayProps {
+  headers?: Record<string, string>;
+}
+
+function HeadersDisplay({ headers }: HeadersDisplayProps) {
+  const [showRaw, setShowRaw] = useState(false);
+
+  const toggleShowRaw = useCallback(() => {
+    setShowRaw(prev => !prev);
+  }, []);
+
+  const formattedHeaders = useMemo(() => {
+    if (!headers || Object.keys(headers).length === 0) {
+      return null;
+    }
+
+    return Object.entries(headers).map(([key, value]) => {
+      const displayValue = showRaw ? value : maskSensitiveHeaderValue(key, value);
+      return `${key}: ${displayValue}`;
+    }).join('\n');
+  }, [headers, showRaw]);
+
+  if (!formattedHeaders) {
+    return <div className="text-xs text-bg-400 italic">No headers</div>;
+  }
+
+  return (
+    <div className="relative pr-20">
+      <button
+        onClick={toggleShowRaw}
+        className="absolute top-0 right-0 text-xs px-2.5 py-1 rounded border shadow-sm transition-all bg-white border-bg-300 text-bg-700 hover:bg-bg-50"
+        title={showRaw ? "Hide sensitive values" : "Show raw values"}
+      >
+        {showRaw ? "Hide Raw" : "Show Raw"}
+      </button>
+      <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">{formattedHeaders}</pre>
+    </div>
+  );
 }
 
 function toCurl(event: TrafficEvent): string {
@@ -62,38 +153,51 @@ function toCurl(event: TrafficEvent): string {
   return curl;
 }
 
-function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+interface CopyButtonProps {
+  text: string;
+  label?: string;
+  className?: string;
+  title?: string;
+}
+
+function CopyButton({ text, label = 'Copy', className = '', title = 'Copy to clipboard' }: CopyButtonProps) {
   const [copied, setCopied] = useState(false);
 
-  const handleCopy = async () => {
+  const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {}
-  };
+  }, [text]);
 
   return (
     <button
       onClick={handleCopy}
-      className={`text-xs px-2.5 py-1 rounded border shadow-sm transition-all ${copied ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-bg-300 text-bg-700 hover:bg-bg-50'}`}
-      title="Copy to clipboard"
+      className={`text-xs px-2.5 py-1 rounded border shadow-sm transition-all ${copied ? 'bg-green-50 border-green-300 text-green-700' : 'bg-white border-bg-300 text-bg-700 hover:bg-bg-50'} ${className}`}
+      title={title}
     >
       {copied ? '✓ Copied!' : label}
     </button>
   );
 }
 
-function JsonBody({ body, contentType }: { body: string; contentType?: string }) {
+interface JsonBodyProps {
+  body: string;
+  contentType?: string;
+}
+
+function JsonBody({ body, contentType }: JsonBodyProps) {
   if (!body) return null;
 
   const isJson = contentType?.includes('application/json');
+
   if (isJson) {
     try {
       const parsed = JSON.parse(body);
       return (
         <div className="relative pr-20">
-          <CopyButton text={body} />
+          <CopyButton text={body} className="absolute top-0 right-0" />
           <ReactJson
             src={parsed}
             theme="rjv-default"
@@ -105,73 +209,119 @@ function JsonBody({ body, contentType }: { body: string; contentType?: string })
           />
         </div>
       );
-    } catch {}
+    } catch {
+      // Fall through to plain text display
+    }
   }
+
   return (
     <div className="relative pr-20">
-      <CopyButton text={body} />
+      <CopyButton text={body} className="absolute top-0 right-0" />
       <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">{body}</pre>
     </div>
   );
 }
 
-function CollapsibleSection({ title, defaultExpanded, children }: {
+interface CollapsibleSectionProps {
   title: string;
   defaultExpanded?: boolean;
   children: React.ReactNode;
-}) {
+}
+
+function CollapsibleSection({ title, defaultExpanded = false, children }: CollapsibleSectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
+
+  const toggleExpanded = useCallback(() => {
+    setExpanded(prev => !prev);
+  }, []);
 
   return (
     <div className="p-3 bg-bg-50 rounded-lg">
-      <button onClick={() => setExpanded(!expanded)} className="flex items-center justify-between w-full text-left hover:bg-bg-100 rounded px-2 py-1 -mx-2 -mt-1 transition-colors">
+      <button
+        onClick={toggleExpanded}
+        className="flex items-center justify-between w-full text-left hover:bg-bg-100 rounded px-2 py-1 -mx-2 -mt-1 transition-colors"
+      >
         <span className="text-xs font-medium text-bg-600">{title}</span>
-        <svg className={`w-4 h-4 text-bg-400 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          className={`w-4 h-4 text-bg-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
-      <div className={`mt-2 ${expanded ? '' : 'hidden'}`}>{children}</div>
+      {expanded && <div className="mt-2">{children}</div>}
     </div>
   );
 }
 
-function TrafficItem({ event, bodyExpanded }: { event: TrafficEvent; bodyExpanded: boolean }) {
+interface TrafficItemProps {
+  event: TrafficEvent;
+  bodyExpanded: boolean;
+}
+
+function TrafficItem({ event, bodyExpanded }: TrafficItemProps) {
   const [expanded, setExpanded] = useState(false);
   const { request, response } = event;
   const hasReq = request !== undefined;
   const hasResp = response !== undefined;
   const complete = event.direction === 'complete' || (hasReq && hasResp);
 
-  const leftInfo = complete && hasReq && hasResp ? (
-    <>
-      <span dangerouslySetInnerHTML={{ __html: formatMethod(request?.method) }} />
-      <span className="text-sm font-medium text-bg-800 truncate max-w-xs">{request?.url || event.hostname}</span>
-      <span dangerouslySetInnerHTML={{ __html: formatStatus(response?.status_code) }} />
-    </>
-  ) : hasReq ? (
-    <>
-      <span dangerouslySetInnerHTML={{ __html: formatMethod(request?.method) }} />
-      <span className="text-sm font-medium text-bg-800 truncate max-w-xs">{request?.url}</span>
-    </>
-  ) : hasResp ? (
-    <>
-      <span dangerouslySetInnerHTML={{ __html: formatStatus(response?.status_code) }} />
-      <span className="text-sm font-medium text-bg-800">{response?.status}</span>
-    </>
-  ) : (
-    <span className="text-sm font-medium text-bg-800">{event.direction}</span>
-  );
+  const toggleExpanded = useCallback(() => {
+    setExpanded(prev => !prev);
+  }, []);
+
+  const leftInfo = useMemo(() => {
+    if (complete && hasReq && hasResp) {
+      return (
+        <>
+          <MethodBadge method={request?.method} />
+          <span className="text-sm font-medium text-bg-800 truncate max-w-xs">{request?.url || event.hostname}</span>
+          <StatusBadge status={response?.status_code} />
+        </>
+      );
+    }
+
+    if (hasReq) {
+      return (
+        <>
+          <MethodBadge method={request?.method} />
+          <span className="text-sm font-medium text-bg-800 truncate max-w-xs">{request?.url}</span>
+        </>
+      );
+    }
+
+    if (hasResp) {
+      return (
+        <>
+          <StatusBadge status={response?.status_code} />
+          <span className="text-sm font-medium text-bg-800">{response?.status}</span>
+        </>
+      );
+    }
+
+    return <span className="text-sm font-medium text-bg-800">{event.direction}</span>;
+  }, [complete, hasReq, hasResp, request, response, event]);
+
+  const curlCommand = useMemo(() => toCurl(event), [event]);
 
   return (
     <div id={`traffic-${event.id}`} className="bg-white rounded-xl border border-bg-200 p-4 mb-3 animate-fade-in">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-3">{leftInfo}</div>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-bg-400 font-mono" title={event.request_id || event.id}>{event.request_id ? event.request_id.slice(-8) : event.id.slice(0, 8)}</span>
+          <span className="text-xs text-bg-400 font-mono" title={event.request_id || event.id}>
+            {event.request_id ? event.request_id.slice(-8) : event.id.slice(0, 8)}
+          </span>
           <span className="text-xs text-bg-400">{formatTime(event.timestamp)}</span>
           <span className="text-xs text-bg-400">{event.hostname}</span>
           {response?.latency !== undefined && <span className="text-xs text-bg-400">{response.latency}ms</span>}
-          <button onClick={() => setExpanded(!expanded)} className="text-xs text-bg-400 hover:text-bg-600 focus:outline-none">
+          <button
+            onClick={toggleExpanded}
+            className="text-xs text-bg-400 hover:text-bg-600 focus:outline-none"
+            title={expanded ? "Collapse details" : "Expand details"}
+          >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={expanded ? 'M5 15l7-7 7 7' : 'M19 9l-7 7-7-7'} />
             </svg>
@@ -183,13 +333,14 @@ function TrafficItem({ event, bodyExpanded }: { event: TrafficEvent; bodyExpande
         <div className="mt-3 space-y-3">
           {hasReq && (
             <div className="flex justify-end">
-              <CopyButton text={toCurl(event)} label="Copy as cURL" />
+              <CopyButton text={curlCommand} label="Copy as cURL" />
             </div>
           )}
+
           {hasReq && (
             <>
               <CollapsibleSection title="Request Headers">
-                <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">{formatHeaders(request?.headers)}</pre>
+                <HeadersDisplay headers={request?.headers} />
               </CollapsibleSection>
               {request?.body && (
                 <CollapsibleSection title="Request Body" defaultExpanded={bodyExpanded}>
@@ -198,10 +349,11 @@ function TrafficItem({ event, bodyExpanded }: { event: TrafficEvent; bodyExpande
               )}
             </>
           )}
+
           {hasResp && (
             <>
               <CollapsibleSection title="Response Headers">
-                <pre className="text-xs font-mono text-bg-700 whitespace-pre-wrap break-all">{formatHeaders(response?.headers)}</pre>
+                <HeadersDisplay headers={response?.headers} />
               </CollapsibleSection>
               {response?.body && (
                 <CollapsibleSection title="Response Body" defaultExpanded={bodyExpanded}>
@@ -221,23 +373,67 @@ function MitmTraffic() {
   const [collapseVer, setCollapseVer] = useState(0);
   const [bodyExpanded, setBodyExpanded] = useState(true);
 
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+  }, [setSearch]);
+
+  const handleAutoScrollChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setAutoScroll(e.target.checked);
+  }, [setAutoScroll]);
+
+  const handleCollapseBodies = useCallback(() => {
+    setBodyExpanded(false);
+    setCollapseVer(v => v + 1);
+  }, []);
+
+
+  const connectionStatus = useMemo(() => {
+    if (isConnected) {
+      return { text: 'Online', color: 'text-emerald-600', dotColor: 'bg-emerald-500' };
+    }
+    return { text: 'Connecting...', color: 'text-red-500', dotColor: 'bg-red-500 animate-pulse' };
+  }, [isConnected]);
+
+  const connectedClients = useMemo(() => {
+    return events.length > 0 ? '1' : '0';
+  }, [events.length]);
+
   return (
     <div className="tab-section">
       <div className="bg-white rounded-xl border border-bg-200 p-4 mb-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-6">
             <div className="flex items-center gap-2">
-              <div className={`w-2.5 h-2.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+              <div className={`w-2.5 h-2.5 rounded-full ${connectionStatus.dotColor}`} />
               <span className="text-sm font-medium text-bg-800">MITM Proxy</span>
-              <span className={`text-sm ${isConnected ? 'text-emerald-600' : 'text-red-500'}`}>{isConnected ? 'Online' : 'Connecting...'}</span>
+              <span className={`text-sm ${connectionStatus.color}`}>{connectionStatus.text}</span>
             </div>
             <div className="h-5 w-px bg-bg-200" />
-            <span className="text-sm text-bg-600">Connected clients: <span className="font-medium text-bg-800">{events.length > 0 ? '1' : '0'}</span></span>
+            <span className="text-sm text-bg-600">
+              Connected clients: <span className="font-medium text-bg-800">{connectedClients}</span>
+            </span>
           </div>
           <div className="flex gap-3">
-            <button onClick={() => { setBodyExpanded(false); setCollapseVer(v => v + 1); }} className="px-4 py-2 text-sm font-medium text-bg-700 bg-bg-100 rounded-lg hover:bg-bg-200">Collapse Bodies</button>
-            <button onClick={clear} className="px-4 py-2 text-sm font-medium text-bg-700 bg-bg-100 rounded-lg hover:bg-bg-200">Clear Traffic</button>
-            {error && <button onClick={reconnect} className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100">Reconnect</button>}
+            <button
+              onClick={handleCollapseBodies}
+              className="px-4 py-2 text-sm font-medium text-bg-700 bg-bg-100 rounded-lg hover:bg-bg-200"
+            >
+              Collapse Bodies
+            </button>
+            <button
+              onClick={clear}
+              className="px-4 py-2 text-sm font-medium text-bg-700 bg-bg-100 rounded-lg hover:bg-bg-200"
+            >
+              Clear Traffic
+            </button>
+            {error && (
+              <button
+                onClick={reconnect}
+                className="px-4 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+              >
+                Reconnect
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -246,11 +442,25 @@ function MitmTraffic() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-2">
             <label className="text-sm font-medium text-bg-600">Search:</label>
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search URLs, domains..." className="px-3 py-1.5 border border-bg-300 rounded-lg text-sm focus:ring-2 focus:ring-accent-500 w-64" />
+            <input
+              type="text"
+              value={search}
+              onChange={handleSearchChange}
+              placeholder="Search URLs, domains..."
+              className="px-3 py-1.5 border border-bg-300 rounded-lg text-sm focus:ring-2 focus:ring-accent-500 w-64"
+            />
           </div>
           <div className="flex items-center gap-2 ml-auto">
-            <input type="checkbox" id="auto-scroll" checked onChange={e => setAutoScroll(e.target.checked)} className="rounded text-accent-500 focus:ring-accent-500" />
-            <label htmlFor="auto-scroll" className="text-sm text-bg-600">Auto scroll</label>
+            <input
+              type="checkbox"
+              id="auto-scroll"
+              checked
+              onChange={handleAutoScrollChange}
+              className="rounded text-accent-500 focus:ring-accent-500"
+            />
+            <label htmlFor="auto-scroll" className="text-sm text-bg-600">
+              Auto scroll
+            </label>
           </div>
         </div>
       </div>
@@ -262,10 +472,16 @@ function MitmTraffic() {
         </div>
         <div className="max-h-[600px] overflow-y-auto">
           <div className="p-4">
-            {!isConnected && !error && <div className="text-center py-8 text-bg-400">Connecting to SSE endpoint...</div>}
+            {!isConnected && !error && (
+              <div className="text-center py-8 text-bg-400">Connecting to SSE endpoint...</div>
+            )}
             {error && <div className="text-center py-8 text-red-400">Error: {error}</div>}
-            {isConnected && events.length === 0 && <div className="text-center py-8 text-bg-400">No traffic data available</div>}
-            {events.map(e => <TrafficItem key={`${e.id}-${collapseVer}`} event={e} bodyExpanded={bodyExpanded} />)}
+            {isConnected && events.length === 0 && (
+              <div className="text-center py-8 text-bg-400">No traffic data available</div>
+            )}
+            {events.map(e => (
+              <TrafficItem key={`${e.id}-${collapseVer}`} event={e} bodyExpanded={bodyExpanded} />
+            ))}
           </div>
         </div>
       </div>
