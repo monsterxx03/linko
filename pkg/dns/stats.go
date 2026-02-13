@@ -51,8 +51,7 @@ func NewDNSStatsCollector() *DNSStatsCollector {
 		done:              make(chan struct{}),
 		aggregationTicker: time.NewTicker(5 * time.Minute),
 	}
-	c.wg.Add(1)
-	go c.processLoop()
+	c.wg.Go(c.processLoop)
 	return c
 }
 
@@ -64,8 +63,6 @@ func (c *DNSStatsCollector) RecordQuery(record *QueryRecord) {
 }
 
 func (c *DNSStatsCollector) processLoop() {
-	defer c.wg.Done()
-
 	for {
 		select {
 		case record := <-c.queryChan:

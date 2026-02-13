@@ -628,16 +628,14 @@ func TestConcurrentGetCertificate(t *testing.T) {
 	certChan := make(chan *tls.Certificate, numGoroutines)
 
 	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			cert, err := scm.GetCertificate(hostname)
 			if err != nil {
 				t.Errorf("GetCertificate failed: %v", err)
 				return
 			}
 			certChan <- cert
-		}()
+		})
 	}
 
 	certs := make([]*tls.Certificate, 0, numGoroutines)

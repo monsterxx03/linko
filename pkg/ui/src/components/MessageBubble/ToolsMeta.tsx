@@ -16,7 +16,7 @@ interface ToolDefItemProps {
 export const ToolDefItem = memo(function ToolDefItem({ tool }: ToolDefItemProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const handleToggle = useCallback(() => setExpanded(!expanded), []);
+  const handleToggle = useCallback(() => setExpanded((prev) => !prev), []);
 
   const toolDefinition = JSON.stringify(tool, null, 2);
 
@@ -62,7 +62,7 @@ interface ToolsMetaProps {
 export const ToolsMeta = memo(function ToolsMeta({ tools }: ToolsMetaProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const handleToggle = useCallback(() => setExpanded(!expanded), []);
+  const handleToggle = useCallback(() => setExpanded((prev) => !prev), []);
 
   if (!tools || tools.length === 0) return null;
 

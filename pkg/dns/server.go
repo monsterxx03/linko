@@ -51,13 +51,11 @@ func (s *DNSServer) Start() error {
 	}
 
 	// Start UDP server
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
+	s.wg.Go(func() {
 		if err := s.serverUDP.ListenAndServe(); err != nil {
 			slog.Error("UDP server error", "error", err)
 		}
-	}()
+	})
 
 	clearDNSCache()
 	slog.Info("DNS server started", "address", s.addr, "mode", "UDP only (transparent proxy)")

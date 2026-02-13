@@ -9,7 +9,7 @@ interface SystemMetaProps {
 export const SystemMeta = memo(function SystemMeta({ systemPrompts }: SystemMetaProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const handleToggle = useCallback(() => setExpanded(!expanded), []);
+  const handleToggle = useCallback(() => setExpanded((prev) => !prev), []);
 
   if (!systemPrompts || systemPrompts.length === 0) return null;
 

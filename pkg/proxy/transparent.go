@@ -86,7 +86,7 @@ func (p *TransparentProxy) Stop() {
 
 // acceptLoop accepts incoming connections
 func (p *TransparentProxy) acceptLoop() {
-	defer p.wg.Done()
+	defer p.wg.Add(-1)
 
 	for {
 		conn, err := p.server.Accept()
@@ -100,14 +100,12 @@ func (p *TransparentProxy) acceptLoop() {
 			}
 		}
 
-		p.wg.Add(1)
-		go p.handleConnection(conn)
+		p.wg.Go(func() { p.handleConnection(conn) })
 	}
 }
 
 // handleConnection handles a single connection
 func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
-	defer p.wg.Done()
 	defer clientConn.Close()
 
 	// Update stats

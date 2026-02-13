@@ -152,13 +152,12 @@ func (s *DNSSplitter) BatchSplitQuery(ctx context.Context, questions []*dns.Msg)
 	var mu sync.Mutex
 
 	for _, msg := range questions {
-		wg.Add(1)
-		go func(m *dns.Msg) {
-			defer wg.Done()
+		msg := msg // capture loop variable
+		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			resp, err := s.SplitQuery(ctx, m)
+			resp, err := s.SplitQuery(ctx, msg)
 			mu.Lock()
 			if err != nil {
 				errors = append(errors, err)
@@ -166,7 +165,7 @@ func (s *DNSSplitter) BatchSplitQuery(ctx context.Context, questions []*dns.Msg)
 				responses = append(responses, resp)
 			}
 			mu.Unlock()
-		}(msg)
+		})
 	}
 
 	wg.Wait()
