@@ -569,12 +569,22 @@ function MarkdownContent({
 
 // Format tool call for display (tool name + key arguments)
 // Tool formatters for display
+
+// Helper to show last two path segments for file paths
+function getLastTwoPathSegments(path: string): string {
+  // Split by both forward and backward slashes
+  const segments = path.split(/[\\/]/);
+  // Return last two segments, or the whole path if fewer segments
+  if (segments.length <= 2) return path;
+  return segments.slice(-2).join('/');
+}
+
 const TOOL_FORMATTERS: Record<string, (args: Record<string, unknown>) => string> = {
-  Read: (args) => args.file_path ? `Read ${args.file_path}` : "Read",
+  Read: (args) => args.file_path ? `Read ${getLastTwoPathSegments(String(args.file_path))}` : "Read",
   Grep: (args) => args.pattern ? `Grep "${args.pattern}"` : "Grep",
   Glob: (args) => args.pattern ? `Glob ${args.pattern}` : "Glob",
-  Edit: (args) => args.file_path ? `Edit ${args.file_path}` : "Edit",
-  Write: (args) => args.file_path ? `Write ${args.file_path}` : "Write",
+  Edit: (args) => args.file_path ? `Edit ${getLastTwoPathSegments(String(args.file_path))}` : "Edit",
+  Write: (args) => args.file_path ? `Write ${getLastTwoPathSegments(String(args.file_path))}` : "Write",
   Bash: (args) => {
     const cmd = args.command;
     if (!cmd) return "Bash";
@@ -584,6 +594,14 @@ const TOOL_FORMATTERS: Record<string, (args: Record<string, unknown>) => string>
   TaskCreate: (args) => args.subject ? `TaskCreate ${args.subject}` : "TaskCreate",
   TaskGet: (args) => args.taskId ? `TaskGet ${args.taskId}` : "TaskGet",
   TaskUpdate: (args) => args.taskId ? `TaskUpdate ${args.taskId}` : "TaskUpdate",
+  Task: (args) => {
+    const subagent = args.subagent_type;
+    const desc = args.description;
+    if (subagent && desc) return `Task ${subagent}: ${desc}`;
+    if (subagent) return `Task ${subagent}`;
+    if (desc) return `Task ${desc}`;
+    return "Task";
+  },
 };
 
 function formatToolCall(call: { function: { name: string; arguments: string } }): string {
