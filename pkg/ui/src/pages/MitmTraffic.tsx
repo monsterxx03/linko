@@ -4,7 +4,7 @@ import { TrafficEvent } from '../contexts/SSEContext';
 import { TrafficHeader, TrafficControls, TrafficItem } from '../components/mitm';
 
 function MitmTraffic() {
-  const { events, isConnected, error, search, setSearch, setAutoScroll, clear, reconnect } = useTraffic({ maxEvents: 100, autoScroll: true });
+  const { events, isConnected, error, search, setSearch, autoScroll, setAutoScroll, clear, reconnect } = useTraffic({ maxEvents: 100, autoScroll: true });
   const [collapseVer, setCollapseVer] = useState(0);
   const [bodyExpanded, setBodyExpanded] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
@@ -28,10 +28,10 @@ function MitmTraffic() {
 
   // Auto scroll effect
   useEffect(() => {
-    if (listRef.current) {
+    if (autoScroll && listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
     }
-  }, [events.length]);
+  }, [events.length, autoScroll]);
 
   return (
     <div className="tab-section">
@@ -46,7 +46,7 @@ function MitmTraffic() {
 
       <TrafficControls
         search={search}
-        autoScroll={true}
+        autoScroll={autoScroll}
         onSearchChange={handleSearchChange}
         onAutoScrollChange={handleAutoScrollChange}
       />
