@@ -89,23 +89,6 @@ func (o openaiProvider) Match(hostname, path string, body []byte) bool {
 		strings.Contains(path, "/chat/completions"))
 }
 
-func (o openaiProvider) ExtractConversationID(body []byte) string {
-	var req OpenAIRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return ""
-	}
-	hash := generateOpenAIConversationHash(req.Messages)
-	return fmt.Sprintf("openai-%s", hash)
-}
-
-func (o openaiProvider) ParseRequest(body []byte) ([]LLMMessage, error) {
-	var req OpenAIRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, fmt.Errorf("failed to parse OpenAI request: %w", err)
-	}
-	return convertOpenAIMessages(req.Messages), nil
-}
-
 func (o openaiProvider) ParseResponse(path string, body []byte) (*LLMResponse, error) {
 	var resp OpenAIResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
@@ -142,12 +125,8 @@ func (o openaiProvider) ParseResponse(path string, body []byte) (*LLMResponse, e
 	}, nil
 }
 
-func (o openaiProvider) ExtractSystemPrompt(body []byte) []string {
-	var req OpenAIRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil
-	}
-
+// extractSystemPromptsFromReq extracts system prompts from a parsed OpenAIRequest
+func (o openaiProvider) extractSystemPromptsFromReq(req *OpenAIRequest) []string {
 	if req.System == "" {
 		return nil
 	}
@@ -155,12 +134,24 @@ func (o openaiProvider) ExtractSystemPrompt(body []byte) []string {
 	return []string{req.System}
 }
 
-func (o openaiProvider) ExtractTools(body []byte) []ToolDef {
+// ParseFullRequest parses the request body once and returns all extracted info
+func (o openaiProvider) ParseFullRequest(body []byte) (*RequestInfo, error) {
 	var req OpenAIRequest
 	if err := json.Unmarshal(body, &req); err != nil {
-		return nil
+		return nil, fmt.Errorf("failed to parse OpenAI request: %w", err)
 	}
 
+	return &RequestInfo{
+		ConversationID: fmt.Sprintf("openai-%s", generateOpenAIConversationHash(req.Messages)),
+		Model:           req.Model,
+		Messages:        convertOpenAIMessages(req.Messages),
+		SystemPrompts:   o.extractSystemPromptsFromReq(&req),
+		Tools:           o.extractToolsFromReq(&req),
+	}, nil
+}
+
+// extractToolsFromReq extracts tools from a parsed OpenAIRequest
+func (o openaiProvider) extractToolsFromReq(req *OpenAIRequest) []ToolDef {
 	if len(req.Tools) == 0 {
 		return nil
 	}

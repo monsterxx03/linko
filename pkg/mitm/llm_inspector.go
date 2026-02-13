@@ -3,7 +3,6 @@ package mitm
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -22,14 +21,6 @@ type LLMInspector struct {
 	conversationIDs sync.Map // requestID -> string (conversationID)
 	streamMsgIDs    sync.Map // requestID -> string (assistant message ID for streaming)
 	processedBytes  sync.Map // requestID -> int (last processed byte position)
-}
-
-type conversationState struct {
-	ConversationID string
-	Model          string
-	MessageCount   int
-	TotalTokens    int
-	StartTime      time.Time
 }
 
 // NewLLMInspector creates a new LLMInspector
@@ -89,47 +80,40 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 		return
 	}
 
-	// Extract conversation ID
-	conversationID := provider.ExtractConversationID(bodyBytes)
-	// 缓存 conversationID，用于响应处理时匹配
-	l.conversationIDs.Store(requestID, conversationID)
-	model := l.extractModel(bodyBytes)
-
-	// Extract system prompts and tools
-	systemPrompts := provider.ExtractSystemPrompt(bodyBytes)
-	tools := provider.ExtractTools(bodyBytes)
-
-	// Parse the request
-	messages, err := provider.ParseRequest(bodyBytes)
+	// 一次解析获取所有信息
+	reqInfo, err := provider.ParseFullRequest(bodyBytes)
 	if err != nil {
 		l.logger.Debug("failed to parse LLM request", "error", err)
 		return
 	}
 
-	if len(messages) == 0 {
+	// 缓存 conversationID，用于响应处理时匹配
+	l.conversationIDs.Store(requestID, reqInfo.ConversationID)
+
+	if len(reqInfo.Messages) == 0 {
 		return
 	}
 
 	// 只发布最后一条消息（当前用户消息），包含 system 和 tools
-	lastMsg := messages[len(messages)-1]
-	lastMsg.System = systemPrompts
-	lastMsg.Tools = tools
+	lastMsg := reqInfo.Messages[len(reqInfo.Messages)-1]
+	lastMsg.System = reqInfo.SystemPrompts
+	lastMsg.Tools = reqInfo.Tools
 
 	event := &llm.LLMMessageEvent{
 		ID:             generateEventID(),
 		Timestamp:      time.Now(),
-		ConversationID: conversationID,
+		ConversationID: reqInfo.ConversationID,
 		Message:        lastMsg,
 	}
 
 	l.publishEvent("llm_message", event)
 
 	// Publish conversation update (1 = only the new message)
-	l.publishConversationUpdate(conversationID, "streaming", 1, 0, model)
+	l.publishConversationUpdate(reqInfo.ConversationID, "streaming", 1, 0, reqInfo.Model)
 
 	l.logger.Debug("LLM request inspected",
-		"conversation_id", conversationID,
-		"message_count", len(messages),
+		"conversation_id", reqInfo.ConversationID,
+		"message_count", len(reqInfo.Messages),
 		"request_id", requestID,
 	)
 }
@@ -447,23 +431,6 @@ func (l *LLMInspector) publishConversationUpdate(conversationID, status string, 
 	}
 
 	l.publishEvent("conversation", event)
-}
-
-// extractModel attempts to extract the model name from request body
-func (l *LLMInspector) extractModel(data []byte) string {
-	// Try Anthropic format first
-	var anthropicReq llm.AnthropicRequest
-	if err := json.Unmarshal(data, &anthropicReq); err == nil && anthropicReq.Model != "" {
-		return anthropicReq.Model
-	}
-
-	// Try OpenAI format
-	var openaiReq llm.OpenAIRequest
-	if err := json.Unmarshal(data, &openaiReq); err == nil && openaiReq.Model != "" {
-		return openaiReq.Model
-	}
-
-	return ""
 }
 
 // estimateTokenCount provides a rough estimate of token count

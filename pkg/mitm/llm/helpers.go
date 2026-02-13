@@ -6,22 +6,6 @@ import (
 	"encoding/json"
 )
 
-func generateConversationHash(messages []AnthropicMessage) string {
-	data := ""
-	for _, m := range messages {
-		switch c := m.Content.(type) {
-		case string:
-			data += c
-		case []AnthropicContent:
-			for _, item := range c {
-				data += item.Text
-			}
-		}
-	}
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:8])
-}
-
 func generateOpenAIConversationHash(messages []OpenAIMessage) string {
 	data := ""
 	for _, m := range messages {

@@ -102,27 +102,6 @@ type anthropicProvider struct {
 	logger *slog.Logger
 }
 
-// generateAnthropicMessagesHash generates a hash from all messages in the request
-// Used for conversation grouping - same conversation context produces same hash
-func generateAnthropicMessagesHash(messages []AnthropicMessage) string {
-	var data string
-	for _, m := range messages {
-		// Include role to distinguish user/assistant/system messages
-		data += m.Role + ":"
-		switch c := m.Content.(type) {
-		case string:
-			data += c
-		case []AnthropicContent:
-			for _, item := range c {
-				data += item.Text
-			}
-		}
-		data += "|"
-	}
-	hash := sha256.Sum256([]byte(data))
-	return hex.EncodeToString(hash[:8])
-}
-
 func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
 	// Anthropic official API
 	if hostname == "api.anthropic.com" && path == "/v1/messages" {
@@ -141,12 +120,8 @@ func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
 	return false
 }
 
-func (a anthropicProvider) ExtractConversationID(body []byte) string {
-	var req AnthropicRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return ""
-	}
-
+// extractConversationIDFromReq extracts conversation ID from a parsed AnthropicRequest
+func (a anthropicProvider) extractConversationIDFromReq(req *AnthropicRequest) string {
 	// 从 metadata.user_id 获取会话 ID
 	if req.Metadata != nil && req.Metadata.UserID != "" {
 		// 对 UserID 进行哈希处理，取前6位
@@ -160,14 +135,6 @@ func (a anthropicProvider) ExtractConversationID(body []byte) string {
 
 	// 如果没有 UserID，返回固定 ID
 	return "anthropic-default"
-}
-
-func (a anthropicProvider) ParseRequest(body []byte) ([]LLMMessage, error) {
-	var req AnthropicRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, fmt.Errorf("failed to parse Anthropic request: %w", err)
-	}
-	return convertAnthropicMessages(req.Messages), nil
 }
 
 func (a anthropicProvider) ParseResponse(path string, body []byte) (*LLMResponse, error) {
@@ -222,12 +189,8 @@ func (a anthropicProvider) ParseResponse(path string, body []byte) (*LLMResponse
 	}, nil
 }
 
-func (a anthropicProvider) ExtractSystemPrompt(body []byte) []string {
-	var req AnthropicRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil
-	}
-
+// extractSystemPromptsFromReq extracts system prompts from a parsed AnthropicRequest
+func (a anthropicProvider) extractSystemPromptsFromReq(req *AnthropicRequest) []string {
 	if req.System == nil {
 		return nil
 	}
@@ -236,9 +199,9 @@ func (a anthropicProvider) ExtractSystemPrompt(body []byte) []string {
 	switch s := req.System.(type) {
 	case string:
 		prompts = append(prompts, s)
-	case []interface{}:
+	case []any:
 		for _, item := range s {
-			if itemMap, ok := item.(map[string]interface{}); ok {
+			if itemMap, ok := item.(map[string]any); ok {
 				if text, ok := itemMap["text"].(string); ok {
 					prompts = append(prompts, text)
 				}
@@ -249,12 +212,8 @@ func (a anthropicProvider) ExtractSystemPrompt(body []byte) []string {
 	return prompts
 }
 
-func (a anthropicProvider) ExtractTools(body []byte) []ToolDef {
-	var req AnthropicRequest
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil
-	}
-
+// extractToolsFromReq extracts tools from a parsed AnthropicRequest
+func (a anthropicProvider) extractToolsFromReq(req *AnthropicRequest) []ToolDef {
 	if len(req.Tools) == 0 {
 		return nil
 	}
@@ -268,6 +227,22 @@ func (a anthropicProvider) ExtractTools(body []byte) []ToolDef {
 		})
 	}
 	return tools
+}
+
+// ParseFullRequest parses the request body once and returns all extracted info
+func (a anthropicProvider) ParseFullRequest(body []byte) (*RequestInfo, error) {
+	var req AnthropicRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil, fmt.Errorf("failed to parse Anthropic request: %w", err)
+	}
+
+	return &RequestInfo{
+		ConversationID: a.extractConversationIDFromReq(&req),
+		Model:          req.Model,
+		Messages:       convertAnthropicMessages(req.Messages),
+		SystemPrompts:   a.extractSystemPromptsFromReq(&req),
+		Tools:          a.extractToolsFromReq(&req),
+	}, nil
 }
 
 // ParseSSEStreamFrom parses SSE stream from a specific position for incremental processing

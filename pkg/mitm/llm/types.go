@@ -108,3 +108,13 @@ type ConversationUpdateEvent struct {
 	Duration       int64     `json:"duration_ms"` // duration in milliseconds
 	Model          string    `json:"model,omitempty"`
 }
+
+// RequestInfo contains parsed information from an LLM request body
+// Used to avoid multiple JSON unmarshaling of the same request
+type RequestInfo struct {
+	ConversationID string
+	Model         string
+	Messages      []LLMMessage
+	SystemPrompts []string
+	Tools         []ToolDef
+}
