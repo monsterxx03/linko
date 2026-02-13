@@ -81,18 +81,7 @@ func (p *TransparentProxy) Stop() {
 		p.server.Close()
 	}
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		p.wg.Wait()
-	}()
-
-	select {
-	case <-done:
-		slog.Info("Transparent proxy stopped")
-	case <-time.After(10 * time.Second):
-		slog.Warn("Transparent proxy stop timeout")
-	}
+	slog.Info("Transparent proxy stopped")
 }
 
 // acceptLoop accepts incoming connections
