@@ -179,9 +179,6 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		conversationID = val.(string)
 	}
 
-	// Check if this is the first chunk for this conversation
-	// hasPublishedStart := false
-
 	// Accumulate content for streaming completion
 	accumulatedContent := ""
 
@@ -190,23 +187,6 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 	var currentToolID string
 
 	for _, delta := range deltas {
-		// 收到第一个 token 时立即更新状态为 streaming
-		//if !hasPublishedStart {
-
-		//	// 发布初始的 assistant 消息（空内容），让前端能正确追加 token
-		//	l.publishEvent("llm_message", &llm.LLMMessageEvent{
-		//		ID:             requestID,
-		//		Timestamp:      time.Now(),
-		//		ConversationID: conversationID,
-		//		Message: llm.LLMMessage{
-		//			Role:    "assistant",
-		//			Content: []string{""},
-		//		},
-		//	})
-		//	l.publishConversationUpdate(conversationID, "streaming", 0, 0, "")
-		//	hasPublishedStart = true
-		//}
-
 		// Accumulate content
 		accumulatedContent += delta.Text
 
@@ -246,6 +226,8 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 			ToolData:       delta.ToolData,
 			IsComplete:     delta.IsComplete,
 			StopReason:     delta.StopReason,
+			TokenCount:     delta.Usage.InputTokens,
+			TotalTokens:    delta.Usage.TotalTokens(),
 		}
 
 		l.publishEvent("llm_token", event)
@@ -343,13 +325,13 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 		ConversationID: conversationID,
 		Message:        msg,
 		TokenCount:     resp.Usage.OutputTokens,
-		TotalTokens:    resp.Usage.InputTokens + resp.Usage.OutputTokens,
+		TotalTokens:    resp.Usage.TotalTokens(),
 	}
 
 	l.publishEvent("llm_message", event)
 
 	// Publish completion update
-	l.publishConversationUpdate(conversationID, "complete", 1, resp.Usage.OutputTokens, "")
+	l.publishConversationUpdate(conversationID, "complete", 1, event.TotalTokens, "")
 
 	l.logger.Debug("LLM response inspected",
 		"conversation_id", conversationID,

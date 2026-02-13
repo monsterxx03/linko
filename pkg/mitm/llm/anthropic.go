@@ -240,7 +240,7 @@ func (a anthropicProvider) ParseFullRequest(body []byte) (*RequestInfo, error) {
 		ConversationID: a.extractConversationIDFromReq(&req),
 		Model:          req.Model,
 		Messages:       convertAnthropicMessages(req.Messages),
-		SystemPrompts:   a.extractSystemPromptsFromReq(&req),
+		SystemPrompts:  a.extractSystemPromptsFromReq(&req),
 		Tools:          a.extractToolsFromReq(&req),
 	}, nil
 }
@@ -248,6 +248,7 @@ func (a anthropicProvider) ParseFullRequest(body []byte) (*RequestInfo, error) {
 // ParseSSEStreamFrom parses SSE stream from a specific position for incremental processing
 func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []TokenDelta {
 	if startPos >= len(body) {
+		a.logger.Warn("sse startPos > len(body)", "startPos", startPos)
 		return nil
 	}
 
@@ -261,10 +262,17 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 		toolName string
 	})
 
+	// Track cumulative token usage
+	var cumulativeUsage TokenUsage
+
 	var deltas []TokenDelta
 
 	// Helper function to merge deltas of the same type
 	tryMergeDelta := func(newDelta TokenDelta) {
+		// Add cumulative usage to each delta
+		if newDelta.Usage.InputTokens == 0 && newDelta.Usage.OutputTokens == 0 {
+			newDelta.Usage = cumulativeUsage
+		}
 		if len(deltas) == 0 {
 			deltas = append(deltas, newDelta)
 			return
@@ -273,32 +281,14 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 		lastDelta := &deltas[len(deltas)-1]
 
 		// Merge text deltas
-		if newDelta.Text != "" && lastDelta.Text != "" &&
-			newDelta.Thinking == "" && lastDelta.Thinking == "" &&
-			newDelta.ToolData == "" && lastDelta.ToolData == "" &&
-			newDelta.ToolName == "" && lastDelta.ToolName == "" &&
-			newDelta.ToolID == "" && lastDelta.ToolID == "" &&
-			!newDelta.IsComplete && !lastDelta.IsComplete {
-			currentText := lastDelta.Text
-			newText := newDelta.Text
-			if !strings.HasSuffix(currentText, newText) {
-				lastDelta.Text = currentText + newText
-			}
+		if newDelta.Text != "" {
+			lastDelta.Text += newDelta.Text
 			return
 		}
 
 		// Merge thinking deltas
-		if newDelta.Thinking != "" && lastDelta.Thinking != "" &&
-			newDelta.Text == "" && lastDelta.Text == "" &&
-			newDelta.ToolData == "" && lastDelta.ToolData == "" &&
-			newDelta.ToolName == "" && lastDelta.ToolName == "" &&
-			newDelta.ToolID == "" && lastDelta.ToolID == "" &&
-			!newDelta.IsComplete && !lastDelta.IsComplete {
-			currentThinking := lastDelta.Thinking
-			newThinking := newDelta.Thinking
-			if !strings.HasSuffix(currentThinking, newThinking) {
-				lastDelta.Thinking = currentThinking + newThinking
-			}
+		if newDelta.Thinking != "" {
+			lastDelta.Thinking += newDelta.Thinking
 			return
 		}
 
@@ -329,7 +319,11 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "event: ") {
+			continue
+		}
 		if !strings.HasPrefix(line, "data: ") {
+			a.logger.Warn("skiping sse line", "line", line)
 			continue
 		}
 
@@ -391,6 +385,10 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 				IsComplete: false,
 			})
 		case "message_delta":
+			// Update cumulative output tokens
+			if event.Message.Usage.OutputTokens > 0 {
+				cumulativeUsage.OutputTokens = event.Message.Usage.OutputTokens
+			}
 			tryMergeDelta(TokenDelta{
 				Text:       "",
 				IsComplete: true,
@@ -398,6 +396,10 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 			})
 		case "message_start":
 			a.logger.Debug("message started", "role", event.Message.Role)
+			// Update cumulative input tokens
+			if event.Message.Usage.InputTokens > 0 {
+				cumulativeUsage.InputTokens = event.Message.Usage.InputTokens
+			}
 		case "message_stop":
 			a.logger.Debug("message stopped")
 		case "error":

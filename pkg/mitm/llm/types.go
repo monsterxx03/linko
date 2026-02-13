@@ -6,13 +6,13 @@ import (
 
 // LLMMessage represents a message in an LLM conversation
 type LLMMessage struct {
-	Role        string      `json:"role"`                 // "user", "assistant", "system", "tool"
-	Content     []string    `json:"content"`              // message content
-	Name        string      `json:"name,omitempty"`       // optional name for the message
-	ToolCalls   []ToolCall  `json:"tool_calls,omitempty"` // tool calls (for assistant messages)
+	Role        string       `json:"role"`                   // "user", "assistant", "system", "tool"
+	Content     []string     `json:"content"`                // message content
+	Name        string       `json:"name,omitempty"`         // optional name for the message
+	ToolCalls   []ToolCall   `json:"tool_calls,omitempty"`   // tool calls (for assistant messages)
 	ToolResults []ToolResult `json:"tool_results,omitempty"` // tool results (for user messages)
-	System      []string    `json:"system,omitempty"`     // system prompt (extracted from request)
-	Tools       []ToolDef   `json:"tools,omitempty"`      // available tools (extracted from request)
+	System      []string     `json:"system,omitempty"`       // system prompt (extracted from request)
+	Tools       []ToolDef    `json:"tools,omitempty"`        // available tools (extracted from request)
 }
 
 // ToolDef represents a tool definition
@@ -47,6 +47,10 @@ type TokenUsage struct {
 	OutputTokens int `json:"output_tokens"`
 }
 
+func (tu TokenUsage) TotalTokens() int {
+	return tu.InputTokens + tu.OutputTokens
+}
+
 // APIError represents an API error response
 type APIError struct {
 	Type    string `json:"type"`
@@ -64,13 +68,14 @@ type LLMResponse struct {
 
 // TokenDelta represents incremental token updates for streaming
 type TokenDelta struct {
-	Text       string `json:"text"`
-	Thinking   string `json:"thinking,omitempty"`
-	ToolData   string `json:"tool_data,omitempty"` // tool call JSON data (for input_json_delta)
-	ToolName   string `json:"tool_name,omitempty"` // tool name for tool_calls
-	ToolID     string `json:"tool_id,omitempty"`   // tool call ID
-	IsComplete bool   `json:"is_complete"`
-	StopReason string `json:"stop_reason,omitempty"`
+	Text       string     `json:"text"`
+	Thinking   string     `json:"thinking,omitempty"`
+	ToolData   string     `json:"tool_data,omitempty"` // tool call JSON data (for input_json_delta)
+	ToolName   string     `json:"tool_name,omitempty"` // tool name for tool_calls
+	ToolID     string     `json:"tool_id,omitempty"`   // tool call ID
+	IsComplete bool       `json:"is_complete"`
+	StopReason string     `json:"stop_reason,omitempty"`
+	Usage      TokenUsage `json:"usage,omitempty"` // cumulative token usage
 }
 
 // LLMMessageEvent is published when a new LLM message is detected
@@ -95,6 +100,8 @@ type LLMTokenEvent struct {
 	ToolData       string `json:"tool_data,omitempty"` // tool call arguments delta
 	IsComplete     bool   `json:"is_complete"`         // true when streaming is done
 	StopReason     string `json:"stop_reason,omitempty"`
+	TokenCount     int    `json:"token_count,omitempty"`  // token count for this message
+	TotalTokens    int    `json:"total_tokens,omitempty"` // total tokens in conversation
 }
 
 // ConversationUpdateEvent is published when conversation status changes
@@ -113,8 +120,8 @@ type ConversationUpdateEvent struct {
 // Used to avoid multiple JSON unmarshaling of the same request
 type RequestInfo struct {
 	ConversationID string
-	Model         string
-	Messages      []LLMMessage
-	SystemPrompts []string
-	Tools         []ToolDef
+	Model          string
+	Messages       []LLMMessage
+	SystemPrompts  []string
+	Tools          []ToolDef
 }
