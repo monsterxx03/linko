@@ -95,10 +95,6 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("at least one foreign DNS server is required")
 	}
 
-	if config.Traffic.DBPath == "" {
-		config.Traffic.DBPath = "data/traffic.db"
-	}
-
 	return nil
 }
 
@@ -112,7 +108,6 @@ func ConfigExists(configPath string) (bool, error) {
 
 func EnsureDirectories(config *Config) error {
 	dirs := []string{
-		filepath.Dir(config.Traffic.DBPath),
 		filepath.Dir(config.MITM.CACertPath),
 		filepath.Dir(config.MITM.CAKeyPath),
 		config.MITM.CertCacheDir,

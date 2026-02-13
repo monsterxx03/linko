@@ -13,9 +13,6 @@ type Config struct {
 	// DNS configuration
 	DNS DNSConfig `mapstructure:"dns"`
 
-	// Traffic statistics
-	Traffic TrafficConfig `mapstructure:"traffic"`
-
 	// Firewall configuration
 	Firewall FirewallConfig `mapstructure:"firewall"`
 
@@ -54,12 +51,6 @@ type DNSConfig struct {
 
 	// Enable DNS over TCP for foreign queries
 	TCPForForeign bool `mapstructure:"tcp_for_foreign" yaml:"tcp_for_foreign"`
-}
-
-// TrafficConfig contains traffic statistics settings
-type TrafficConfig struct {
-	// Database file path
-	DBPath string `mapstructure:"db_path" yaml:"db_path"`
 }
 
 // FirewallConfig contains firewall-related settings
@@ -168,9 +159,6 @@ func DefaultConfig() *Config {
 			ForeignDNS:    []string{"8.8.8.8", "1.1.1.1"},
 			CacheTTL:      5 * time.Minute,
 			TCPForForeign: true,
-		},
-		Traffic: TrafficConfig{
-			DBPath: "data/traffic.db",
 		},
 		Firewall: FirewallConfig{
 			EnableAuto:    true,

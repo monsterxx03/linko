@@ -11,11 +11,6 @@ dns:
         - 1.1.1.1
     cache_ttl: 5m0s
     tcp_for_foreign: true
-traffic:
-    enable_realtime: true
-    enable_history: true
-    update_interval: 1s
-    db_path: data/traffic.db
 firewall:
     enable_auto: true
     redirect_dns: true
@@ -36,11 +31,13 @@ admin:
     ui_embed: false
 mitm:
     enable: false
+    gid: 8001
     ca_cert_path: certs/ca.crt
     ca_key_path: certs/ca.key
     cert_cache_dir: certs/sites
     site_cert_validity: 168h0m0s
     ca_cert_validity: 8760h0m0s
     whitelist: []
-    max_body_size: 16384
+    max_body_size: 2097152
     event_history_size: 10
+    llm_event_history_size: 10
