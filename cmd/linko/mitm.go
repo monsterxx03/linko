@@ -36,6 +36,7 @@ func runMITM(cmd *cobra.Command, args []string) {
 		cfg.DNS.DomesticDNS = systemDNS
 		slog.Info("using system default DNS", "dns", systemDNS)
 	}
+	cfg.Admin.UIEmbed = true
 
 	if mitmWhitelist != "" {
 		cfg.MITM.Whitelist = strings.Split(mitmWhitelist, ",")

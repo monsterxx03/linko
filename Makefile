@@ -19,7 +19,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 LDFLAGS=-ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=$(VERSION) -X github.com/monsterxx03/linko/pkg/version.Commit=$$(git rev-parse --short HEAD) -X github.com/monsterxx03/linko/pkg/version.Date=$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 # Default target
-all: clean deps test build
+all: ui-build build
 
 # Install dependencies
 deps:
@@ -86,11 +86,6 @@ ui-build:
 ui-preview:
 	@echo "Previewing UI build..."
 	cd $(UI_DIR) && $(BUN) run preview
-
-# Build UI and embed into Go binary
-ui: ui-build
-	@echo "Rebuilding Go binary with embedded UI..."
-	$(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME) ./cmd/linko
 
 # Help
 help:

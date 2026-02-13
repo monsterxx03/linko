@@ -12,6 +12,7 @@ export interface UseTrafficReturn {
   error: string | null;
   filter: string;
   search: string;
+  autoScroll: boolean;
   setFilter: (filter: string) => void;
   setSearch: (search: string) => void;
   setAutoScroll: (autoScroll: boolean) => void;
@@ -95,6 +96,7 @@ export function useTraffic(options: UseTrafficOptions = {}): UseTrafficReturn {
     error,
     filter,
     search,
+    autoScroll,
     setFilter,
     setSearch,
     setAutoScroll,
