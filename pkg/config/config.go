@@ -58,15 +58,6 @@ type DNSConfig struct {
 
 // TrafficConfig contains traffic statistics settings
 type TrafficConfig struct {
-	// Enable real-time traffic statistics
-	EnableRealtime bool `mapstructure:"enable_realtime" yaml:"enable_realtime"`
-
-	// Enable historical statistics
-	EnableHistory bool `mapstructure:"enable_history" yaml:"enable_history"`
-
-	// Statistics update interval
-	UpdateInterval time.Duration `mapstructure:"update_interval" yaml:"update_interval"`
-
 	// Database file path
 	DBPath string `mapstructure:"db_path" yaml:"db_path"`
 }
@@ -179,10 +170,7 @@ func DefaultConfig() *Config {
 			TCPForForeign: true,
 		},
 		Traffic: TrafficConfig{
-			EnableRealtime: true,
-			EnableHistory:  true,
-			UpdateInterval: 1 * time.Second,
-			DBPath:         "data/traffic.db",
+			DBPath: "data/traffic.db",
 		},
 		Firewall: FirewallConfig{
 			EnableAuto:    true,
