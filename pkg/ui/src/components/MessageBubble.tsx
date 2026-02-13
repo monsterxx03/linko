@@ -602,6 +602,24 @@ const TOOL_FORMATTERS: Record<string, (args: Record<string, unknown>) => string>
     if (desc) return `Task ${desc}`;
     return "Task";
   },
+  Skill: (args) => {
+    const skill = args.skill;
+    const argsVal = args.args;
+    let argsStr = "";
+    if (argsVal !== undefined && argsVal !== null) {
+      argsStr = typeof argsVal === "string" ? argsVal : String(argsVal);
+    }
+    if (skill && argsStr) {
+      const truncatedArgs = argsStr.length > 40 ? argsStr.substring(0, 40) + "..." : argsStr;
+      return `Skill ${skill}: ${truncatedArgs}`;
+    }
+    if (skill) return `Skill ${skill}`;
+    if (argsStr) {
+      const truncatedArgs = argsStr.length > 40 ? argsStr.substring(0, 40) + "..." : argsStr;
+      return `Skill ${truncatedArgs}`;
+    }
+    return "Skill";
+  },
 };
 
 function formatToolCall(call: { function: { name: string; arguments: string } }): string {
