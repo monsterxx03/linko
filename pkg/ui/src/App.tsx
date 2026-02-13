@@ -49,15 +49,51 @@ function App() {
               </div>
             </div>
 
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2 text-bg-600">
+            {/* Tab Navigation - Moved to header for sticky positioning */}
+            <div className="flex items-center gap-4">
+              <ul className="flex items-center gap-1 p-1 bg-bg-100 rounded-lg">
+                <li>
+                  <button
+                    onClick={() => switchTab('dns')}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      activeTab === 'dns'
+                        ? 'bg-white text-accent-600 shadow-sm'
+                        : 'text-bg-600 hover:text-bg-800'
+                    }`}
+                  >
+                    DNS
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => switchTab('mitm')}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      activeTab === 'mitm'
+                        ? 'bg-white text-accent-600 shadow-sm'
+                        : 'text-bg-600 hover:text-bg-800'
+                    }`}
+                  >
+                    MITM
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => switchTab('conversations')}
+                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                      activeTab === 'conversations'
+                        ? 'bg-white text-accent-600 shadow-sm'
+                        : 'text-bg-600 hover:text-bg-800'
+                    }`}
+                  >
+                    LLM
+                  </button>
+                </li>
+              </ul>
+              <span className="w-px h-6 bg-bg-200" />
+              <div className="flex items-center gap-2 text-sm text-bg-600">
                 <div className="w-2 h-2 rounded-full bg-emerald-500" />
                 <span>Connected</span>
               </div>
-              <span className="text-bg-400">|</span>
-              <span className="text-bg-500">
-                Auto refresh: <span className="text-bg-800 font-medium">{activeTab === 'dns' ? '5' : '∞'}s</span>
-              </span>
             </div>
           </div>
         </div>
@@ -65,52 +101,18 @@ function App() {
 
       {/* Main Content */}
       <main className="w-full px-6 py-8">
-        {/* Tab Navigation */}
-        <div className="border-b border-bg-200 mb-6">
-          <ul className="flex space-x-8">
-            <li>
-              <button
-                onClick={() => switchTab('dns')}
-                className={`py-4 px-1 border-b-2 font-medium transition-colors ${
-                  activeTab === 'dns'
-                    ? 'border-accent-500 text-accent-600'
-                    : 'border-transparent text-bg-500 hover:text-bg-700 hover:border-bg-300'
-                }`}
-              >
-                DNS Monitor
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => switchTab('mitm')}
-                className={`py-4 px-1 border-b-2 font-medium transition-colors ${
-                  activeTab === 'mitm'
-                    ? 'border-accent-500 text-accent-600'
-                    : 'border-transparent text-bg-500 hover:text-bg-700 hover:border-bg-300'
-                }`}
-              >
-                MITM Traffic
-              </button>
-            </li>
-            <li>
-              <button
-                onClick={() => switchTab('conversations')}
-                className={`py-4 px-1 border-b-2 font-medium transition-colors ${
-                  activeTab === 'conversations'
-                    ? 'border-accent-500 text-accent-600'
-                    : 'border-transparent text-bg-500 hover:text-bg-700 hover:border-bg-300'
-                }`}
-              >
-                LLM Conversations
-              </button>
-            </li>
-          </ul>
+        {/* Tab Content - Use visibility hidden instead of display none to preserve scroll position */}
+        <div className="contents">
+          <div className={activeTab === 'dns' ? '' : 'invisible absolute w-full pointer-events-none'}>
+            <DnsMonitor />
+          </div>
+          <div className={activeTab === 'mitm' ? '' : 'invisible absolute w-full pointer-events-none'}>
+            <MitmTraffic />
+          </div>
+          <div className={activeTab === 'conversations' ? '' : 'invisible absolute w-full pointer-events-none'}>
+            <Conversations />
+          </div>
         </div>
-
-        {/* Tab Content */}
-        {activeTab === 'dns' && <DnsMonitor />}
-        {activeTab === 'mitm' && <MitmTraffic />}
-        {activeTab === 'conversations' && <Conversations />}
       </main>
 
       {/* Footer */}

@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useRef, useEffect } from 'react';
 import { MessageBubble } from '../components/MessageBubble';
 import { useLLMConversation } from '../hooks/useLLMConversation';
 import { Conversation } from '../contexts/SSEContext';
@@ -101,6 +101,35 @@ const ConversationView = memo(function ConversationView({
 }: {
   conversation: Conversation | undefined;
 }) {
+  const messagesRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<number>(0);
+  const prevConvIdRef = useRef<string>('');
+
+  // 记录滚动位置（仅当不是自动滚动到底部时）
+  const handleScroll = useCallback(() => {
+    if (messagesRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = messagesRef.current;
+      // 如果用户没有滚动到底部，记录位置
+      if (scrollHeight - scrollTop - clientHeight > 50) {
+        scrollRef.current = scrollTop;
+      }
+    }
+  }, []);
+
+  // 切换 tab 或 conversation 时恢复/重置滚动位置
+  useEffect(() => {
+    const currentConvId = conversation?.id || '';
+    // 如果 conversation 变了（选择新对话），重置滚动位置
+    if (currentConvId !== prevConvIdRef.current) {
+      scrollRef.current = 0;
+      prevConvIdRef.current = currentConvId;
+    }
+    // 切换回此 tab 时恢复滚动位置
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = scrollRef.current;
+    }
+  }, [conversation]);
+
   if (!conversation) {
     return (
       <div className="flex-1 flex items-center justify-center text-bg-400">
@@ -153,7 +182,11 @@ const ConversationView = memo(function ConversationView({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth">
+      <div
+        ref={messagesRef}
+        onScroll={handleScroll}
+        className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth"
+      >
         {conversation.messages.map((msg) => (
           <MessageBubble
             key={msg.id}
