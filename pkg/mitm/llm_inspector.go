@@ -16,7 +16,7 @@ type LLMInspector struct {
 	*BaseInspector
 	logger          *slog.Logger
 	eventBus        *EventBus
-	httpProc        *HTTPProcessor
+	httpProc        HTTPProcessorInterface
 	requestPaths    sync.Map // requestID -> string (path)
 	conversationIDs sync.Map // requestID -> string (conversationID)
 	streamMsgIDs    sync.Map // requestID -> string (assistant message ID for streaming)

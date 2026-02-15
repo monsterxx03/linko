@@ -25,6 +25,14 @@ type pendingHTTPResponse struct {
 	isSSE         bool
 }
 
+// HTTPProcessorInterface defines the interface for HTTP message processing
+type HTTPProcessorInterface interface {
+	ProcessRequest(inputData []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
+	ProcessResponse(inputData []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
+	ClearPending(requestID string)
+	GetPendingMessage(requestID string) (*HTTPMessage, bool)
+}
+
 // HTTPProcessor provides common HTTP protocol parsing capabilities
 type HTTPProcessor struct {
 	logger       *slog.Logger

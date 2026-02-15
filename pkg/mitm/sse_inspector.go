@@ -12,7 +12,7 @@ type SSEInspector struct {
 	*BaseInspector
 	eventBus     *EventBus
 	logger       *slog.Logger
-	httpProc     *HTTPProcessor
+	httpProc     HTTPProcessorInterface
 	requestCache sync.Map
 }
 
