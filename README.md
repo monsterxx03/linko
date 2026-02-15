@@ -8,6 +8,19 @@ Linko includes a built-in MITM (Man-in-the-Middle) proxy that intercepts HTTPS t
 
 **Note:** Linko currently only supports macOS.
 
+## Installation
+
+### Homebrew (Recommended)
+
+```bash
+brew tap monsterxx03/tap
+brew install linko
+```
+
+### Manual
+
+Download the latest release from the [Releases](https://github.com/monsterxx03/linko/releases) page and install manually.
+
 ## MITM Proxy Working Principle
 
 Linko's MITM proxy works as a **transparent proxy (transparent MITM)**.
