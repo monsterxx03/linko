@@ -26,6 +26,17 @@ jobs:
               id: version
               run: echo "VERSION=$(git describe --tags --always --dirty 2>/dev/null)" >> $GITHUB_OUTPUT
 
+            - name: Set up Bun
+              uses: oven-sh/setup-bun@v2
+              with:
+                  bun-version: latest
+
+            - name: Install UI dependencies
+              run: make ui-deps
+
+            - name: Build UI
+              run: make ui-build
+
             - name: Build Darwin arm64
               run: |
                 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=${{ steps.version.outputs.VERSION }}" -o bin/linko-darwin-arm64 ./cmd/linko
