@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/monsterxx03/linko/pkg/config"
 	"github.com/monsterxx03/linko/pkg/dns"
@@ -12,10 +13,8 @@ import (
 )
 
 var (
-	configPath     string
-	daemon         bool
-	logLevel       string
-	enableFirewall bool
+	configPath string
+	logLevel   string
 )
 
 var serveCmd = &cobra.Command{
@@ -42,10 +41,6 @@ func runServer(cmd *cobra.Command, args []string) {
 		cfg.Server.LogLevel = logLevel
 	}
 
-	if enableFirewall {
-		cfg.Firewall.EnableAuto = true
-	}
-
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: parseLogLevel(cfg.Server.LogLevel),
 	}))
@@ -62,9 +57,9 @@ func runServer(cmd *cobra.Command, args []string) {
 	)
 
 	sc := &ServerConfig{
-		DNSSplitter:  dnsSplitter,
-		DNSCache:     dnsCache,
-		SkipCN:       true,
+		DNSSplitter: dnsSplitter,
+		DNSCache:    dnsCache,
+		SkipCN:      true,
 		RedirectOption: proxy.RedirectOption{
 			RedirectDNS:   cfg.Firewall.RedirectDNS,
 			RedirectHTTP:  cfg.Firewall.RedirectHTTP,
@@ -80,8 +75,7 @@ func runServer(cmd *cobra.Command, args []string) {
 }
 
 func init() {
-	serveCmd.Flags().StringVarP(&configPath, "config", "c", "config/linko.yaml", "Configuration file path")
-	serveCmd.Flags().BoolVarP(&daemon, "daemon", "d", false, "Run as daemon")
+	defaultConfigPath := filepath.Join(config.GetConfigDir(), "linko.yaml")
+	serveCmd.Flags().StringVarP(&configPath, "config", "c", defaultConfigPath, "Configuration file path")
 	serveCmd.Flags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
-	serveCmd.Flags().BoolVar(&enableFirewall, "firewall", false, "Enable automatic firewall rule setup (requires sudo)")
 }

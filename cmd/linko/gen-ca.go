@@ -7,25 +7,28 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/monsterxx03/linko/pkg/config"
 	"github.com/monsterxx03/linko/pkg/mitm"
 	"github.com/spf13/cobra"
 )
-
-var genCaOutputDir string
 
 var genCaCmd = &cobra.Command{
 	Use:   "gen-ca",
 	Short: "Generate CA certificate and private key for MITM proxy",
 	Long:  "Generate a self-signed CA certificate and private key for HTTPS MITM inspection",
 	Run: func(cmd *cobra.Command, args []string) {
-		if genCaOutputDir == "" {
-			genCaOutputDir = "certs"
+		outputDir := filepath.Join(config.GetConfigDir(), "certs")
+
+		// Ensure output directory exists
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			slog.Error("failed to create output directory", "error", err)
+			os.Exit(1)
 		}
 
-		caCertPath := filepath.Join(genCaOutputDir, "ca.crt")
-		caKeyPath := filepath.Join(genCaOutputDir, "ca.key")
+		caCertPath := filepath.Join(outputDir, "ca.crt")
+		caKeyPath := filepath.Join(outputDir, "ca.key")
 
-		slog.Info("generating CA certificate", "output_dir", genCaOutputDir)
+		slog.Info("generating CA certificate", "output_dir", outputDir)
 
 		if err := mitm.CreateCAOnly(caCertPath, caKeyPath, 10*365*24*time.Hour); err != nil {
 			slog.Error("failed to generate CA", "error", err)
@@ -42,5 +45,4 @@ var genCaCmd = &cobra.Command{
 }
 
 func init() {
-	genCaCmd.Flags().StringVarP(&genCaOutputDir, "output", "o", "", "Output directory for CA files (default: ./certs)")
 }

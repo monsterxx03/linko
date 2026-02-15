@@ -2,8 +2,19 @@ package config
 
 import (
 	"net"
+	"os"
+	"path/filepath"
 	"time"
 )
+
+// GetConfigDir returns the default configuration directory (~/.config/linko)
+func GetConfigDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "config"
+	}
+	return filepath.Join(homeDir, ".config", "linko")
+}
 
 // Config represents the main configuration for the proxy
 type Config struct {
@@ -148,6 +159,9 @@ type MITMConfig struct {
 
 // DefaultConfig returns a default configuration
 func DefaultConfig() *Config {
+	configDir := GetConfigDir()
+	certsDir := filepath.Join(configDir, "certs")
+
 	return &Config{
 		Server: ServerConfig{
 			ListenAddr: "127.0.0.1:9890",
@@ -178,19 +192,19 @@ func DefaultConfig() *Config {
 			Enable:     true,
 			ListenAddr: "0.0.0.0:9810",
 			UIPath:     "pkg/ui",
-			UIEmbed:    false,
+			UIEmbed:    true,
 		},
 		MITM: MITMConfig{
-			Enable:             false,
-			GID:                8001,
-			CACertPath:         "certs/ca.crt",
-			CAKeyPath:          "certs/ca.key",
-			CertCacheDir:       "certs/sites",
-			SiteCertValidity:   168 * time.Hour,      // 7 days
-			CACertValidity:    365 * 24 * time.Hour, // 365 days
-			MaxBodySize:       2097152,              // 2M default
-			EventHistorySize:  10,                   // Default 10 historical events
-			LLMEventHistorySize: 10,                // Default 10 LLM historical events
+			Enable:              false,
+			GID:                 8001,
+			CACertPath:          filepath.Join(certsDir, "ca.crt"),
+			CAKeyPath:           filepath.Join(certsDir, "ca.key"),
+			CertCacheDir:        filepath.Join(certsDir, "sites"),
+			SiteCertValidity:    168 * time.Hour,      // 7 days
+			CACertValidity:      365 * 24 * time.Hour, // 365 days
+			MaxBodySize:         2097152,              // 2M default
+			EventHistorySize:    10,                   // Default 10 historical events
+			LLMEventHistorySize: 10,                   // Default 10 LLM historical events
 		},
 	}
 }

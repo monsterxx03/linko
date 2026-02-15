@@ -145,7 +145,7 @@ func (s *DNSServer) handleDNS(w dns.ResponseWriter, r *dns.Msg) {
 	}
 
 	if resp == nil {
-		slog.Warn("DNS query returned nil response", "domain", domain)
+		slog.Debug("DNS query returned nil response", "domain", domain)
 		queryRecord.Success = false
 		dns.HandleFailed(w, r)
 		return

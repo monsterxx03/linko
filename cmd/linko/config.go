@@ -3,6 +3,7 @@ package main
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 
 	"github.com/monsterxx03/linko/pkg/config"
 	"github.com/spf13/cobra"
@@ -24,5 +25,5 @@ var configCmd = &cobra.Command{
 }
 
 func init() {
-	configCmd.Flags().StringVarP(&configPathFlag, "output", "o", "config/linko.yaml", "Output configuration file path")
+	configCmd.Flags().StringVarP(&configPathFlag, "output", "o", filepath.Join(config.GetConfigDir(), "linko.yaml"), "Output configuration file path")
 }

@@ -64,6 +64,9 @@ func SaveConfig(configPath string, config *Config) error {
 }
 
 func GenerateConfig(configPath string) error {
+	if _, err := os.Stat(configPath); err == nil {
+		return fmt.Errorf("config file already exists: %s", configPath)
+	}
 	config := DefaultConfig()
 	return SaveConfig(configPath, config)
 }
