@@ -3,15 +3,14 @@ package mitm
 import (
 	"errors"
 	"fmt"
-	"net"
 )
 
 // SNIInfo contains parsed SNI information
 type SNIInfo struct {
-	Hostname    string
-	ServerName  string
-	IsValid     bool
-	ParseError  error
+	Hostname   string
+	ServerName string
+	IsValid    bool
+	ParseError error
 }
 
 // parseSNI extracts SNI hostname from TLS ClientHello
@@ -179,54 +178,4 @@ func ExtractSNIFromConn(conn []byte) (*SNIInfo, error) {
 	}
 
 	return sniInfo, nil
-}
-
-// ExtractSNIFromPeek performs a peek on the connection to extract SNI
-func ExtractSNIFromPeek(data []byte) string {
-	sniInfo, err := parseSNI(data)
-	if err != nil {
-		return ""
-	}
-
-	if sniInfo.IsValid {
-		return sniInfo.Hostname
-	}
-
-	return ""
-}
-
-// IsValidIP checks if a string is a valid IP address
-func IsValidIP(s string) bool {
-	return net.ParseIP(s) != nil
-}
-
-// ExtractHostnameFromTarget extracts the hostname from the target connection info
-// This is used when SNI is not available
-func ExtractHostnameFromTarget(host string, port int) string {
-	if IsValidIP(host) {
-		return host
-	}
-	return host
-}
-
-// ExtractSNIFromConnReader reads from a net.Conn and extracts SNI
-// This consumes data from the connection, so should only be used for checking
-func ExtractSNIFromConnReader(conn net.Conn) (string, error) {
-	// Read enough data for TLS ClientHello
-	buf := make([]byte, 4096)
-	n, err := conn.Read(buf)
-	if err != nil {
-		return "", err
-	}
-
-	sniInfo, err := parseSNI(buf[:n])
-	if err != nil {
-		return "", err
-	}
-
-	if sniInfo.IsValid && sniInfo.Hostname != "" {
-		return sniInfo.Hostname, nil
-	}
-
-	return "", errors.New("SNI not found")
 }
