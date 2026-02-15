@@ -1,16 +1,15 @@
 import { useState, useEffect } from 'react';
-import DnsMonitor from './pages/DnsMonitor';
 import MitmTraffic from './pages/MitmTraffic';
 import Conversations from './pages/Conversations';
 import { SSEProvider } from './contexts/SSEContext';
 
-type Tab = 'dns' | 'mitm' | 'conversations';
+type Tab = 'mitm' | 'conversations';
 
-const TAB_VALUES: Tab[] = ['dns', 'mitm', 'conversations'];
+const TAB_VALUES: Tab[] = ['mitm', 'conversations'];
 
 function getTabFromHash(): Tab {
   const hash = window.location.hash.slice(1);
-  return TAB_VALUES.includes(hash as Tab) ? (hash as Tab) : 'dns';
+  return TAB_VALUES.includes(hash as Tab) ? (hash as Tab) : 'mitm';
 }
 
 function App() {
@@ -54,18 +53,6 @@ function App() {
               <ul className="flex items-center gap-1 p-1 bg-bg-100 rounded-lg">
                 <li>
                   <button
-                    onClick={() => switchTab('dns')}
-                    className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                      activeTab === 'dns'
-                        ? 'bg-white text-accent-600 shadow-sm'
-                        : 'text-bg-600 hover:text-bg-800'
-                    }`}
-                  >
-                    DNS
-                  </button>
-                </li>
-                <li>
-                  <button
                     onClick={() => switchTab('mitm')}
                     className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                       activeTab === 'mitm'
@@ -103,9 +90,6 @@ function App() {
       <main className="w-full px-6 py-8">
         {/* Tab Content - Use visibility hidden instead of display none to preserve scroll position */}
         <div className="contents">
-          <div className={activeTab === 'dns' ? '' : 'invisible absolute w-full pointer-events-none'}>
-            <DnsMonitor />
-          </div>
           <div className={activeTab === 'mitm' ? '' : 'invisible absolute w-full pointer-events-none'}>
             <MitmTraffic />
           </div>

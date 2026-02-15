@@ -47,12 +47,3 @@ jobs:
                   prerelease: false
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Upload Homebrew Formula
-              if: startsWith(github.ref_name, 'v')
-              uses: dawidd6/action-homebrew-bump-formula@v3
-              with:
-                  formula: linko
-                  token: ${{ secrets.HOMEBREW_TOKEN }}
-                  tap: monsterxx03/tap
-                  git_branch: main
