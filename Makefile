@@ -52,7 +52,6 @@ test:
 test-coverage:
 	@echo "Running tests with coverage..."
 	$(GOTEST) -v -coverprofile=coverage.out ./...
-	$(GOCMD) tool cover -html=coverage.out -o coverage.html
 
 # Dev tools
 dev-deps:
@@ -83,10 +82,6 @@ ui-build:
 	@echo "Building UI..."
 	cd $(UI_DIR) && $(BUN) run build
 
-ui-preview:
-	@echo "Previewing UI build..."
-	cd $(UI_DIR) && $(BUN) run preview
-
 # Help
 help:
 	@echo "Available targets:"
@@ -103,6 +98,4 @@ help:
 	@echo "  ui-deps      - Install UI dependencies"
 	@echo "  ui-dev       - Start UI dev server (http://localhost:5173)"
 	@echo "  ui-build     - Build UI to dist/admin"
-	@echo "  ui-preview   - Preview UI build"
-	@echo "  ui           - Build UI and Go binary with embedded UI"
 	@echo "  help         - Show this help"
