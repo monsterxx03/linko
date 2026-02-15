@@ -9,6 +9,19 @@ import (
 	"strings"
 )
 
+var compatibleHosts = map[string]bool{
+	"api.minimaxi.com":       true,
+	"api.minimax.io":         true,
+	"api.deepseek.com":       true,
+	"open.bigmodel.cn":       true,
+	"api.z.ai":               true,
+	"dashscope.aliyuncs.com": true,
+	"api.moonshot.cn":        true,
+	"api.longcat.chat":       true,
+	"api.tbox.cn":            true,
+	"api.xiaomimimo.com":     true,
+}
+
 // Anthropic API types
 type AnthropicRequest struct {
 	Model         string             `json:"model"`
@@ -107,16 +120,12 @@ func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
 	if hostname == "api.anthropic.com" && path == "/v1/messages" {
 		return true
 	}
-	// compatible with Anthropic format
-	if hostname == "api.minimaxi.com" && path == "/anthropic/v1/messages" {
+
+	// Compatible APIs: check if hostname in list and path contains "anthropic"
+	if compatibleHosts[hostname] && strings.Contains(path, "anthropic") {
 		return true
 	}
-	if hostname == "api.deepseek.com" && path == "/anthropic/v1/messages" {
-		return true
-	}
-	if hostname == "open.bigmodel.cn" && path == "/api/anthropic/v1/messages" {
-		return true
-	}
+
 	return false
 }
 

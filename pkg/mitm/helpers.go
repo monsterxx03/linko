@@ -102,8 +102,10 @@ func decompressBody(body []byte, contentEncoding string, contentType string, log
 	if err != nil {
 		// For SSE, try to return whatever we managed to decompress
 		if isSSE {
-			if len(decompressed) > 0 && !errors.Is(err, io.ErrUnexpectedEOF) {
-				logger.Warn("Partial decompression for SSE", "contentEncoding", contentEncoding, "error", err)
+			if len(decompressed) > 0 {
+				if !errors.Is(err, io.ErrUnexpectedEOF) {
+					logger.Warn("Partial decompression for SSE", "contentEncoding", contentEncoding, "error", err)
+				}
 				return decompressed
 			}
 			// No decompressed data, return original
