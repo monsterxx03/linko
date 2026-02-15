@@ -1,10 +1,23 @@
-# Linko - MITM Proxy for HTTPS Traffic Analysis
+# Linko - Transparent MITM Proxy for HTTPS Traffic Analysis
 
 Linko includes a built-in MITM (Man-in-the-Middle) proxy that intercepts HTTPS traffic and decrypts it for analysis. It also supports visualizing LLM API messages (currently only Anthropic format).
 
 **Note:** Linko currently only supports macOS.
 
-## MITM Proxy Usage
+## MITM Proxy Working Principle
+
+Linko's MITM proxy works as a **transparent proxy (transparent MITM)**.
+Unlike traditional HTTP proxies that require applications to manually configure proxy settings (e.g., `http_proxy=127.0.0.1:8080`), Linko uses macOS's firewall rules (`pfctl`) to redirect network traffic at the system level.
+
+### How It Works
+
+1. **Traffic Redirection via pfctl**: Linko configures macOS's `pf` firewall to redirect outgoing HTTPS traffic (port 443) to the local MITM proxy (port 9890). This happens at the kernel level, so applications are unaware their traffic is being intercepted.
+
+2. **Certificate Generation**: Linko generates a CA certificate that signs on-the-fly certificates for each intercepted domain, enabling decryption of HTTPS traffic.
+
+3. **Transparent Interception**: Since the redirection happens at the network layer, no application configuration is needed. All HTTPS traffic from all applications flows through the MITM proxy automatically.
+
+This is called "transparent" because the proxy is invisible to applications—they think they're communicating directly with the remote server.
 
 ### Step 1: Generate CA Certificate
 
@@ -34,7 +47,7 @@ For browsers, you can also import the CA certificate directly in browser setting
 sudo linko mitm
 ```
 
-The MITM proxy server starts on port 8080 by default. This command requires **sudo** because it sets up firewall rules to redirect HTTPS traffic (port 443) through the MITM proxy.
+The MITM proxy server starts on port 9890 by default. This command requires **sudo** because it sets up firewall rules to redirect HTTPS traffic (port 443) through the MITM proxy.
 
 **Why sudo is required:** The proxy uses transparent interception via macOS firewall (pf) rules to capture HTTPS traffic from all applications without requiring individual proxy configuration. Setting these firewall rules requires administrator privileges.
 
@@ -68,7 +81,7 @@ Go to the **MITM Traffic** page to view intercepted HTTPS traffic in real-time.
 Verify that MITM is working by checking the certificate:
 
 ```bash
-curl -v --proxy http://localhost:8080 https://api.anthropic.com
+curl -v https://api.anthropic.com
 ```
 
 In the output, you should see the certificate is issued by Linko CA:
@@ -86,7 +99,7 @@ If you see a certificate chain starting with "Linko MITM CA", the traffic is bei
 If you want to inspect Claude Code's HTTPS traffic through MITM, you need to disable TLS certificate verification due to self-signed CA:
 
 ```bash
-NODE_TLS_REJECT_UNAUTHORIZED=0 claude [your prompt]
+NODE_TLS_REJECT_UNAUTHORIZED=0 claude
 ```
 
 This allows Claude Code to work with the MITM proxy's self-signed certificates.

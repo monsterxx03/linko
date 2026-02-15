@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	mitmLogLevel  string
-	mitmWhitelist string
+	mitmLogLevel   string
+	mitmWhitelist  string
+	mitmListenAddr string
 )
 
 var mitmCmd = &cobra.Command{
@@ -52,6 +53,10 @@ func runMITM(cmd *cobra.Command, args []string) {
 		cfg.Server.LogLevel = mitmLogLevel
 	}
 
+	if mitmListenAddr != "" {
+		cfg.Server.ListenAddr = mitmListenAddr
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: parseLogLevel(mitmLogLevel),
 	}))
@@ -66,6 +71,7 @@ func runMITM(cmd *cobra.Command, args []string) {
 		DNSCache:    nil,
 		SkipCN:      false,
 		ForceMITM:   true,
+		EnableDNS:   false, // MITM 模式不启动 DNS 服务器
 		RedirectOption: proxy.RedirectOption{
 			RedirectDNS:   false,
 			RedirectHTTP:  false,
@@ -108,4 +114,5 @@ func getSystemDNS() []string {
 func init() {
 	mitmCmd.Flags().StringVar(&mitmLogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	mitmCmd.Flags().StringVar(&mitmWhitelist, "whitelist", "", "Comma-separated list of domains to MITM (e.g., 'example.com,api.example.com')")
+	mitmCmd.Flags().StringVar(&mitmListenAddr, "listen", "", "Proxy listen address (default: 127.0.0.1:9810)")
 }

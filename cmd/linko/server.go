@@ -20,6 +20,7 @@ type ServerConfig struct {
 	RedirectOption proxy.RedirectOption
 	SkipCN         bool // 是否跳过中国IP分流
 	ForceMITM      bool // 强制启用 MITM（用于 mitm 命令）
+	EnableDNS      bool // 是否启用 DNS 服务器
 }
 
 // RunServer 通用服务器启动函数
@@ -46,12 +47,14 @@ func RunServer(cfg *config.Config, sc *ServerConfig, logger *slog.Logger) error 
 	defer transparentProxy.Stop()
 
 	// 启动 DNS 服务器
-	slog.Info("starting DNS server", "address", cfg.DNS.ListenAddr)
-	dnsServer = dns.NewDNSServer(cfg.DNS.ListenAddr, sc.DNSSplitter, sc.DNSCache)
-	if err := dnsServer.Start(); err != nil {
-		return err
+	if sc.EnableDNS {
+		slog.Info("starting DNS server", "address", cfg.DNS.ListenAddr)
+		dnsServer = dns.NewDNSServer(cfg.DNS.ListenAddr, sc.DNSSplitter, sc.DNSCache)
+		if err := dnsServer.Start(); err != nil {
+			return err
+		}
+		defer dnsServer.Stop()
 	}
-	defer dnsServer.Stop()
 
 	// 初始化 MITM Manager
 	if cfg.MITM.Enable || sc.ForceMITM {

@@ -60,6 +60,7 @@ func runServer(cmd *cobra.Command, args []string) {
 		DNSSplitter: dnsSplitter,
 		DNSCache:    dnsCache,
 		SkipCN:      true,
+		EnableDNS:   true,
 		RedirectOption: proxy.RedirectOption{
 			RedirectDNS:   cfg.Firewall.RedirectDNS,
 			RedirectHTTP:  cfg.Firewall.RedirectHTTP,
