@@ -10,7 +10,7 @@ permissions:
 
 jobs:
     release:
-        runs-on: ubuntu-latest
+        runs-on: macos-latest
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
@@ -26,37 +26,25 @@ jobs:
               id: version
               run: echo "VERSION=$(git describe --tags --always --dirty 2>/dev/null)" >> $GITHUB_OUTPUT
 
-            - name: Build Linux x86_64
-              run: |
-                CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=${{ steps.version.outputs.VERSION }}" -o bin/linko-linux-amd64 ./cmd/linko
-
             - name: Build Darwin arm64
               run: |
                 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=${{ steps.version.outputs.VERSION }}" -o bin/linko-darwin-arm64 ./cmd/linko
+
+            - name: Build Darwin amd64
+              run: |
+                CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=${{ steps.version.outputs.VERSION }}" -o bin/linko-darwin-amd64 ./cmd/linko
 
             - name: Create Release
               id: create_release
               uses: softprops/action-gh-release@v2
               with:
                   files: |
-                      bin/linko-linux-amd64
                       bin/linko-darwin-arm64
+                      bin/linko-darwin-amd64
                   tag_name: ${{ github.ref_name }}
                   name: Release ${{ github.ref_name }}
                   draft: false
                   prerelease: false
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-            - name: Rename Darwin binary
-              run: mv bin/linko-darwin-arm64 bin/linko
-
-            - name: Upload Darwin binary for Homebrew
-              uses: softprops/action-gh-release@v2
-              with:
-                  files: bin/linko
-                  tag_name: ${{ github.ref_name }}
-                  upload_url: ${{ steps.create_release.outputs.upload_url }}
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

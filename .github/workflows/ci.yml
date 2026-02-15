@@ -1,0 +1,33 @@
+name: CI
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+jobs:
+    test:
+        runs-on: macos-latest
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: '1.25'
+
+            - name: Run tests
+              run: go test -v -coverprofile=coverage.out ./...
+
+            - name: Upload coverage
+              uses: actions/upload-artifact@v4
+              with:
+                  name: coverage
+                  path: coverage.out
+
+            - name: Coverage Summary
+              run: |
+                COVERAGE=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | sed 's/%//')
+                echo "## Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY

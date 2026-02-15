@@ -1,5 +1,7 @@
 # Linko - Transparent MITM Proxy for HTTPS Traffic Analysis
 
+[![CI](https://github.com/monsterxx03/linko/actions/workflows/ci.yml/badge.svg)](https://github.com/monsterxx03/linko/actions/workflows/ci.yml)
+
 Linko includes a built-in MITM (Man-in-the-Middle) proxy that intercepts HTTPS traffic and decrypts it for analysis. It also supports visualizing LLM API messages (currently only Anthropic format).
 
 **Note:** Linko currently only supports macOS.
@@ -39,8 +41,6 @@ This generates a CA certificate and private key in `~/.config/linko/certs/`:
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.config/linko/certs/ca.crt
 ```
 
-For browsers, you can also import the CA certificate directly in browser settings.
-
 ### Step 3: Start MITM Proxy
 
 ```bash
@@ -56,7 +56,7 @@ The MITM proxy server starts on port 9890 by default. This command requires **su
 By default, MITM intercepts all HTTPS traffic on your system. You can use `--whitelist` to restrict interception to specific domains only:
 
 ```bash
-sudo linko mitm --whitelist "api.anthropic.com,api.openai.com"
+sudo linko mitm --whitelist "api.anthropic.com,api.minimaxi.com"
 ```
 
 Supported whitelist formats:
@@ -108,7 +108,7 @@ This allows Claude Code to work with the MITM proxy's self-signed certificates.
 
 Linko can parse and display LLM API requests and responses. Currently supported:
 
-- **Anthropic API** (api.anthropic.com)
+- **Anthropic API** (or any anthropic compatible api, e.g.: minimax, deepseek)
 
 When you make requests to supported LLM providers through the MITM proxy, the admin interface will display:
 
