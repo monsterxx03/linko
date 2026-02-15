@@ -1,5 +1,7 @@
 # Linko - Transparent MITM Proxy for HTTPS Traffic Analysis
 
+![Demo](./screenshots/linko.gif)
+
 [![CI](https://github.com/monsterxx03/linko/actions/workflows/ci.yml/badge.svg)](https://github.com/monsterxx03/linko/actions/workflows/ci.yml)
 
 Linko includes a built-in MITM (Man-in-the-Middle) proxy that intercepts HTTPS traffic and decrypts it for analysis. It also supports visualizing LLM API messages (currently only Anthropic format).
