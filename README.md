@@ -119,6 +119,22 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 claude
 
 This allows Claude Code to work with the MITM proxy's self-signed certificates.
 
+## Using with OpenCLAW
+
+If you want to inspect OpenCLAW's HTTPS traffic through MITM, add the following to `~/Library/LaunchAgents/ai.openclaw.gateway.plist` in the `EnvironmentVariables` dict, then restart the gateway:
+
+```xml
+<key>EnvironmentVariables</key>
+<dict>
+    <key>NODE_TLS_REJECT_UNAUTHORIZED</key>
+    <string>0</string>
+</dict>
+```
+
+```bash
+launchctl stop ai.openclaw.gateway && launchctl start ai.openclaw.gateway
+```
+
 ## LLM Message Visualization
 
 Linko can parse and display LLM API requests and responses. Currently supported:
