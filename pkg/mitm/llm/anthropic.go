@@ -92,6 +92,7 @@ type AnthropicStreamEvent struct {
 		Text        string `json:"text,omitempty"`
 		Thinking    string `json:"thinking,omitempty"`
 		PartialJSON string `json:"partial_json,omitempty"`
+		StopReason  string `json:"stop_reason,omitempty"`
 	} `json:"delta,omitempty"`
 	Message struct {
 		ID         string             `json:"id"`
@@ -278,51 +279,54 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 
 	// Helper function to merge deltas of the same type
 	tryMergeDelta := func(newDelta TokenDelta) {
-		// Add cumulative usage to each delta
-		if newDelta.Usage.InputTokens == 0 && newDelta.Usage.OutputTokens == 0 {
+		// Apply cumulative usage if new delta has no usage info
+		if newDelta.Usage == (TokenUsage{}) {
 			newDelta.Usage = cumulativeUsage
 		}
+
+		// First delta always gets appended
 		if len(deltas) == 0 {
 			deltas = append(deltas, newDelta)
 			return
 		}
 
-		lastDelta := &deltas[len(deltas)-1]
+		last := &deltas[len(deltas)-1]
 
-		// Merge text deltas
+		// 1. Merge text content
 		if newDelta.Text != "" {
-			lastDelta.Text += newDelta.Text
+			last.Text += newDelta.Text
 			return
 		}
 
-		// Merge thinking deltas
+		// 2. Merge thinking content
 		if newDelta.Thinking != "" {
-			lastDelta.Thinking += newDelta.Thinking
+			last.Thinking += newDelta.Thinking
 			return
 		}
 
-		// Merge tool data deltas
-		if newDelta.ToolData != "" && lastDelta.ToolData != "" &&
-			newDelta.Text == "" && lastDelta.Text == "" &&
-			newDelta.Thinking == "" && lastDelta.Thinking == "" &&
-			!newDelta.IsComplete && !lastDelta.IsComplete {
-			toolIDsMatch := (newDelta.ToolID == "" && lastDelta.ToolID == "") ||
-				(newDelta.ToolID != "" && lastDelta.ToolID != "" && newDelta.ToolID == lastDelta.ToolID) ||
-				(newDelta.ToolID == "" && lastDelta.ToolID != "")
-			toolNamesMatch := (newDelta.ToolName == "" && lastDelta.ToolName == "") ||
-				(newDelta.ToolName != "" && lastDelta.ToolName != "" && newDelta.ToolName == lastDelta.ToolName) ||
-				(newDelta.ToolName == "" && lastDelta.ToolName != "")
+		// 3. Merge completion info (stop_reason, usage) - updates last delta in place
+		if newDelta.IsComplete || newDelta.StopReason != "" {
+			last.IsComplete = newDelta.IsComplete
+			if newDelta.StopReason != "" {
+				last.StopReason = newDelta.StopReason
+			}
+			if newDelta.Usage != (TokenUsage{}) {
+				last.Usage = newDelta.Usage
+			}
+			return
+		}
 
-			if toolIDsMatch && toolNamesMatch {
-				currentToolData := lastDelta.ToolData
-				newToolData := newDelta.ToolData
-				if !strings.HasSuffix(currentToolData, newToolData) {
-					lastDelta.ToolData = currentToolData + newToolData
-				}
+		// 4. Merge tool data
+		if newDelta.ToolData != "" && !last.IsComplete {
+			sameTool := (newDelta.ToolID == "" || newDelta.ToolID == last.ToolID) &&
+				(newDelta.ToolName == "" || newDelta.ToolName == last.ToolName)
+			if sameTool && !strings.HasSuffix(last.ToolData, newDelta.ToolData) {
+				last.ToolData += newDelta.ToolData
 				return
 			}
 		}
 
+		// No merge possible, append new delta
 		deltas = append(deltas, newDelta)
 	}
 
@@ -401,7 +405,7 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 			tryMergeDelta(TokenDelta{
 				Text:       "",
 				IsComplete: true,
-				StopReason: event.Message.StopReason,
+				StopReason: event.Delta.StopReason,
 			})
 		case "message_start":
 			a.logger.Debug("message started", "role", event.Message.Role)
