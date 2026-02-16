@@ -87,7 +87,7 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="w-full px-6 py-8">
+      <main className="w-full px-6 py-8 min-h-0">
         {/* Tab Content - Use visibility hidden instead of display none to preserve scroll position */}
         <div className="contents">
           <div className={activeTab === 'mitm' ? '' : 'invisible absolute w-full pointer-events-none'}>
@@ -98,6 +98,15 @@ function App() {
           </div>
         </div>
       </main>
+
+      {/* Footer */}
+      <footer className="border-t border-bg-200 mt-8">
+        <div className="w-full px-6 py-4">
+          <div className="flex items-center justify-between text-xs text-bg-400">
+            <span>Linko Monitor</span>
+          </div>
+        </div>
+      </footer>
     </div>
     </SSEProvider>
   );

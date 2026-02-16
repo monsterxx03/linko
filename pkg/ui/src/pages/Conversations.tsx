@@ -322,21 +322,66 @@ export default function Conversations() {
     conversations,
     currentConversationId,
     setCurrentConversationId,
+    isConnected,
+    error,
+    clear,
+    reconnect,
   } = useLLMConversation();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const currentConversation = conversations.find((c: Conversation) => c.id === currentConversationId);
 
+  const handleClear = useCallback(() => clear(), [clear]);
+  const handleReconnect = useCallback(() => reconnect(), [reconnect]);
   const handleSelect = useCallback((id: string) => setCurrentConversationId(id), [setCurrentConversationId]);
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 flex flex-col h-[calc(100vh-180px)]">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold text-bg-800">LLM Conversations</h2>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Connection status */}
+          <div className="flex items-center gap-2">
+            {isConnected ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="text-xs text-bg-500">Connected</span>
+              </>
+            ) : (
+              <>
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+                <span className="text-xs text-red-500">{error || 'Disconnected'}</span>
+              </>
+            )}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleClear}
+            className="px-3 py-1.5 text-sm text-bg-600 hover:text-bg-800 hover:bg-bg-100 rounded-lg transition-colors"
+          >
+            Clear
+          </button>
+          <button
+            type="button"
+            onClick={handleReconnect}
+            className="px-3 py-1.5 text-sm text-bg-600 hover:text-bg-800 hover:bg-bg-100 rounded-lg transition-colors"
+          >
+            Reconnect
+          </button>
+        </div>
+      </div>
+
       {/* Main content */}
       <div className="flex-1 flex border border-bg-200 rounded-xl bg-white h-full">
         {/* Conversation list */}
         <div
-          className={`border-r border-bg-200 overflow-y-auto flex-shrink-0 transition-all duration-200 ${
+          className={`border-r border-bg-200 overflow-y-auto flex-shrink-0 transition-all duration-200 h-full ${
             sidebarCollapsed ? 'w-16' : 'w-80'
           }`}
         >
@@ -351,7 +396,7 @@ export default function Conversations() {
 
 
         {/* Conversation view */}
-        <div className="flex-1 flex flex-col h-full">
+        <div className="flex-1 h-full">
           <ConversationView
             conversation={currentConversation}
           />
