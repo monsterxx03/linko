@@ -102,6 +102,8 @@ type AnthropicStreamEvent struct {
 		StopReason string             `json:"stop_reason,omitempty"`
 		Usage      AnthropicUsage     `json:"usage,omitempty"`
 	} `json:"message,omitempty"`
+	// Usage 用于 message_delta 事件的根级别 usage（不在 message 对象内）
+	Usage AnthropicUsage `json:"usage,omitempty"`
 	ContentBlock struct {
 		Type     string `json:"type"`
 		Text     string `json:"text,omitempty"`
@@ -409,9 +411,12 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 				IsComplete: false,
 			})
 		case "message_delta":
-			// Update cumulative output tokens
-			if event.Message.Usage.OutputTokens > 0 {
-				cumulativeUsage.OutputTokens = event.Message.Usage.OutputTokens
+			// 使用根级别的 usage 字段（Anthropic API 在 message_delta 中返回的 usage 在根级别）
+			if event.Usage.OutputTokens > 0 {
+				cumulativeUsage.OutputTokens = event.Usage.OutputTokens
+			}
+			if event.Usage.InputTokens > 0 {
+				cumulativeUsage.InputTokens = event.Usage.InputTokens
 			}
 			tryMergeDelta(TokenDelta{
 				Text:       "",

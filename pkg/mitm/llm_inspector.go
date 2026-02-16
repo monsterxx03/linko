@@ -254,10 +254,12 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 					Content:   []string{accumulatedContent},
 					ToolCalls: toolCallsSlice,
 				},
+				TokenCount:  event.TokenCount,
+				TotalTokens: event.TotalTokens,
 			}
 			l.publishEvent("llm_message", msgEvent)
 
-			l.publishConversationUpdate(conversationID, "complete", 1, estimateTokenCount(accumulatedContent), "")
+			l.publishConversationUpdate(conversationID, "complete", 1, event.TotalTokens, "")
 		}
 	}
 
