@@ -301,7 +301,7 @@ func TestAnthropicParseSSEStreamFrom(t *testing.T) {
 			name: "text delta",
 			body: `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
 data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": " World"}}
-data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "message": {"usage": {"output_tokens": 10}}}
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 10}}
 `,
 			startPos: 0,
 			wantText: "Hello World",
@@ -499,7 +499,7 @@ func TestTokenDeltaMerging(t *testing.T) {
 	body := `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
 data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": " World"}}
 data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "!"}}
-data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "message": {"usage": {"output_tokens": 10}}}
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 10}}
 `
 
 	deltas := provider.ParseSSEStreamFrom([]byte(body), 0)
@@ -528,7 +528,7 @@ func BenchmarkParseSSEStreamFrom(b *testing.B) {
 
 	body := `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello"}}
 data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": " World"}}
-data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "message": {"usage": {"output_tokens": 10}}}
+data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 10}}
 `
 
 	b.ResetTimer()
