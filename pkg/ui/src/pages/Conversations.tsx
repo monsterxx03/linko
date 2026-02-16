@@ -169,12 +169,21 @@ const ConversationView = memo(function ConversationView({
   const messagesRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<number>(0);
   const prevConvIdRef = useRef<string>('');
+  const prevLastMessageRef = useRef<string>('');
+  const isAtBottomRef = useRef(true);
+
+  const [showNewMessageHint, setShowNewMessageHint] = useState(false);
 
   // 记录滚动位置
   const handleScroll = useCallback(() => {
     if (messagesRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = messagesRef.current;
-      if (scrollHeight - scrollTop - clientHeight > 50) {
+      const isAtBottom = scrollHeight - scrollTop - clientHeight <= 50;
+      isAtBottomRef.current = isAtBottom;
+      if (isAtBottom) {
+        setShowNewMessageHint(false);
+      }
+      if (!isAtBottom) {
         scrollRef.current = scrollTop;
       }
     }
@@ -186,11 +195,35 @@ const ConversationView = memo(function ConversationView({
     if (currentConvId !== prevConvIdRef.current) {
       scrollRef.current = 0;
       prevConvIdRef.current = currentConvId;
+      prevLastMessageRef.current = '';
+      setShowNewMessageHint(false);
       if (messagesRef.current) {
         messagesRef.current.scrollTop = 0;
       }
     }
   }, [conversation]);
+
+  // 检测新消息/内容更新
+  useEffect(() => {
+    if (!conversation || conversation.messages.length === 0) return;
+
+    const lastMessage = conversation.messages[conversation.messages.length - 1];
+    const lastContent = lastMessage.content.join('');
+
+    // 有新内容且用户不在底部
+    if (lastContent !== prevLastMessageRef.current && !isAtBottomRef.current) {
+      setShowNewMessageHint(true);
+    }
+    prevLastMessageRef.current = lastContent;
+  }, [conversation]);
+
+  // 滚动到底部
+  const scrollToBottom = useCallback(() => {
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+      setShowNewMessageHint(false);
+    }
+  }, []);
 
   if (!conversation) {
     return (
@@ -207,9 +240,9 @@ const ConversationView = memo(function ConversationView({
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col h-full">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-bg-200 bg-white">
+      <div className="px-6 py-4 border-b border-bg-200 bg-white shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-bg-800">
@@ -267,6 +300,19 @@ const ConversationView = memo(function ConversationView({
           />
         ))}
       </div>
+
+      {/* 新消息提示气泡 */}
+      {showNewMessageHint && (
+        <button
+          type="button"
+          onClick={scrollToBottom}
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 px-4 py-2 bg-emerald-500 text-white rounded-full shadow-lg hover:bg-emerald-600 transition-colors flex items-center gap-2"
+        >
+          <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+          <span>新消息</span>
+          {conversation?.status === 'streaming' && <span className="text-xs opacity-75">(streaming)</span>}
+        </button>
+      )}
     </div>
   );
 });
@@ -276,66 +322,21 @@ export default function Conversations() {
     conversations,
     currentConversationId,
     setCurrentConversationId,
-    isConnected,
-    error,
-    clear,
-    reconnect,
   } = useLLMConversation();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const currentConversation = conversations.find((c: Conversation) => c.id === currentConversationId);
 
-  const handleClear = useCallback(() => clear(), [clear]);
-  const handleReconnect = useCallback(() => reconnect(), [reconnect]);
   const handleSelect = useCallback((id: string) => setCurrentConversationId(id), [setCurrentConversationId]);
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-bg-800">LLM Conversations</h2>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Connection status */}
-          <div className="flex items-center gap-2">
-            {isConnected ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="text-xs text-bg-500">Connected</span>
-              </>
-            ) : (
-              <>
-                <span className="w-2 h-2 rounded-full bg-red-500" />
-                <span className="text-xs text-red-500">{error || 'Disconnected'}</span>
-              </>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleClear}
-            className="px-3 py-1.5 text-sm text-bg-600 hover:text-bg-800 hover:bg-bg-100 rounded-lg transition-colors"
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            onClick={handleReconnect}
-            className="px-3 py-1.5 text-sm text-bg-600 hover:text-bg-800 hover:bg-bg-100 rounded-lg transition-colors"
-          >
-            Reconnect
-          </button>
-        </div>
-      </div>
-
+    <div className="flex-1 flex flex-col h-full">
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden border border-bg-200 rounded-xl bg-white min-h-0 relative">
+      <div className="flex-1 flex border border-bg-200 rounded-xl bg-white h-full">
         {/* Conversation list */}
         <div
-          className={`border-r border-bg-200 overflow-y-auto flex-shrink-0 transition-all duration-200 relative ${
+          className={`border-r border-bg-200 overflow-y-auto flex-shrink-0 transition-all duration-200 ${
             sidebarCollapsed ? 'w-16' : 'w-80'
           }`}
         >
@@ -350,7 +351,7 @@ export default function Conversations() {
 
 
         {/* Conversation view */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 flex flex-col h-full">
           <ConversationView
             conversation={currentConversation}
           />

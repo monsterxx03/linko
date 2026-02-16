@@ -98,15 +98,6 @@ function App() {
           </div>
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="border-t border-bg-200 mt-8">
-        <div className="w-full px-6 py-4">
-          <div className="flex items-center justify-between text-xs text-bg-400">
-            <span>Linko Monitor</span>
-          </div>
-        </div>
-      </footer>
     </div>
     </SSEProvider>
   );
