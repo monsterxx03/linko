@@ -167,7 +167,6 @@ const ConversationView = memo(function ConversationView({
   conversation: Conversation | undefined;
 }) {
   const messagesRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<number>(0);
   const prevConvIdRef = useRef<string>('');
   const prevLastMessageRef = useRef<string>('');
   const isAtBottomRef = useRef(true);
@@ -178,13 +177,9 @@ const ConversationView = memo(function ConversationView({
   const handleScroll = useCallback(() => {
     if (messagesRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = messagesRef.current;
-      const isAtBottom = scrollHeight - scrollTop - clientHeight <= 50;
-      isAtBottomRef.current = isAtBottom;
-      if (isAtBottom) {
+      isAtBottomRef.current = scrollHeight - scrollTop - clientHeight <= 50;
+      if (isAtBottomRef.current) {
         setShowNewMessageHint(false);
-      }
-      if (!isAtBottom) {
-        scrollRef.current = scrollTop;
       }
     }
   }, []);
@@ -193,7 +188,6 @@ const ConversationView = memo(function ConversationView({
   useEffect(() => {
     const currentConvId = conversation?.id || '';
     if (currentConvId !== prevConvIdRef.current) {
-      scrollRef.current = 0;
       prevConvIdRef.current = currentConvId;
       prevLastMessageRef.current = '';
       setShowNewMessageHint(false);
@@ -322,60 +316,16 @@ export default function Conversations() {
     conversations,
     currentConversationId,
     setCurrentConversationId,
-    isConnected,
-    error,
-    clear,
-    reconnect,
   } = useLLMConversation();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   const currentConversation = conversations.find((c: Conversation) => c.id === currentConversationId);
 
-  const handleClear = useCallback(() => clear(), [clear]);
-  const handleReconnect = useCallback(() => reconnect(), [reconnect]);
   const handleSelect = useCallback((id: string) => setCurrentConversationId(id), [setCurrentConversationId]);
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-180px)]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-bg-800">LLM Conversations</h2>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* Connection status */}
-          <div className="flex items-center gap-2">
-            {isConnected ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                <span className="text-xs text-bg-500">Connected</span>
-              </>
-            ) : (
-              <>
-                <span className="w-2 h-2 rounded-full bg-red-500" />
-                <span className="text-xs text-red-500">{error || 'Disconnected'}</span>
-              </>
-            )}
-          </div>
-
-          <button
-            type="button"
-            onClick={handleClear}
-            className="px-3 py-1.5 text-sm text-bg-600 hover:text-bg-800 hover:bg-bg-100 rounded-lg transition-colors"
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            onClick={handleReconnect}
-            className="px-3 py-1.5 text-sm text-bg-600 hover:text-bg-800 hover:bg-bg-100 rounded-lg transition-colors"
-          >
-            Reconnect
-          </button>
-        </div>
-      </div>
+    <div className="flex-1 flex flex-col h-[calc(100vh-120px)]">
 
       {/* Main content */}
       <div className="flex-1 flex border border-bg-200 rounded-xl bg-white h-full">
