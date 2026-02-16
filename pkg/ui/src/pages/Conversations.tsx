@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useEffect } from 'react';
+import { memo, useCallback, useRef, useEffect, useState } from 'react';
 import { MessageBubble } from '../components/MessageBubble';
 import { useLLMConversation } from '../hooks/useLLMConversation';
 import { Conversation } from '../contexts/SSEContext';
@@ -37,28 +37,90 @@ StatusBadge.displayName = 'StatusBadge';
 const ConversationList = memo(function ConversationList({
   conversations,
   currentId,
-  onSelect
+  onSelect,
+  isCollapsed,
+  onCollapse
 }: {
   conversations: Conversation[];
   currentId: string | null;
   onSelect: (id: string) => void;
+  isCollapsed?: boolean;
+  onCollapse?: () => void;
 }) {
   const handleSelect = useCallback((id: string) => onSelect(id), [onSelect]);
 
-  if (conversations.length === 0) {
+  // Collapsed view: just show icons for each conversation
+  if (isCollapsed) {
     return (
-      <div className="p-6 text-center">
-        <svg className="w-12 h-12 mx-auto text-bg-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-        </svg>
-        <p className="text-sm text-bg-500">No conversations yet</p>
-        <p className="text-xs text-bg-400 mt-1">Start a chat with an LLM to see it here</p>
+      <div className="flex flex-col items-center py-2 h-full">
+        {onCollapse && (
+          <button
+            type="button"
+            onClick={onCollapse}
+            className="p-2 hover:bg-bg-100 rounded-lg transition-colors mb-2"
+            title="Expand sidebar"
+          >
+            <svg className="w-4 h-4 text-bg-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+            </svg>
+          </button>
+        )}
+        <div className="flex-1 overflow-y-auto">
+          {conversations.map((conv) => (
+            <button
+              key={conv.id}
+              type="button"
+              onClick={() => handleSelect(conv.id)}
+              className={`w-10 h-10 mb-2 rounded-lg flex items-center justify-center transition-colors ${
+                conv.id === currentId ? 'bg-bg-200' : 'hover:bg-bg-100'
+              }`}
+              title={conv.messages[conv.messages.length - 1]?.content?.[0] || 'Empty'}
+            >
+              {conv.status === 'streaming' ? (
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              ) : conv.status === 'error' ? (
+                <span className="w-2 h-2 rounded-full bg-red-500" />
+              ) : (
+                <svg className="w-4 h-4 text-bg-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <ul className="divide-y divide-bg-100">
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-bg-200">
+        <span className="text-xs font-medium text-bg-500 uppercase tracking-wide">Conversations</span>
+        <button
+          type="button"
+          onClick={onCollapse}
+          className="p-1 hover:bg-bg-100 rounded transition-colors"
+          title="Collapse sidebar"
+        >
+          <svg className="w-4 h-4 text-bg-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          </svg>
+        </button>
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto">
+        {conversations.length === 0 ? (
+          <div className="p-6 text-center">
+            <svg className="w-12 h-12 mx-auto text-bg-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+            <p className="text-sm text-bg-500">No conversations yet</p>
+            <p className="text-xs text-bg-400 mt-1">Start a chat with an LLM to see it here</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-bg-100">
       {conversations.map((conv) => {
         const isSelected = conv.id === currentId;
         const lastMessage = conv.messages[conv.messages.length - 1];
@@ -93,6 +155,9 @@ const ConversationList = memo(function ConversationList({
         );
       })}
     </ul>
+        )}
+      </div>
+    </div>
   );
 });
 
@@ -104,6 +169,23 @@ const ConversationView = memo(function ConversationView({
   const messagesRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<number>(0);
   const prevConvIdRef = useRef<string>('');
+  const prevLastMsgIdRef = useRef<string>('');
+  const [showNewMessageHint, setShowNewMessageHint] = useState(false);
+
+  // 检测是否在底部
+  const isAtBottom = useCallback(() => {
+    if (!messagesRef.current) return true;
+    const { scrollTop, scrollHeight, clientHeight } = messagesRef.current;
+    return scrollHeight - scrollTop - clientHeight <= 50;
+  }, []);
+
+  // 滚动到底部
+  const scrollToBottom = useCallback(() => {
+    if (messagesRef.current) {
+      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+      setShowNewMessageHint(false);
+    }
+  }, []);
 
   // 记录滚动位置（仅当不是自动滚动到底部时）
   const handleScroll = useCallback(() => {
@@ -113,22 +195,49 @@ const ConversationView = memo(function ConversationView({
       if (scrollHeight - scrollTop - clientHeight > 50) {
         scrollRef.current = scrollTop;
       }
+      // 如果滚动到底部，隐藏新消息提示
+      if (isAtBottom()) {
+        setShowNewMessageHint(false);
+      }
     }
-  }, []);
+  }, [isAtBottom]);
 
   // 切换 tab 或 conversation 时恢复/重置滚动位置
+  // 检测新消息
   useEffect(() => {
     const currentConvId = conversation?.id || '';
+    const messages = conversation?.messages || [];
+    const lastMsg = messages[messages.length - 1];
+    // 用 JSON 序列化最后消息内容来检测变化（包括 streaming 时的内容更新）
+    const currentLastMsgKey = lastMsg ? JSON.stringify({ id: lastMsg.id, content: lastMsg.content, is_streaming: lastMsg.is_streaming }) : '';
+
     // 如果 conversation 变了（选择新对话），重置滚动位置
     if (currentConvId !== prevConvIdRef.current) {
       scrollRef.current = 0;
       prevConvIdRef.current = currentConvId;
+      prevLastMsgIdRef.current = currentLastMsgKey;
+      setShowNewMessageHint(false);
+    } else if (currentLastMsgKey && currentLastMsgKey !== prevLastMsgIdRef.current) {
+      // 有新消息（或最后消息有更新，如 streaming）
+      if (isAtBottom()) {
+        // 已经在底部，自动滚动
+        requestAnimationFrame(() => {
+          if (messagesRef.current) {
+            messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
+          }
+        });
+      } else {
+        // 不在底部，显示提示
+        setShowNewMessageHint(true);
+      }
+      prevLastMsgIdRef.current = currentLastMsgKey;
     }
+
     // 切换回此 tab 时恢复滚动位置
     if (messagesRef.current) {
       messagesRef.current.scrollTop = scrollRef.current;
     }
-  }, [conversation]);
+  }, [conversation, isAtBottom]);
 
   if (!conversation) {
     return (
@@ -185,7 +294,7 @@ const ConversationView = memo(function ConversationView({
       <div
         ref={messagesRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth"
+        className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth relative"
       >
         {conversation.messages.map((msg) => (
           <MessageBubble
@@ -204,6 +313,19 @@ const ConversationView = memo(function ConversationView({
             thinking={msg.thinking}
           />
         ))}
+        {/* 新消息提示 */}
+        {showNewMessageHint && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-bg-800 text-white text-sm rounded-full shadow-lg hover:bg-bg-700 transition-colors flex items-center gap-2"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+            </svg>
+            New messages
+          </button>
+        )}
       </div>
     </div>
   );
@@ -220,6 +342,8 @@ export default function Conversations() {
     reconnect,
   } = useLLMConversation();
 
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
   const currentConversation = conversations.find((c: Conversation) => c.id === currentConversationId);
 
   const handleClear = useCallback(() => clear(), [clear]);
@@ -230,9 +354,8 @@ export default function Conversations() {
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <div>
+        <div className="flex items-center gap-3">
           <h2 className="text-lg font-semibold text-bg-800">LLM Conversations</h2>
-          <p className="text-sm text-bg-500">Monitor and inspect LLM API traffic</p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -269,19 +392,28 @@ export default function Conversations() {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 flex overflow-hidden border border-bg-200 rounded-xl bg-white min-h-0">
+      <div className="flex-1 flex overflow-hidden border border-bg-200 rounded-xl bg-white min-h-0 relative">
         {/* Conversation list */}
-        <div className="w-80 border-r border-bg-200 overflow-y-auto flex-shrink-0">
+        <div
+          className={`border-r border-bg-200 overflow-y-auto flex-shrink-0 transition-all duration-200 relative ${
+            sidebarCollapsed ? 'w-16' : 'w-80'
+          }`}
+        >
           <ConversationList
             conversations={conversations}
             currentId={currentConversationId}
             onSelect={handleSelect}
+            isCollapsed={sidebarCollapsed}
+            onCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
           />
         </div>
 
+
         {/* Conversation view */}
         <div className="flex-1 overflow-hidden">
-          <ConversationView conversation={currentConversation} />
+          <ConversationView
+            conversation={currentConversation}
+          />
         </div>
       </div>
     </div>
