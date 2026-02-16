@@ -169,75 +169,28 @@ const ConversationView = memo(function ConversationView({
   const messagesRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<number>(0);
   const prevConvIdRef = useRef<string>('');
-  const prevLastMsgIdRef = useRef<string>('');
-  const [showNewMessageHint, setShowNewMessageHint] = useState(false);
 
-  // 检测是否在底部
-  const isAtBottom = useCallback(() => {
-    if (!messagesRef.current) return true;
-    const { scrollTop, scrollHeight, clientHeight } = messagesRef.current;
-    return scrollHeight - scrollTop - clientHeight <= 50;
-  }, []);
-
-  // 滚动到底部
-  const scrollToBottom = useCallback(() => {
-    if (messagesRef.current) {
-      messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-      setShowNewMessageHint(false);
-    }
-  }, []);
-
-  // 记录滚动位置（仅当不是自动滚动到底部时）
+  // 记录滚动位置
   const handleScroll = useCallback(() => {
     if (messagesRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = messagesRef.current;
-      // 如果用户没有滚动到底部，记录位置
       if (scrollHeight - scrollTop - clientHeight > 50) {
         scrollRef.current = scrollTop;
       }
-      // 如果滚动到底部，隐藏新消息提示
-      if (isAtBottom()) {
-        setShowNewMessageHint(false);
-      }
     }
-  }, [isAtBottom]);
+  }, []);
 
-  // 切换 tab 或 conversation 时恢复/重置滚动位置
-  // 检测新消息
+  // 切换 conversation 时恢复滚动位置
   useEffect(() => {
     const currentConvId = conversation?.id || '';
-    const messages = conversation?.messages || [];
-    const lastMsg = messages[messages.length - 1];
-    // 用 JSON 序列化最后消息内容来检测变化（包括 streaming 时的内容更新）
-    const currentLastMsgKey = lastMsg ? JSON.stringify({ id: lastMsg.id, content: lastMsg.content, is_streaming: lastMsg.is_streaming }) : '';
-
-    // 如果 conversation 变了（选择新对话），重置滚动位置
     if (currentConvId !== prevConvIdRef.current) {
       scrollRef.current = 0;
       prevConvIdRef.current = currentConvId;
-      prevLastMsgIdRef.current = currentLastMsgKey;
-      setShowNewMessageHint(false);
-    } else if (currentLastMsgKey && currentLastMsgKey !== prevLastMsgIdRef.current) {
-      // 有新消息（或最后消息有更新，如 streaming）
-      if (isAtBottom()) {
-        // 已经在底部，自动滚动
-        requestAnimationFrame(() => {
-          if (messagesRef.current) {
-            messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
-          }
-        });
-      } else {
-        // 不在底部，显示提示
-        setShowNewMessageHint(true);
+      if (messagesRef.current) {
+        messagesRef.current.scrollTop = 0;
       }
-      prevLastMsgIdRef.current = currentLastMsgKey;
     }
-
-    // 切换回此 tab 时恢复滚动位置
-    if (messagesRef.current) {
-      messagesRef.current.scrollTop = scrollRef.current;
-    }
-  }, [conversation, isAtBottom]);
+  }, [conversation]);
 
   if (!conversation) {
     return (
@@ -294,7 +247,7 @@ const ConversationView = memo(function ConversationView({
       <div
         ref={messagesRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-6 space-y-4 scroll-smooth relative"
+        className="flex-1 overflow-y-auto p-6 space-y-4"
       >
         {conversation.messages.map((msg) => (
           <MessageBubble
@@ -313,19 +266,6 @@ const ConversationView = memo(function ConversationView({
             thinking={msg.thinking}
           />
         ))}
-        {/* 新消息提示 */}
-        {showNewMessageHint && (
-          <button
-            type="button"
-            onClick={scrollToBottom}
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-bg-800 text-white text-sm rounded-full shadow-lg hover:bg-bg-700 transition-colors flex items-center gap-2"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-            </svg>
-            New messages
-          </button>
-        )}
       </div>
     </div>
   );
