@@ -65,15 +65,17 @@ func RunServer(cfg *config.Config, sc *ServerConfig, logger *slog.Logger) error 
 
 		var err error
 		mitmManager, err = mitm.NewManager(mitm.ManagerConfig{
-			CACertPath:         cfg.MITM.CACertPath,
-			CAKeyPath:          cfg.MITM.CAKeyPath,
-			CertCacheDir:       cfg.MITM.CertCacheDir,
-			SiteCertValidity:   cfg.MITM.SiteCertValidity,
-			CACertValidity:     cfg.MITM.CACertValidity,
-			Enabled:            true,
-			MaxBodySize:        cfg.MITM.MaxBodySize,
-			EventHistorySize:   cfg.MITM.EventHistorySize,
-			LLMEventHistorySize: cfg.MITM.LLMEventHistorySize,
+			CACertPath:            cfg.MITM.CACertPath,
+			CAKeyPath:             cfg.MITM.CAKeyPath,
+			CertCacheDir:          cfg.MITM.CertCacheDir,
+			SiteCertValidity:      cfg.MITM.SiteCertValidity,
+			CACertValidity:        cfg.MITM.CACertValidity,
+			Enabled:               true,
+			MaxBodySize:           cfg.MITM.MaxBodySize,
+			EventHistorySize:      cfg.MITM.EventHistorySize,
+			LLMEventHistorySize:   cfg.MITM.LLMEventHistorySize,
+			CustomAnthropicMatches: cfg.MITM.CustomAnthropicMatches,
+			CustomOpenAIMatches:    cfg.MITM.CustomOpenAIMatches,
 		}, logger)
 		if err != nil {
 			slog.Error("failed to initialize MITM manager", "error", err)

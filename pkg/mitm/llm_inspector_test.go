@@ -93,7 +93,7 @@ func (m *mockProvider) ParseFullRequest(body []byte) (*llm.RequestInfo, error) {
 func TestLLMInspector_InspectRequest_Basic(t *testing.T) {
 	logger := slog.Default()
 	eventBus := NewEventBus(logger, 10)
-	inspector := NewLLMInspector(logger, eventBus, "api.openai.com")
+	inspector := NewLLMInspector(logger, eventBus, "api.openai.com", nil)
 
 	// Setup mock HTTP processor
 	mockProc := newMockHTTPProcessor(t)
@@ -139,7 +139,7 @@ func TestLLMInspector_InspectRequest_Basic(t *testing.T) {
 func TestLLMInspector_InspectRequest_NoProvider(t *testing.T) {
 	logger := slog.Default()
 	eventBus := NewEventBus(logger, 10)
-	inspector := NewLLMInspector(logger, eventBus, "unknown.com")
+	inspector := NewLLMInspector(logger, eventBus, "unknown.com", nil)
 
 	// Setup mock HTTP processor that returns a valid message
 	mockProc := newMockHTTPProcessor(t)
@@ -169,7 +169,7 @@ func TestLLMInspector_InspectRequest_NoProvider(t *testing.T) {
 func TestLLMInspector_InspectRequest_EmptyBody(t *testing.T) {
 	logger := slog.Default()
 	eventBus := NewEventBus(logger, 10)
-	inspector := NewLLMInspector(logger, eventBus, "api.openai.com")
+	inspector := NewLLMInspector(logger, eventBus, "api.openai.com", nil)
 
 	// Setup mock HTTP processor that returns empty body
 	mockProc := newMockHTTPProcessor(t)
@@ -199,7 +199,7 @@ func TestLLMInspector_InspectRequest_EmptyBody(t *testing.T) {
 func TestLLMInspector_InspectResponse_Basic(t *testing.T) {
 	logger := slog.Default()
 	eventBus := NewEventBus(logger, 10)
-	inspector := NewLLMInspector(logger, eventBus, "api.openai.com")
+	inspector := NewLLMInspector(logger, eventBus, "api.openai.com", nil)
 	requestID := "req-4"
 
 	// First, process a request to set up the conversation
@@ -244,7 +244,7 @@ func TestLLMInspector_InspectResponse_Basic(t *testing.T) {
 func TestLLMInspector_InspectResponse_SSE(t *testing.T) {
 	logger := slog.Default()
 	eventBus := NewEventBus(logger, 10)
-	inspector := NewLLMInspector(logger, eventBus, "api.openai.com")
+	inspector := NewLLMInspector(logger, eventBus, "api.openai.com", nil)
 	requestID := "req-5"
 
 	// First process a request
@@ -290,7 +290,7 @@ func TestLLMInspector_InspectResponse_SSE(t *testing.T) {
 func TestLLMInspector_InspectResponse_EmptyData(t *testing.T) {
 	logger := slog.Default()
 	eventBus := NewEventBus(logger, 10)
-	inspector := NewLLMInspector(logger, eventBus, "api.openai.com")
+	inspector := NewLLMInspector(logger, eventBus, "api.openai.com", nil)
 
 	// Process empty data - should not panic
 	result, err := inspector.Inspect(DirectionServerToClient, []byte{}, "api.openai.com", "conn-1", "req-6")
@@ -307,7 +307,7 @@ func TestLLMInspector_InspectResponse_EmptyData(t *testing.T) {
 func TestLLMInspector_InspectRequest_Incremental(t *testing.T) {
 	logger := slog.Default()
 	eventBus := NewEventBus(logger, 10)
-	inspector := NewLLMInspector(logger, eventBus, "api.openai.com")
+	inspector := NewLLMInspector(logger, eventBus, "api.openai.com", nil)
 	requestID := "req-7"
 
 	// First chunk - incomplete request

@@ -5,6 +5,8 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/monsterxx03/linko/pkg/mitm/llm"
 )
 
 // Manager is the main MITM manager
@@ -21,15 +23,17 @@ type Manager struct {
 
 // ManagerConfig contains MITM manager configuration
 type ManagerConfig struct {
-	CACertPath          string
-	CAKeyPath           string
-	CertCacheDir        string
-	SiteCertValidity    time.Duration
-	CACertValidity      time.Duration
-	Enabled             bool
-	MaxBodySize         int64
-	EventHistorySize    int
-	LLMEventHistorySize int // Event history size for LLM inspector
+	CACertPath            string
+	CAKeyPath             string
+	CertCacheDir          string
+	SiteCertValidity      time.Duration
+	CACertValidity        time.Duration
+	Enabled               bool
+	MaxBodySize           int64
+	EventHistorySize      int
+	LLMEventHistorySize   int     // Event history size for LLM inspector
+	CustomAnthropicMatches []string // Custom Anthropic API match patterns
+	CustomOpenAIMatches    []string // Custom OpenAI API match patterns
 }
 
 // NewManager creates a new MITM manager
@@ -76,7 +80,10 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 
 	// Add both inspectors - they publish to separate event buses
 	// SSEInspector must in the last
-	m.inspector.Add(NewLLMInspector(logger, m.llmEventBus, ""))
+	m.inspector.Add(NewLLMInspector(logger, m.llmEventBus, "", &llm.ProviderMatcher{
+		CustomAnthropicMatches: config.CustomAnthropicMatches,
+		CustomOpenAIMatches:    config.CustomOpenAIMatches,
+	}))
 	m.inspector.Add(NewSSEInspector(logger, m.eventBus, "", config.MaxBodySize))
 
 	return m, nil

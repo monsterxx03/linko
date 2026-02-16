@@ -113,7 +113,8 @@ type AnthropicStreamEvent struct {
 
 // anthropicProvider implements Provider for Anthropic Claude API
 type anthropicProvider struct {
-	logger *slog.Logger
+	logger        *slog.Logger
+	customMatches *ProviderMatcher
 }
 
 func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
@@ -127,9 +128,19 @@ func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
 		return true
 	}
 
+	// Check custom matches
+	if a.customMatches != nil {
+		for _, match := range a.customMatches.CustomAnthropicMatches {
+			if matchCustomPattern(hostname, path, match) {
+				return true
+			}
+		}
+	}
+
 	return false
 }
 
+// matchCustomPattern checks if hostname/path matches a custom pattern (format: "hostname/path")
 // extractConversationIDFromReq extracts conversation ID from a parsed AnthropicRequest
 func (a anthropicProvider) extractConversationIDFromReq(req *AnthropicRequest) string {
 	// 从 metadata.user_id 获取会话 ID

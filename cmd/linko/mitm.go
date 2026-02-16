@@ -13,9 +13,11 @@ import (
 )
 
 var (
-	mitmLogLevel   string
-	mitmWhitelist  string
-	mitmListenAddr string
+	mitmLogLevel            string
+	mitmWhitelist           string
+	mitmListenAddr          string
+	mitmAnthropicMatch      string
+	mitmOpenAIMatch         string
 )
 
 var mitmCmd = &cobra.Command{
@@ -55,6 +57,14 @@ func runMITM(cmd *cobra.Command, args []string) {
 
 	if mitmListenAddr != "" {
 		cfg.Server.ListenAddr = mitmListenAddr
+	}
+
+	if mitmAnthropicMatch != "" {
+		cfg.MITM.CustomAnthropicMatches = strings.Split(mitmAnthropicMatch, ",")
+	}
+
+	if mitmOpenAIMatch != "" {
+		cfg.MITM.CustomOpenAIMatches = strings.Split(mitmOpenAIMatch, ",")
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
@@ -115,4 +125,6 @@ func init() {
 	mitmCmd.Flags().StringVar(&mitmLogLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	mitmCmd.Flags().StringVar(&mitmWhitelist, "whitelist", "", "Comma-separated list of domains to MITM (e.g., 'example.com,api.example.com')")
 	mitmCmd.Flags().StringVar(&mitmListenAddr, "listen", "", "Proxy listen address (default: 127.0.0.1:9810)")
+	mitmCmd.Flags().StringVar(&mitmAnthropicMatch, "anthropic-match", "", "Comma-separated list of custom Anthropic API hostname/path patterns (e.g., 'api.example.com/v1/messages')")
+	mitmCmd.Flags().StringVar(&mitmOpenAIMatch, "openai-match", "", "Comma-separated list of custom OpenAI API hostname/path patterns (e.g., 'api.myai.com/v1/chat/completions')")
 }

@@ -1,4 +1,4 @@
-# Linko - Transparent MITM Proxy for HTTPS Traffic Analysis
+# Linko - Transparent MITM Proxy for LLM Traffic Analysis
 
 ![Demo](./screenshots/linko.gif)
 
@@ -63,8 +63,6 @@ sudo linko mitm
 ```
 
 The MITM proxy server starts on port 9890 by default. This command requires **sudo** because it sets up firewall rules to redirect HTTPS traffic (port 443) through the MITM proxy.
-
-**Why sudo is required:** The proxy uses transparent interception via macOS firewall (pf) rules to capture HTTPS traffic from all applications without requiring individual proxy configuration. Setting these firewall rules requires administrator privileges.
 
 ### Whitelist (Optional)
 
@@ -140,6 +138,23 @@ launchctl stop ai.openclaw.gateway && launchctl start ai.openclaw.gateway
 Linko can parse and display LLM API requests and responses. Currently supported:
 
 - **Anthropic API** (or any anthropic compatible api, e.g.: minimax, deepseek)
+- **OpenAI API** (or any openai compatible api)
+
+### Custom LLM Provider Matching
+
+By default, Linko automatically detects requests to known LLM providers. You can use `--anthropic-match` and `--openai-match` to add custom API endpoints:
+
+```bash
+sudo linko mitm --anthropic-match "api.example.com/v1/messages" --openai-match "api.myai.com/v1/chat/completions"
+```
+
+Multiple patterns can be separated by commas:
+
+```bash
+sudo linko mitm --anthropic-match "api.example.com/v1/messages,api2.example.com/v1/anthropic"
+```
+
+Pattern format: `hostname/path` - requests matching the hostname and path prefix will be parsed as the corresponding LLM API type.
 
 When you make requests to supported LLM providers through the MITM proxy, the admin interface will display:
 

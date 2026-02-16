@@ -155,6 +155,16 @@ type MITMConfig struct {
 
 	// LLMEventHistorySize is the number of LLM events to keep in history for replay (default: 10)
 	LLMEventHistorySize int `mapstructure:"llm_event_history_size" yaml:"llm_event_history_size"`
+
+	// CustomAnthropicMatches is a list of custom hostname/path patterns for Anthropic API matching
+	// Format: "hostname/path" (e.g., "api.example.com/v1/messages")
+	// These patterns will be matched in addition to the built-in Anthropic-compatible APIs
+	CustomAnthropicMatches []string `mapstructure:"custom_anthropic_matches" yaml:"custom_anthropic_matches"`
+
+	// CustomOpenAIMatches is a list of custom hostname/path patterns for OpenAI API matching
+	// Format: "hostname/path" (e.g., "api.myai.com/v1/chat/completions")
+	// These patterns will be matched in addition to the built-in OpenAI-compatible APIs
+	CustomOpenAIMatches []string `mapstructure:"custom_openai_matches" yaml:"custom_openai_matches"`
 }
 
 // DefaultConfig returns a default configuration

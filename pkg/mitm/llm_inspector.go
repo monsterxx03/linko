@@ -21,15 +21,17 @@ type LLMInspector struct {
 	conversationIDs sync.Map // requestID -> string (conversationID)
 	streamMsgIDs    sync.Map // requestID -> string (assistant message ID for streaming)
 	processedBytes  sync.Map // requestID -> int (last processed byte position)
+	providerMatcher *llm.ProviderMatcher
 }
 
 // NewLLMInspector creates a new LLMInspector
-func NewLLMInspector(logger *slog.Logger, eventBus *EventBus, hostname string) *LLMInspector {
+func NewLLMInspector(logger *slog.Logger, eventBus *EventBus, hostname string, providerMatcher *llm.ProviderMatcher) *LLMInspector {
 	return &LLMInspector{
-		BaseInspector: NewBaseInspector("llm_inspector", hostname),
-		logger:        logger,
-		eventBus:      eventBus,
-		httpProc:      NewHTTPProcessor(logger, 0),
+		BaseInspector:   NewBaseInspector("llm_inspector", hostname),
+		logger:          logger,
+		eventBus:        eventBus,
+		httpProc:        NewHTTPProcessor(logger, 0),
+		providerMatcher: providerMatcher,
 	}
 }
 
@@ -75,7 +77,7 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	}
 
 	// Try to find a provider for this request
-	provider := llm.FindProvider(httpMsg.Hostname, httpMsg.Path, bodyBytes, l.logger)
+	provider := llm.FindProviderWithMatcher(httpMsg.Hostname, httpMsg.Path, bodyBytes, l.logger, l.providerMatcher)
 	if provider == nil {
 		return
 	}
@@ -162,7 +164,7 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 	}
 
 	// Try to find a provider using the hostname from the connection and cached path
-	provider := llm.FindProvider(hostname, path, bodyBytes, l.logger)
+	provider := llm.FindProviderWithMatcher(hostname, path, bodyBytes, l.logger, l.providerMatcher)
 	if provider == nil {
 		return bodyBytes, nil
 	}
@@ -281,7 +283,7 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 	l.processedBytes.Delete(requestID)
 
 	// Try to find a provider using the hostname from the connection and cached path
-	provider := llm.FindProvider(hostname, path, bodyBytes, l.logger)
+	provider := llm.FindProviderWithMatcher(hostname, path, bodyBytes, l.logger, l.providerMatcher)
 	if provider == nil {
 		return
 	}

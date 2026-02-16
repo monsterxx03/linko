@@ -80,13 +80,27 @@ type OpenAIDelta struct {
 
 // openaiProvider implements Provider for OpenAI Chat API
 type openaiProvider struct {
-	logger *slog.Logger
+	logger        *slog.Logger
+	customMatches *ProviderMatcher
 }
 
 func (o openaiProvider) Match(hostname, path string, body []byte) bool {
-	return (strings.Contains(hostname, "api.openai.com") ||
+	if strings.Contains(hostname, "api.openai.com") ||
 		strings.Contains(hostname, "openai.azure.com") ||
-		strings.Contains(path, "/chat/completions"))
+		strings.Contains(path, "/chat/completions") {
+		return true
+	}
+
+	// Check custom matches
+	if o.customMatches != nil {
+		for _, match := range o.customMatches.CustomOpenAIMatches {
+			if matchCustomPattern(hostname, path, match) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func (o openaiProvider) ParseResponse(path string, body []byte) (*LLMResponse, error) {
