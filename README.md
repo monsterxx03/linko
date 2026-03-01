@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/monsterxx03/linko/actions/workflows/ci.yml/badge.svg)](https://github.com/monsterxx03/linko/actions/workflows/ci.yml)
 
-Linko includes a built-in MITM (Man-in-the-Middle) proxy that intercepts HTTPS traffic and decrypts it for analysis. It also supports visualizing LLM API messages (currently only Anthropic format).
+Linko includes a built-in MITM (Man-in-the-Middle) proxy that intercepts HTTPS traffic and decrypts it for analysis. It also supports visualizing LLM API messages.
 
 **Note:** Linko currently only supports macOS.
 
@@ -135,10 +135,7 @@ launchctl stop ai.openclaw.gateway && launchctl start ai.openclaw.gateway
 
 ## LLM Message Visualization
 
-Linko can parse and display LLM API requests and responses. Currently supported:
-
-- **Anthropic API** (or any anthropic compatible api, e.g.: minimax, deepseek)
-- **OpenAI API** (or any openai compatible api)
+Linko can parse and display LLM API requests and responses.
 
 ### Custom LLM Provider Matching
 
@@ -163,6 +160,16 @@ When you make requests to supported LLM providers through the MITM proxy, the ad
 - Messages (user/assistant/system)
 - Tool calls
 - Streaming deltas
+
+### Supported LLM APIs
+
+| Provider | API | Supported |
+|----------|-----|-----------|
+| Anthropic | Messages API | Yes |
+| OpenAI | Chat Completions API | Yes |
+| OpenAI | Responses API | Not yet |
+
+For OpenAI-compatible APIs (e.g., OpenAI, Azure OpenAI, Ollama, DeepSeek), Linko supports the `/chat/completions` endpoint.
 
 ## Command Reference
 
