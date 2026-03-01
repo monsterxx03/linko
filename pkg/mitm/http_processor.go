@@ -127,8 +127,8 @@ func (p *HTTPProcessor) ProcessRequest(inputData []byte, requestID string) ([]by
 	default:
 		needed := int(pending.contentLength) + headerLen
 		if len(pending.data) < needed {
-			p.logger.Warn("pending data < needed", "len", len(pending.data), "needed", needed)
-			needed = len(pending.data)
+			// Data incomplete, keep pending and return false
+			return inputData, nil, false, nil
 		}
 		p.pendingReqs.Delete(requestID)
 		// Make a copy to ensure the returned data is independent
@@ -203,6 +203,7 @@ func (p *HTTPProcessor) ProcessResponse(inputData []byte, requestID string) ([]b
 	default:
 		needed := int(pending.contentLength) + headerLen
 		if len(pending.data) < needed {
+			// Data incomplete, keep pending and return false
 			return inputData, nil, false, nil
 		}
 		p.pendingResps.Delete(requestID)
