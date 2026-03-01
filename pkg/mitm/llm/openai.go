@@ -185,12 +185,29 @@ func (o openaiProvider) ParseResponse(path string, body []byte) (*LLMResponse, e
 }
 
 // extractSystemPromptsFromReq extracts system prompts from a parsed OpenAIRequest
+// It extracts from both the top-level "system" field and messages with role="system"
 func (o openaiProvider) extractSystemPromptsFromReq(req *OpenAIRequest) []string {
-	if req.System == "" {
+	var systemPrompts []string
+
+	// Extract from top-level system field
+	if req.System != "" {
+		systemPrompts = append(systemPrompts, req.System)
+	}
+
+	// Extract from messages with role="system"
+	for _, msg := range req.Messages {
+		if msg.Role == "system" {
+			if content, ok := msg.Content.(string); ok && content != "" {
+				systemPrompts = append(systemPrompts, content)
+			}
+		}
+	}
+
+	if len(systemPrompts) == 0 {
 		return nil
 	}
 
-	return []string{req.System}
+	return systemPrompts
 }
 
 // ParseFullRequest parses the request body once and returns all extracted info

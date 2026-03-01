@@ -468,6 +468,27 @@ func TestOpenAIExtractSystemPrompts(t *testing.T) {
 			want: []string{"You are a helpful assistant."},
 		},
 		{
+			name: "system in messages",
+			req: &OpenAIRequest{
+				Messages: []OpenAIMessage{
+					{Role: "system", Content: "You are a helpful assistant."},
+					{Role: "user", Content: "Hello"},
+				},
+			},
+			want: []string{"You are a helpful assistant."},
+		},
+		{
+			name: "both top-level and message system",
+			req: &OpenAIRequest{
+				System: "Top level system prompt.",
+				Messages: []OpenAIMessage{
+					{Role: "system", Content: "Message system prompt."},
+					{Role: "user", Content: "Hello"},
+				},
+			},
+			want: []string{"Top level system prompt.", "Message system prompt."},
+		},
+		{
 			name: "empty system",
 			req:  &OpenAIRequest{},
 			want: nil,
