@@ -82,6 +82,61 @@ func convertAnthropicMessages(messages []AnthropicMessage) []LLMMessage {
 	return result
 }
 
+func convertGeminiMessages(contents []GeminiContent) []LLMMessage {
+	var result []LLMMessage
+	for _, c := range contents {
+		var contentParts []string
+		var toolCalls []ToolCall
+		var toolResults []ToolResult
+
+		for _, part := range c.Parts {
+			if part.Text != "" {
+				contentParts = append(contentParts, part.Text)
+			}
+
+			// Handle function call (model calling a tool)
+			if part.FunctionCall != nil {
+				toolCalls = append(toolCalls, ToolCall{
+					ID: part.FunctionCall.ID,
+					Type: "function",
+					Function: FunctionCall{
+						Name:      part.FunctionCall.Name,
+						Arguments: part.FunctionCall.Args,
+					},
+				})
+			}
+
+			// Handle function response (tool result from user)
+			if part.FunctionResponse != nil {
+				responseJSON, _ := json.Marshal(part.FunctionResponse.Response)
+				toolResults = append(toolResults, ToolResult{
+					ToolUseID: part.FunctionResponse.Name,
+					Content:   string(responseJSON),
+				})
+			}
+		}
+
+		// Determine role: Gemini uses "model" for assistant, "user" for user
+		// If role is empty, default to "user"
+		role := c.Role
+		if role == "" {
+			role = "user"
+		}
+		// Convert "model" to "assistant" for consistency
+		if role == "model" {
+			role = "assistant"
+		}
+
+		result = append(result, LLMMessage{
+			Role:        role,
+			Content:     contentParts,
+			ToolCalls:   toolCalls,
+			ToolResults: toolResults,
+		})
+	}
+	return result
+}
+
 func convertOpenAIMessages(messages []OpenAIMessage) []LLMMessage {
 	var result []LLMMessage
 	for _, m := range messages {

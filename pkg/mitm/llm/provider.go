@@ -9,6 +9,7 @@ import (
 type ProviderMatcher struct {
 	CustomAnthropicMatches []string
 	CustomOpenAIMatches   []string
+	CustomGeminiMatches   []string
 }
 
 // Provider interface defines the contract for LLM API parsers
@@ -32,6 +33,7 @@ func FindProviderWithMatcher(hostname, path string, body []byte, logger *slog.Lo
 	providers := []Provider{
 		anthropicProvider{logger: logger, customMatches: matcher},
 		openaiProvider{logger: logger, customMatches: matcher},
+		geminiProvider{logger: logger, customMatches: matcher},
 	}
 
 	for _, p := range providers {
