@@ -172,8 +172,11 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 	// Parse SSE stream tokens incrementally
 	deltas := provider.ParseSSEStreamFrom(bodyBytes, startPos)
 
-	// Update processed position
-	l.processedBytes.Store(requestID, len(bodyBytes))
+	// Only update processed position if we got new deltas
+	// This allows retrying when previous data was truncated
+	if len(deltas) > 0 {
+		l.processedBytes.Store(requestID, len(bodyBytes))
+	}
 
 	// 从缓存中获取 conversationID（与请求时一致）
 	conversationID := ""

@@ -68,6 +68,14 @@ const TOOL_FORMATTERS: Record<string, (args: Record<string, unknown>) => string>
     if (desc) return `Task ${desc}`;
     return 'Task';
   },
+  Agent: (args) => {
+    const subagent = args.subagent_type;
+    const desc = args.description;
+    if (subagent && desc) return `Agent ${subagent}: ${desc}`;
+    if (subagent) return `Agent ${subagent}`;
+    if (desc) return `Agent ${desc}`;
+    return 'Agent';
+  },
   Skill: (args) => {
     const skill = args.skill;
     const argsVal = args.args;

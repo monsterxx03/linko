@@ -96,12 +96,21 @@ func convertGeminiMessages(contents []GeminiContent) []LLMMessage {
 
 			// Handle function call (model calling a tool)
 			if part.FunctionCall != nil {
+				// Args can be string or object (CloudCode uses object)
+				argsStr := ""
+				switch a := part.FunctionCall.Args.(type) {
+				case string:
+					argsStr = a
+				case map[string]any:
+					argsJSON, _ := json.Marshal(a)
+					argsStr = string(argsJSON)
+				}
 				toolCalls = append(toolCalls, ToolCall{
 					ID: part.FunctionCall.ID,
 					Type: "function",
 					Function: FunctionCall{
 						Name:      part.FunctionCall.Name,
-						Arguments: part.FunctionCall.Args,
+						Arguments: argsStr,
 					},
 				})
 			}

@@ -141,9 +141,11 @@ type GeminiContent struct {
 }
 
 type GeminiPart struct {
-	Text          string              `json:"text,omitempty"`
-	FunctionCall  *GeminiFunctionCall `json:"functionCall,omitempty"`
-	FunctionResponse *struct {
+	Text              string              `json:"text,omitempty"`
+	Thought           bool                `json:"thought,omitempty"`       // thought: true from CloudCode
+	ThoughtSignature string              `json:"thoughtSignature,omitempty"` // thinking content from Gemini
+	FunctionCall      *GeminiFunctionCall `json:"functionCall,omitempty"`
+	FunctionResponse  *struct {
 		Name     string `json:"name"`
 		Response any    `json:"response"`
 	} `json:"functionResponse,omitempty"`
@@ -152,7 +154,7 @@ type GeminiPart struct {
 type GeminiFunctionCall struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
-	Args string `json:"args"`
+	Args any   `json:"args"` // Can be string or object (for CloudCode)
 }
 
 type GeminiTool struct {
@@ -196,4 +198,46 @@ type GeminiStreamChunk struct {
 	Candidates     []GeminiCandidate `json:"candidates"`
 	UsageMetadata   *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
 	ModelVersion    string `json:"modelVersion,omitempty"`
+}
+
+// CloudCodeResponse represents response from cloudcode-pa.googleapis.com
+// The candidates field is nested under "response" key
+type CloudCodeResponse struct {
+	Response struct {
+		Candidates     []GeminiCandidate `json:"candidates"`
+		UsageMetadata *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
+	} `json:"response"`
+}
+
+type CloudCodeStreamChunk struct {
+	Response struct {
+		Candidates     []GeminiCandidate `json:"candidates"`
+		UsageMetadata *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
+	} `json:"response"`
+}
+
+// CloudCodeRequest represents request to cloudcode-pa.googleapis.com
+// The contents are nested under "request" key, but model is at top level
+type CloudCodeRequest struct {
+	Model        string `json:"model"`
+	Project      string `json:"project"`
+	UserPromptID string `json:"user_prompt_id"`
+	Request      struct {
+		Contents          []GeminiContent        `json:"contents"`
+		SystemInstruction *GeminiContent         `json:"systemInstruction,omitempty"`
+		Tools             []CloudCodeTools      `json:"tools,omitempty"`
+		GenerationConfig *GeminiConfig          `json:"generationConfig,omitempty"`
+	} `json:"request"`
+}
+
+// CloudCodeTools represents the tools structure in CloudCode API
+// Format: {"functionDeclarations": [{name, description, parametersJsonSchema}]}
+type CloudCodeTools struct {
+	FunctionDeclarations []CloudCodeFunction `json:"functionDeclarations"`
+}
+
+type CloudCodeFunction struct {
+	Name                string                 `json:"name"`
+	Description         string                 `json:"description,omitempty"`
+	ParametersJsonSchema map[string]interface{} `json:"parametersJsonSchema"`
 }
