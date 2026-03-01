@@ -125,3 +125,75 @@ type RequestInfo struct {
 	SystemPrompts  []string
 	Tools          []ToolDef
 }
+
+// GeminiRequest represents a Gemini API request
+type GeminiRequest struct {
+	Model             string          `json:"model"`
+	Contents          []GeminiContent `json:"contents"`
+	SystemInstruction *GeminiContent  `json:"systemInstruction,omitempty"`
+	Tools             []GeminiTool    `json:"tools,omitempty"`
+	GenerationConfig *GeminiConfig   `json:"generationConfig,omitempty"`
+}
+
+type GeminiContent struct {
+	Role  string       `json:"role,omitempty"`
+	Parts []GeminiPart `json:"parts"`
+}
+
+type GeminiPart struct {
+	Text          string              `json:"text,omitempty"`
+	FunctionCall  *GeminiFunctionCall `json:"functionCall,omitempty"`
+	FunctionResponse *struct {
+		Name     string `json:"name"`
+		Response any    `json:"response"`
+	} `json:"functionResponse,omitempty"`
+}
+
+type GeminiFunctionCall struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name"`
+	Args string `json:"args"`
+}
+
+type GeminiTool struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Parameters  map[string]interface{} `json:"parameters"`
+}
+
+type GeminiConfig struct {
+	Temperature     float64  `json:"temperature,omitempty"`
+	TopP            float64  `json:"topP,omitempty"`
+	TopK            int      `json:"topK,omitempty"`
+	MaxOutputTokens int      `json:"maxOutputTokens,omitempty"`
+	StopSequences   []string `json:"stopSequences,omitempty"`
+}
+
+type GeminiResponse struct {
+	Candidates     []GeminiCandidate `json:"candidates"`
+	PromptFeedback *struct {
+		BlockReason string `json:"blockReason,omitempty"`
+	} `json:"promptFeedback,omitempty"`
+	UsageMetadata *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
+}
+
+type GeminiCandidate struct {
+	Content        GeminiContent `json:"content"`
+	FinishReason   string        `json:"finishReason,omitempty"`
+	Index          int           `json:"index"`
+	SafetyRatings  []any          `json:"safetyRatings,omitempty"`
+}
+
+type GeminiUsageMetadata struct {
+	PromptTokenCount               int `json:"promptTokenCount"`
+	CandidatesTokenCount           int `json:"candidatesTokenCount"`
+	TotalTokenCount                int `json:"totalTokenCount"`
+	PromptTokenDetails             any `json:"promptTokenDetails,omitempty"`
+	CandidatesTokenDetails         any `json:"candidatesTokenDetails,omitempty"`
+}
+
+type GeminiStreamChunk struct {
+	Candidates     []GeminiCandidate `json:"candidates"`
+	UsageMetadata   *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
+	ModelVersion    string `json:"modelVersion,omitempty"`
+}
