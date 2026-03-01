@@ -28,6 +28,7 @@ make lint             # Lint with golangci-lint
 # Testing
 make test             # Run all tests
 go test -v ./pkg/dns/...    # Run tests for specific package
+go test -v ./pkg/mitm/llm/... -run TestOpenAI  # Run LLM provider tests
 ```
 
 ## Architecture
@@ -79,3 +80,27 @@ make test-coverage
 - Vite 5 for bundling
 - Tailwind CSS for styling
 - Bun as package manager (set via `BUN` env var in Makefile)
+
+## LLM API 解析模块 (pkg/mitm/llm)
+
+解析 OpenAI/Anthropic 兼容 API 的请求和响应：
+
+```
+pkg/mitm/llm/
+├── openai.go       # OpenAI Chat Completions API 解析
+├── anthropic.go    # Anthropic Claude API 解析
+├── helpers.go      # 共享转换函数
+└── types.go        # 类型定义
+```
+
+**支持的 API 特性：**
+- o1 模型的 `reasoning_content` 思考过程
+- 流式 SSE 响应 delta 合并
+- Tool calls 和 tool role 消息
+- 多模态内容 (image_url)
+
+## Gotchas
+
+- **SSE 流式累积**：SSE 响应可能分多个 HTTP chunk 到达，需使用缓存累积内容
+- **OpenAI tools 格式**：`tools` 字段是嵌套的 `{type: "function", function: {...}}` 结构
+- **Token 统计**：流式响应中 token usage 在最后一个 chunk 的根级别 `usage` 字段
