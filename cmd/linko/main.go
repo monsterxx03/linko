@@ -27,6 +27,7 @@ func main() {
 	rootCmd.AddCommand(updateCnIPCmd)
 	rootCmd.AddCommand(isCnIPCmd)
 	rootCmd.AddCommand(genCaCmd)
+	rootCmd.AddCommand(versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		slog.Error("failed to execute command", "error", err)
