@@ -353,10 +353,10 @@ func (o openaiProvider) ParseSSEStreamFrom(body []byte, startPos int) []TokenDel
 
 			// Handle tool calls
 			if len(choice.Delta.ToolCalls) > 0 {
-				for _, toolCall := range choice.Delta.ToolCalls {
+				for i, toolCall := range choice.Delta.ToolCalls {
 					if toolCall.ID != "" && toolCall.Function.Name != "" {
 						// Store tool info for later use
-						toolInfoByIndex[len(choice.Delta.ToolCalls)] = struct {
+						toolInfoByIndex[i] = struct {
 							toolID   string
 							toolName string
 						}{
@@ -370,7 +370,7 @@ func (o openaiProvider) ParseSSEStreamFrom(body []byte, startPos int) []TokenDel
 					}
 					if toolCall.Function.Arguments != "" {
 						var toolID string
-						if info, exists := toolInfoByIndex[0]; exists {
+						if info, exists := toolInfoByIndex[i]; exists {
 							toolID = info.toolID
 						}
 						tryMergeDelta(TokenDelta{

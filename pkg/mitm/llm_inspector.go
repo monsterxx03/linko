@@ -19,7 +19,6 @@ type LLMInspector struct {
 	httpProc        HTTPProcessorInterface
 	requestPaths    sync.Map // requestID -> string (path)
 	conversationIDs sync.Map // requestID -> string (conversationID)
-	streamMsgIDs    sync.Map // requestID -> string (assistant message ID for streaming)
 	processedBytes  sync.Map // requestID -> int (last processed byte position)
 	accumulatedContent sync.Map // requestID -> string (accumulated content for streaming)
 	providerMatcher *llm.ProviderMatcher
@@ -429,11 +428,6 @@ func (l *LLMInspector) publishConversationUpdate(conversationID, status string, 
 	}
 
 	l.publishEvent("conversation", event)
-}
-
-// estimateTokenCount provides a rough estimate of token count
-func estimateTokenCount(text string) int {
-	return len(text) / 4
 }
 
 // Helper function to generate unique event IDs
