@@ -21,6 +21,7 @@ type LLMInspector struct {
 	conversationIDs sync.Map // requestID -> string (conversationID)
 	streamMsgIDs    sync.Map // requestID -> string (assistant message ID for streaming)
 	processedBytes  sync.Map // requestID -> int (last processed byte position)
+	accumulatedContent sync.Map // requestID -> string (accumulated content for streaming)
 	providerMatcher *llm.ProviderMatcher
 }
 
@@ -181,8 +182,11 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		conversationID = val.(string)
 	}
 
-	// Accumulate content for streaming completion
+	// 获取或初始化累积内容（支持多 chunk 响应）
 	accumulatedContent := ""
+	if val, exists := l.accumulatedContent.Load(requestID); exists {
+		accumulatedContent = val.(string)
+	}
 
 	// Accumulate tool calls for streaming completion
 	toolCallsByID := make(map[string]*llm.ToolCall)
@@ -260,6 +264,12 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 			l.publishEvent("llm_message", msgEvent)
 
 			l.publishConversationUpdate(conversationID, "complete", 1, event.TotalTokens, "")
+
+			// 清理累积内容缓存
+			l.accumulatedContent.Delete(requestID)
+		} else {
+			// 保存累积内容以便后续 chunk 使用
+			l.accumulatedContent.Store(requestID, accumulatedContent)
 		}
 	}
 
@@ -283,6 +293,8 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 
 	// 清理 processedBytes（对于 SSE 流）
 	l.processedBytes.Delete(requestID)
+	// 清理累积内容缓存
+	l.accumulatedContent.Delete(requestID)
 
 	// Try to find a provider using the hostname from the connection and cached path
 	provider := llm.FindProviderWithMatcher(hostname, path, bodyBytes, l.logger, l.providerMatcher)

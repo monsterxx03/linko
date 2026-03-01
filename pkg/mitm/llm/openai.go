@@ -9,21 +9,35 @@ import (
 
 // OpenAI API types
 type OpenAIRequest struct {
-	Model       string          `json:"model"`
-	MaxTokens   int             `json:"max_tokens,omitempty"`
-	Messages    []OpenAIMessage `json:"messages"`
-	System      string          `json:"system,omitempty"`
-	Stop        interface{}     `json:"stop,omitempty"`
-	Temperature float64         `json:"temperature,omitempty"`
-	TopP        float64         `json:"top_p,omitempty"`
-	Tools       []ToolDef       `json:"tools,omitempty"`
+	Model       string           `json:"model"`
+	MaxTokens   int              `json:"max_tokens,omitempty"`
+	Messages    []OpenAIMessage  `json:"messages"`
+	System      string           `json:"system,omitempty"`
+	Stop        any              `json:"stop,omitempty"`
+	Temperature float64          `json:"temperature,omitempty"`
+	TopP        float64          `json:"top_p,omitempty"`
+	Tools       []OpenAITool     `json:"tools,omitempty"`
+}
+
+// OpenAITool represents a tool definition in OpenAI API format
+type OpenAITool struct {
+	Type     string         `json:"type"`
+	Function OpenAIFunction `json:"function"`
+}
+
+// OpenAIFunction represents the function definition within a tool
+type OpenAIFunction struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	Parameters  map[string]interface{} `json:"parameters"`
 }
 
 type OpenAIMessage struct {
-	Role      string      `json:"role"`
-	Content   interface{} `json:"content"` // string or array of content parts
-	Name      string      `json:"name,omitempty"`
-	ToolCalls []ToolCall  `json:"tool_calls,omitempty"`
+	Role             string      `json:"role"`
+	Content          interface{} `json:"content"` // string or array of content parts
+	Name             string      `json:"name,omitempty"`
+	ToolCalls        []ToolCall  `json:"tool_calls,omitempty"`
+	ReasoningContent string      `json:"reasoning_content,omitempty"` // o1 model's reasoning
 }
 
 type OpenAIContentPart struct {
@@ -36,19 +50,22 @@ type OpenAIContentPart struct {
 }
 
 type OpenAIResponse struct {
-	ID      string         `json:"id"`
-	Object  string         `json:"object"`
-	Created int64          `json:"created"`
-	Model   string         `json:"model"`
-	Choices []OpenAIChoice `json:"choices"`
-	Usage   OpenAIUsage    `json:"usage"`
+	ID                string         `json:"id"`
+	Object            string         `json:"object"`
+	Created           int64          `json:"created"`
+	Model             string         `json:"model"`
+	Choices           []OpenAIChoice `json:"choices"`
+	Usage             OpenAIUsage    `json:"usage"`
+	ReasoningContent  string         `json:"reasoning_content,omitempty"` // o1 model's reasoning
+	SystemFingerprint string         `json:"system_fingerprint,omitempty"`
 }
 
 type OpenAIChoice struct {
-	Index        int           `json:"index"`
-	Message      OpenAIMessage `json:"message"`
-	FinishReason string        `json:"finish_reason"`
-	LogProbs     interface{}   `json:"logprobs,omitempty"`
+	Index            int           `json:"index"`
+	Message          OpenAIMessage `json:"message"`
+	FinishReason     string        `json:"finish_reason"`
+	LogProbs         interface{}   `json:"logprobs,omitempty"`
+	ReasoningContent string        `json:"reasoning_content,omitempty"` // o1 model's reasoning in choice
 }
 
 type OpenAIUsage struct {
@@ -58,24 +75,29 @@ type OpenAIUsage struct {
 }
 
 type OpenAIStreamChunk struct {
-	ID      string              `json:"id"`
-	Object  string              `json:"object"`
-	Created int64               `json:"created"`
-	Model   string              `json:"model"`
-	Choices []OpenAIChunkChoice `json:"choices"`
+	ID                string              `json:"id"`
+	Object            string              `json:"object"`
+	Created           int64               `json:"created"`
+	Model             string              `json:"model"`
+	Choices           []OpenAIChunkChoice `json:"choices"`
+	Usage             OpenAIUsage         `json:"usage,omitempty"` // for streaming final usage
+	SystemFingerprint string              `json:"system_fingerprint,omitempty"`
 }
 
 type OpenAIChunkChoice struct {
-	Index        int         `json:"index"`
-	Delta        OpenAIDelta `json:"delta"`
-	FinishReason string      `json:"finish_reason,omitempty"`
-	LogProbs     interface{} `json:"logprobs,omitempty"`
+	Index            int         `json:"index"`
+	Delta            OpenAIDelta `json:"delta"`
+	FinishReason     string      `json:"finish_reason,omitempty"`
+	LogProbs         any         `json:"logprobs,omitempty"`
+	ReasoningContent string      `json:"reasoning_content,omitempty"` // for non-streaming o1 responses
+	Usage            OpenAIUsage `json:"usage,omitempty"`             // for streaming final usage
 }
 
 type OpenAIDelta struct {
-	Role      string     `json:"role,omitempty"`
-	Content   string     `json:"content,omitempty"`
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	Role             string     `json:"role,omitempty"`
+	Content          string     `json:"content,omitempty"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"` // o1 model's reasoning delta
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
 }
 
 // openaiProvider implements Provider for OpenAI Chat API
@@ -115,17 +137,40 @@ func (o openaiProvider) ParseResponse(path string, body []byte) (*LLMResponse, e
 
 	// Extract content with type assertion
 	content := ""
+	reasoningContent := ""
+
+	// Check reasoning_content at response level (for o1 model)
+	if resp.ReasoningContent != "" {
+		reasoningContent = resp.ReasoningContent
+	}
+
+	// Check reasoning_content at choice level (for o1 model)
+	if resp.Choices[0].ReasoningContent != "" {
+		reasoningContent = resp.Choices[0].ReasoningContent
+	}
+
+	// Extract content from message
 	switch c := resp.Choices[0].Message.Content.(type) {
 	case string:
 		content = c
-	case []interface{}:
+	case []any:
 		for _, part := range c {
-			if partMap, ok := part.(map[string]interface{}); ok {
+			if partMap, ok := part.(map[string]any); ok {
 				if text, ok := partMap["text"].(string); ok {
 					content += text
 				}
 			}
 		}
+	}
+
+	// Check message level reasoning_content (for o1 model)
+	if resp.Choices[0].Message.ReasoningContent != "" {
+		reasoningContent = resp.Choices[0].Message.ReasoningContent
+	}
+
+	// Include reasoning content in the content if present
+	if reasoningContent != "" {
+		content = "[Reasoning]\n" + reasoningContent + "\n[/Reasoning]\n" + content
 	}
 
 	return &LLMResponse{
@@ -156,11 +201,11 @@ func (o openaiProvider) ParseFullRequest(body []byte) (*RequestInfo, error) {
 	}
 
 	return &RequestInfo{
-		ConversationID: fmt.Sprintf("openai-%s", generateOpenAIConversationHash(req.Messages)),
-		Model:           req.Model,
-		Messages:        convertOpenAIMessages(req.Messages),
-		SystemPrompts:   o.extractSystemPromptsFromReq(&req),
-		Tools:           o.extractToolsFromReq(&req),
+		ConversationID: "openai-default",
+		Model:          req.Model,
+		Messages:       convertOpenAIMessages(req.Messages),
+		SystemPrompts:  o.extractSystemPromptsFromReq(&req),
+		Tools:          o.extractToolsFromReq(&req),
 	}, nil
 }
 
@@ -172,10 +217,11 @@ func (o openaiProvider) extractToolsFromReq(req *OpenAIRequest) []ToolDef {
 
 	var tools []ToolDef
 	for _, t := range req.Tools {
+		// OpenAI tools have nested "function" object
 		tools = append(tools, ToolDef{
-			Name:        t.Name,
-			Description: t.Description,
-			InputSchema: t.InputSchema,
+			Name:        t.Function.Name,
+			Description: t.Function.Description,
+			InputSchema: t.Function.Parameters,
 		})
 	}
 	return tools
@@ -190,7 +236,69 @@ func (o openaiProvider) ParseSSEStreamFrom(body []byte, startPos int) []TokenDel
 	remaining := string(body[startPos:])
 	lines := strings.Split(remaining, "\n")
 
+	// Track cumulative token usage
+	var cumulativeUsage TokenUsage
+
+	// Track tool call info by index
+	toolInfoByIndex := make(map[int]struct {
+		toolID   string
+		toolName string
+	})
+
 	var deltas []TokenDelta
+
+	// Helper function to merge deltas of the same type (similar to anthropic.go)
+	tryMergeDelta := func(newDelta TokenDelta) {
+		// Apply cumulative usage if new delta has no usage info
+		if newDelta.Usage == (TokenUsage{}) {
+			newDelta.Usage = cumulativeUsage
+		}
+
+		// First delta always gets appended
+		if len(deltas) == 0 {
+			deltas = append(deltas, newDelta)
+			return
+		}
+
+		last := &deltas[len(deltas)-1]
+
+		// 1. Merge text content
+		if newDelta.Text != "" {
+			last.Text += newDelta.Text
+			return
+		}
+
+		// 2. Merge reasoning content (for o1 model)
+		if newDelta.Thinking != "" {
+			last.Thinking += newDelta.Thinking
+			return
+		}
+
+		// 3. Merge completion info (stop_reason, usage) - updates last delta in place
+		if newDelta.IsComplete || newDelta.StopReason != "" {
+			last.IsComplete = newDelta.IsComplete
+			if newDelta.StopReason != "" {
+				last.StopReason = newDelta.StopReason
+			}
+			if newDelta.Usage != (TokenUsage{}) {
+				last.Usage = newDelta.Usage
+			}
+			return
+		}
+
+		// 4. Merge tool data
+		if newDelta.ToolData != "" && !last.IsComplete {
+			sameTool := (newDelta.ToolID == "" || newDelta.ToolID == last.ToolID) &&
+				(newDelta.ToolName == "" || newDelta.ToolName == last.ToolName)
+			if sameTool && !strings.HasSuffix(last.ToolData, newDelta.ToolData) {
+				last.ToolData += newDelta.ToolData
+				return
+			}
+		}
+
+		// No merge possible, append new delta
+		deltas = append(deltas, newDelta)
+	}
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -203,7 +311,7 @@ func (o openaiProvider) ParseSSEStreamFrom(body []byte, startPos int) []TokenDel
 			continue
 		}
 		if data == "[DONE]" {
-			deltas = append(deltas, TokenDelta{
+			tryMergeDelta(TokenDelta{
 				Text:       "",
 				IsComplete: true,
 			})
@@ -216,33 +324,70 @@ func (o openaiProvider) ParseSSEStreamFrom(body []byte, startPos int) []TokenDel
 			continue
 		}
 
+		// Update cumulative usage if present
+		if chunk.Usage.CompletionTokens > 0 || chunk.Usage.PromptTokens > 0 {
+			cumulativeUsage.InputTokens = chunk.Usage.PromptTokens
+			cumulativeUsage.OutputTokens = chunk.Usage.CompletionTokens
+		}
+
 		for _, choice := range chunk.Choices {
+			// Check for usage in choice (some API versions include it here)
+			if choice.Usage.CompletionTokens > 0 || choice.Usage.PromptTokens > 0 {
+				cumulativeUsage.InputTokens = choice.Usage.PromptTokens
+				cumulativeUsage.OutputTokens = choice.Usage.CompletionTokens
+			}
+
+			// Handle reasoning_content (for o1 model streaming)
+			if choice.Delta.ReasoningContent != "" {
+				tryMergeDelta(TokenDelta{
+					Thinking: choice.Delta.ReasoningContent,
+				})
+			}
+
+			// Handle content
 			if choice.Delta.Content != "" {
-				deltas = append(deltas, TokenDelta{
+				tryMergeDelta(TokenDelta{
 					Text: choice.Delta.Content,
 				})
 			}
+
+			// Handle tool calls
 			if len(choice.Delta.ToolCalls) > 0 {
 				for _, toolCall := range choice.Delta.ToolCalls {
 					if toolCall.ID != "" && toolCall.Function.Name != "" {
-						deltas = append(deltas, TokenDelta{
+						// Store tool info for later use
+						toolInfoByIndex[len(choice.Delta.ToolCalls)] = struct {
+							toolID   string
+							toolName string
+						}{
+							toolID:   toolCall.ID,
+							toolName: toolCall.Function.Name,
+						}
+						tryMergeDelta(TokenDelta{
 							ToolName: toolCall.Function.Name,
 							ToolID:   toolCall.ID,
 						})
-						if toolCall.Function.Arguments != "" {
-							deltas = append(deltas, TokenDelta{
-								ToolData: toolCall.Function.Arguments,
-								ToolID:   toolCall.ID,
-							})
+					}
+					if toolCall.Function.Arguments != "" {
+						var toolID string
+						if info, exists := toolInfoByIndex[0]; exists {
+							toolID = info.toolID
 						}
+						tryMergeDelta(TokenDelta{
+							ToolData: toolCall.Function.Arguments,
+							ToolID:   toolID,
+						})
 					}
 				}
 			}
+
+			// Handle completion
 			if choice.FinishReason != "" {
-				deltas = append(deltas, TokenDelta{
+				tryMergeDelta(TokenDelta{
 					Text:       "",
 					IsComplete: true,
 					StopReason: choice.FinishReason,
+					Usage:      cumulativeUsage,
 				})
 			}
 		}

@@ -86,22 +86,72 @@ func convertOpenAIMessages(messages []OpenAIMessage) []LLMMessage {
 	var result []LLMMessage
 	for _, m := range messages {
 		var contentParts []string
+		var toolCalls []ToolCall
+		var toolResults []ToolResult
+
 		switch c := m.Content.(type) {
 		case string:
 			contentParts = []string{c}
 		case []any:
 			for _, part := range c {
 				if partMap, ok := part.(map[string]any); ok {
-					if text, ok := partMap["text"].(string); ok {
-						contentParts = append(contentParts, text)
+					partType, _ := partMap["type"].(string)
+					switch partType {
+					case "text":
+						if text, ok := partMap["text"].(string); ok {
+							contentParts = append(contentParts, text)
+						}
+					case "image_url":
+						// Handle image content: extract URL or base64 data
+						if imageURL, ok := partMap["image_url"].(map[string]any); ok {
+							if url, ok := imageURL["url"].(string); ok {
+								contentParts = append(contentParts, "[Image: "+url+"]")
+							}
+						}
+					case "tool_use":
+						// This is typically in assistant messages with tool_calls
+						id, _ := partMap["id"].(string)
+						name, _ := partMap["name"].(string)
+						input, _ := partMap["input"].(map[string]any)
+						inputJSON, _ := json.Marshal(input)
+						toolCalls = append(toolCalls, ToolCall{
+							ID:   id,
+							Type: "function",
+							Function: FunctionCall{
+								Name:      name,
+								Arguments: string(inputJSON),
+							},
+						})
+					case "tool_result":
+						toolUseID, _ := partMap["tool_use_id"].(string)
+						content, _ := partMap["content"].(string)
+						toolResults = append(toolResults, ToolResult{
+							ToolUseID: toolUseID,
+							Content:   content,
+						})
 					}
 				}
 			}
 		}
+
+		// Handle ToolCalls at message level (from assistant messages)
+		for _, tc := range m.ToolCalls {
+			toolCalls = append(toolCalls, ToolCall{
+				ID:   tc.ID,
+				Type: "function",
+				Function: FunctionCall{
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				},
+			})
+		}
+
 		result = append(result, LLMMessage{
-			Role:    m.Role,
-			Content: contentParts,
-			Name:    m.Name,
+			Role:        m.Role,
+			Content:     contentParts,
+			Name:        m.Name,
+			ToolCalls:   toolCalls,
+			ToolResults: toolResults,
 		})
 	}
 	return result

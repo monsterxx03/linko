@@ -48,7 +48,9 @@ func (s *SSEInspector) inspectRequest(inputData []byte, requestID string) ([]byt
 
 	resultData, httpMsg, complete, err := s.httpProc.ProcessRequest(inputData, requestID)
 	if err != nil || httpMsg == nil {
-		s.logger.Warn("invalid http msg", "err", err, "msg", string(inputData))
+		if err != nil {
+			s.logger.Warn("invalid http msg", "err", err)
+		}
 		return inputData, nil
 	}
 
