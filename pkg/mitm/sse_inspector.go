@@ -36,7 +36,7 @@ func (s *SSEInspector) Inspect(direction Direction, data []byte, hostname string
 	if direction == DirectionClientToServer {
 		return s.inspectRequest(data, requestID)
 	}
-	return s.inspectResponse(data, requestID)
+	return s.inspectResponse(data, hostname, requestID)
 }
 
 func (s *SSEInspector) inspectRequest(inputData []byte, requestID string) ([]byte, error) {
@@ -62,18 +62,18 @@ func (s *SSEInspector) inspectRequest(inputData []byte, requestID string) ([]byt
 	return resultData, nil
 }
 
-func (s *SSEInspector) inspectResponse(inputData []byte, requestID string) ([]byte, error) {
+func (s *SSEInspector) inspectResponse(inputData []byte, hostname string, requestID string) ([]byte, error) {
 	resultData, httpMsg, complete, err := s.httpProc.ProcessResponse(inputData, requestID)
 	if err != nil || httpMsg == nil {
 		return inputData, nil
 	}
 
 	if httpMsg.IsSSE {
-		return s.processSSEStream(httpMsg, requestID, resultData)
+		return s.processSSEStream(httpMsg, hostname, requestID, resultData)
 	}
 
 	if complete {
-		s.processCompleteResponse(httpMsg, requestID)
+		s.processCompleteResponse(httpMsg, hostname, requestID)
 		s.httpProc.ClearPending(requestID)
 	}
 
@@ -92,7 +92,7 @@ func (s *SSEInspector) cacheChunkedRequest(httpMsg *HTTPMessage, requestID strin
 	})
 }
 
-func (s *SSEInspector) processCompleteResponse(httpMsg *HTTPMessage, requestID string) {
+func (s *SSEInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname string, requestID string) {
 	var httpReq *HTTPRequest
 	if val, exists := s.requestCache.LoadAndDelete(requestID); exists {
 		httpReq = val.(*HTTPRequest)
@@ -111,10 +111,10 @@ func (s *SSEInspector) processCompleteResponse(httpMsg *HTTPMessage, requestID s
 		Latency:       0,
 	}
 
-	s.publishTrafficEvent(requestID, "", httpReq, httpResp)
+	s.publishTrafficEvent(hostname, requestID, "", httpReq, httpResp)
 }
 
-func (s *SSEInspector) processSSEStream(httpMsg *HTTPMessage, requestID string, resultData []byte) ([]byte, error) {
+func (s *SSEInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, requestID string, resultData []byte) ([]byte, error) {
 	var httpReq *HTTPRequest
 	if val, exists := s.requestCache.LoadAndDelete(requestID); exists {
 		httpReq = val.(*HTTPRequest)
@@ -132,12 +132,12 @@ func (s *SSEInspector) processSSEStream(httpMsg *HTTPMessage, requestID string, 
 		ContentLength: int64(len(bodyStr)),
 	}
 
-	s.publishTrafficEvent(requestID, DirectionServerToClient.String(), httpReq, httpResp)
+	s.publishTrafficEvent(hostname, requestID, DirectionServerToClient.String(), httpReq, httpResp)
 	// For SSE, return the accumulated data (resultData may be longer than bodyStr if there are multiple events)
 	return resultData, nil
 }
 
-func (s *SSEInspector) publishTrafficEvent(requestID, direction string, httpReq *HTTPRequest, httpResp *HTTPResponse) {
+func (s *SSEInspector) publishTrafficEvent(hostname, requestID, direction string, httpReq *HTTPRequest, httpResp *HTTPResponse) {
 	event := &TrafficEvent{
 		ID:           requestID,
 		Timestamp:    time.Now(),
@@ -146,9 +146,7 @@ func (s *SSEInspector) publishTrafficEvent(requestID, direction string, httpReq 
 		RequestID:    requestID,
 		Request:      httpReq,
 		Response:     httpResp,
-	}
-	if httpReq != nil {
-		event.Hostname = httpReq.Host
+		Hostname:     hostname,
 	}
 	s.eventBus.Publish(event)
 }

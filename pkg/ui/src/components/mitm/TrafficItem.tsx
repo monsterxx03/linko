@@ -109,7 +109,7 @@ export function TrafficItem({ event, bodyExpanded }: TrafficItemProps) {
       return (
         <>
           <Badge colorClass={getMethodColor(request?.method)}>{request?.method || ''}</Badge>
-          <span className="text-sm font-medium text-bg-800 truncate max-w-xs">{request?.url || event.hostname}</span>
+          <span className="text-sm font-medium text-bg-800 truncate">{request?.url || event.hostname}</span>
           <Badge colorClass={getStatusColor(response?.status_code)}>{response?.status_code || ''}</Badge>
         </>
       );
@@ -119,7 +119,7 @@ export function TrafficItem({ event, bodyExpanded }: TrafficItemProps) {
       return (
         <>
           <Badge colorClass={getMethodColor(request?.method)}>{request?.method || ''}</Badge>
-          <span className="text-sm font-medium text-bg-800 truncate max-w-xs">{request?.url}</span>
+          <span className="text-sm font-medium text-bg-800 truncate">{request?.url}</span>
         </>
       );
     }
@@ -144,13 +144,17 @@ export function TrafficItem({ event, bodyExpanded }: TrafficItemProps) {
       className="bg-white rounded-xl border border-bg-200 p-4 mb-3 shadow-sm hover:shadow-md transition-shadow duration-200"
     >
       <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-3 min-w-0">{leftInfo}</div>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-xs font-mono bg-indigo-50 text-indigo-600 px-2 py-1 rounded border border-indigo-100 shrink-0" title={event.hostname}>
+            {event.hostname}
+          </span>
+          {leftInfo}
+        </div>
         <div className="flex items-center gap-3 flex-shrink-0">
           <span className="text-xs text-bg-400 font-mono" title={event.request_id || event.id}>
             {event.request_id ? event.request_id.slice(-8) : event.id.slice(0, 8)}
           </span>
           <span className="text-xs text-bg-400">{formatTime(event.timestamp)}</span>
-          <span className="text-xs text-bg-400 truncate max-w-[100px]">{event.hostname}</span>
           {response?.latency !== undefined && (
             <span className="text-xs text-bg-400 font-mono bg-bg-100 px-1.5 py-0.5 rounded">
               {response.latency}ms
