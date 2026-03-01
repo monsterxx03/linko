@@ -39,6 +39,28 @@ func isHTTPPrefix(data []byte) bool {
 	return false
 }
 
+// isHTTP2 detects if the data starts with an HTTP/2 frame
+// HTTP/2 uses a binary framing format: 24-bit length + frame type + flags + stream identifier
+func isHTTP2(data []byte) bool {
+	if len(data) < 9 {
+		return false
+	}
+	// HTTP/2 frames start with a 24-bit length (3 bytes), followed by frame type (1 byte)
+	// Valid HTTP/2 frame types: 0x00 (DATA), 0x01 (HEADERS), 0x02 (PRIORITY),
+	// 0x03 (RST_STREAM), 0x04 (SETTINGS), 0x05 (PUSH_PROMISE), 0x06 (PING),
+	// 0x07 (GOAWAY), 0x08 (WINDOW_UPDATE), 0x09 (CONTINUATION)
+	frameType := data[3]
+	validFrameTypes := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}
+	for _, t := range validFrameTypes {
+		if frameType == t {
+			// Also verify the length field is reasonable (not exceeding 16MB)
+			length := uint32(data[0])<<16 | uint32(data[1])<<8 | uint32(data[2])
+			return length < 0x1000000
+		}
+	}
+	return false
+}
+
 func isHTTPResponsePrefix(data []byte) bool {
 	if len(data) < 9 {
 		return false

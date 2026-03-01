@@ -40,8 +40,15 @@ func (s *SSEInspector) Inspect(direction Direction, data []byte, hostname string
 }
 
 func (s *SSEInspector) inspectRequest(inputData []byte, requestID string) ([]byte, error) {
+	// Detect HTTP/2 requests (they use binary framing, not text-based method names)
+	if isHTTP2(inputData) {
+		s.logger.Info("detected http/2 request", "request_id", requestID)
+		return inputData, nil
+	}
+
 	resultData, httpMsg, complete, err := s.httpProc.ProcessRequest(inputData, requestID)
 	if err != nil || httpMsg == nil {
+		s.logger.Warn("invalid http msg", "err", err, "msg", string(inputData))
 		return inputData, nil
 	}
 

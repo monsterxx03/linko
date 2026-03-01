@@ -15,6 +15,7 @@ type pendingHTTPRequest struct {
 	headers       []byte
 	contentLength int64
 	isComplete    bool
+	isWebSocket   bool
 }
 
 type pendingHTTPResponse struct {
@@ -77,6 +78,7 @@ func (p *HTTPProcessor) ProcessRequest(inputData []byte, requestID string) ([]by
 	// If we already have headers, just append the data
 	// Otherwise, check if this is the start of a new request
 	if pending.headers == nil && !isHTTPPrefix(inputData) {
+		p.logger.Warn("not http request", "msg", string(inputData), "request_id", requestID)
 		return inputData, nil, false, nil
 	}
 
@@ -85,11 +87,17 @@ func (p *HTTPProcessor) ProcessRequest(inputData []byte, requestID string) ([]by
 	if pending.headers == nil {
 		idx := bytes.Index(pending.data, []byte("\r\n\r\n"))
 		if idx < 0 {
+			p.logger.Warn("no http header found", "msg", pending.data)
 			return inputData, nil, false, nil
 		}
 		pending.headers = make([]byte, idx+4)
 		copy(pending.headers, pending.data[:idx+4])
 		pending.contentLength = p.parseContentLength(pending.headers, false)
+		// Detect WebSocket request
+		pending.isWebSocket = p.detectWebSocket(pending.headers)
+		if pending.isWebSocket {
+			p.logger.Warn("websocket request detected, not support", "request_id", requestID)
+		}
 	}
 
 	headerLen := len(pending.headers)
@@ -107,6 +115,7 @@ func (p *HTTPProcessor) ProcessRequest(inputData []byte, requestID string) ([]by
 		// Chunked transfer encoding
 		bodyEndIdx := bytes.Index(pending.data, []byte("\r\n0\r\n\r\n"))
 		if bodyEndIdx < 0 {
+			p.logger.Warn("no body found in transfer encoding chunk")
 			return inputData, nil, false, nil
 		}
 		p.pendingReqs.Delete(requestID)
@@ -118,7 +127,8 @@ func (p *HTTPProcessor) ProcessRequest(inputData []byte, requestID string) ([]by
 	default:
 		needed := int(pending.contentLength) + headerLen
 		if len(pending.data) < needed {
-			return inputData, nil, false, nil
+			p.logger.Warn("pending data < needed", "len", len(pending.data), "needed", needed)
+			needed = len(pending.data)
 		}
 		p.pendingReqs.Delete(requestID)
 		// Make a copy to ensure the returned data is independent
@@ -284,9 +294,22 @@ func (p *HTTPProcessor) detectSSE(headerData []byte) bool {
 	return strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")), "text/event-stream")
 }
 
+func (p *HTTPProcessor) detectWebSocket(headerData []byte) bool {
+	reader := bytes.NewReader(headerData)
+	req, err := http.ReadRequest(bufio.NewReader(reader))
+	if err != nil {
+		return false
+	}
+	defer req.Body.Close()
+	upgrade := strings.ToLower(req.Header.Get("Upgrade"))
+	connection := strings.ToLower(req.Header.Get("Connection"))
+	return upgrade == "websocket" && strings.Contains(connection, "upgrade")
+}
+
 func (p *HTTPProcessor) buildRequestMessage(data []byte) *HTTPMessage {
 	req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(data)))
 	if err != nil {
+		p.logger.Warn("invalid http request", "err", err, "msg", string(data))
 		return nil
 	}
 	defer req.Body.Close()
