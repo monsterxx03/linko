@@ -117,6 +117,14 @@ NODE_TLS_REJECT_UNAUTHORIZED=0 claude
 
 This allows Claude Code to work with the MITM proxy's self-signed certificates.
 
+## Using with Gemini CLI
+
+If you want to inspect Gemini CLI's HTTPS traffic through MITM, you need to disable TLS certificate verification:
+
+```bash
+NODE_TLS_REJECT_UNAUTHORIZED=0 gemini
+```
+
 ## Using with OpenCLAW
 
 If you want to inspect OpenCLAW's HTTPS traffic through MITM, add the following to `~/Library/LaunchAgents/ai.openclaw.gateway.plist` in the `EnvironmentVariables` dict, then restart the gateway:
@@ -168,6 +176,8 @@ When you make requests to supported LLM providers through the MITM proxy, the ad
 | Anthropic | Messages API | Yes |
 | OpenAI | Chat Completions API | Yes |
 | OpenAI | Responses API | Not yet |
+| Google Gemini | Generate Content API | Yes |
+| Google Gemini | Cloud Code API | Yes |
 
 For OpenAI-compatible APIs (e.g., OpenAI, Azure OpenAI, Ollama, DeepSeek), Linko supports the `/chat/completions` endpoint.
 
