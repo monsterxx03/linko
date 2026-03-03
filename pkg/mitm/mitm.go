@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/monsterxx03/linko/pkg/mitm/llm"
+	proxy2 "github.com/monsterxx03/linko/pkg/mitm/llm/proxy"
 )
 
 // Manager is the main MITM manager
@@ -18,6 +19,7 @@ type Manager struct {
 	inspector       *InspectorChain
 	eventBus        *EventBus
 	llmEventBus     *EventBus
+	llmProxy        *proxy2.Manager // Anthropic to OpenAI proxy manager
 	mu              sync.RWMutex
 }
 
@@ -34,6 +36,10 @@ type ManagerConfig struct {
 	LLMEventHistorySize   int     // Event history size for LLM inspector
 	CustomAnthropicMatches []string // Custom Anthropic API match patterns
 	CustomOpenAIMatches    []string // Custom OpenAI API match patterns
+	AnthropicProxyEnabled  bool              // Enable Anthropic to OpenAI proxy
+	AnthropicProxyURL      string            // Upstream URL for proxy
+	AnthropicProxyAPIKey  string            // API key for upstream
+	AnthropicProxyTimeout time.Duration     // Proxy timeout
 }
 
 // NewManager creates a new MITM manager
@@ -76,6 +82,18 @@ func NewManager(config ManagerConfig, logger *slog.Logger) (*Manager, error) {
 		inspector:       NewInspectorChain(),
 		eventBus:        NewEventBus(logger, config.EventHistorySize),
 		llmEventBus:     NewEventBus(logger, config.LLMEventHistorySize),
+	}
+
+	// Initialize Anthropic to OpenAI proxy if enabled
+	if config.AnthropicProxyEnabled {
+		proxyConfig := &proxy2.ProxyConfig{
+			Enabled:      true,
+			UpstreamURL:  config.AnthropicProxyURL,
+			APIKey:       config.AnthropicProxyAPIKey,
+			ModelMapping: nil,
+			Timeout:      config.AnthropicProxyTimeout,
+		}
+		m.llmProxy = proxy2.NewManager(proxyConfig, logger)
 	}
 
 	// Add both inspectors - they publish to separate event buses

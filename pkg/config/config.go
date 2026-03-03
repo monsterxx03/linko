@@ -165,6 +165,29 @@ type MITMConfig struct {
 	// Format: "hostname/path" (e.g., "api.myai.com/v1/chat/completions")
 	// These patterns will be matched in addition to the built-in OpenAI-compatible APIs
 	CustomOpenAIMatches []string `mapstructure:"custom_openai_matches" yaml:"custom_openai_matches"`
+
+	// AnthropicProxy is the Anthropic to OpenAI protocol proxy configuration
+	AnthropicProxy AnthropicProxyConfig `mapstructure:"anthropic_proxy" yaml:"anthropic_proxy"`
+}
+
+// AnthropicProxyConfig contains settings for the Anthropic to OpenAI protocol proxy
+type AnthropicProxyConfig struct {
+	// Enable the Anthropic to OpenAI proxy
+	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+
+	// UpstreamURL is the URL of the OpenAI compatible upstream service
+	// e.g., "http://localhost:11434" for Ollama
+	UpstreamURL string `mapstructure:"upstream_url" yaml:"upstream_url"`
+
+	// APIKey is the optional API key for the upstream service
+	APIKey string `mapstructure:"api_key" yaml:"api_key"`
+
+	// ModelMapping maps Anthropic model names to upstream model names
+	// e.g., "claude-3-sonnet-20240229": "llama3"
+	ModelMapping map[string]string `mapstructure:"model_mapping" yaml:"model_mapping"`
+
+	// Timeout is the request timeout (default: 120s)
+	Timeout time.Duration `mapstructure:"timeout" yaml:"timeout"`
 }
 
 // DefaultConfig returns a default configuration
@@ -215,6 +238,15 @@ func DefaultConfig() *Config {
 			MaxBodySize:         2097152,              // 2M default
 			EventHistorySize:    10,                   // Default 10 historical events
 			LLMEventHistorySize: 10,                   // Default 10 LLM historical events
+			AnthropicProxy: AnthropicProxyConfig{
+				Enabled:  false,
+				Timeout:  120 * time.Second,
+				ModelMapping: map[string]string{
+					"claude-3-sonnet-20240229": "llama3",
+					"claude-3-opus-20240229":   "llama3:70b",
+					"claude-3-5-sonnet-20241022": "qwen2.5",
+				},
+			},
 		},
 	}
 }
