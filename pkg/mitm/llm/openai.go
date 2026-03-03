@@ -1,6 +1,8 @@
 package llm
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -17,6 +19,43 @@ type OpenAIRequest struct {
 	Temperature float64          `json:"temperature,omitempty"`
 	TopP        float64          `json:"top_p,omitempty"`
 	Tools       []OpenAITool     `json:"tools,omitempty"`
+	// ExtraFields 用于捕获未定义的字段，如 custom_id
+	ExtraFields map[string]any `json:"-"`
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for OpenAIRequest
+func (o *OpenAIRequest) UnmarshalJSON(data []byte) error {
+	type Alias OpenAIRequest
+	aux := &struct {
+		*Alias
+	}{
+		Alias: (*Alias)(o),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	// 捕获额外字段
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+
+	o.ExtraFields = make(map[string]any)
+	knownFields := map[string]bool{
+		"model": true, "max_tokens": true, "messages": true, "system": true,
+		"stop": true, "temperature": true, "top_p": true, "tools": true,
+	}
+	for k, v := range raw {
+		if !knownFields[k] {
+			var val any
+			if err := json.Unmarshal(v, &val); err != nil {
+				continue
+			}
+			o.ExtraFields[k] = val
+		}
+	}
+	return nil
 }
 
 // OpenAITool represents a tool definition in OpenAI API format
@@ -210,15 +249,38 @@ func (o openaiProvider) extractSystemPromptsFromReq(req *OpenAIRequest) []string
 	return systemPrompts
 }
 
+// extractConversationID extracts conversation ID from request
+func (o openaiProvider) extractConversationID(hostname string, headers map[string]string, req *OpenAIRequest) string {
+	// 当 hostname 是 opencode.ai 时，优先从 header X-Opencode-Session 获取会话 ID
+	if hostname == "opencode.ai" {
+		if sessionID, ok := headers["X-Opencode-Session"]; ok && sessionID != "" {
+			return fmt.Sprintf("opencode-%s", sessionID)
+		}
+	}
+
+	// 从 custom_id 获取会话 ID
+	if customID, ok := req.ExtraFields["custom_id"].(string); ok && customID != "" {
+		hash := sha256.Sum256([]byte(customID))
+		hashStr := hex.EncodeToString(hash[:])
+		if len(hashStr) > 6 {
+			hashStr = hashStr[:6]
+		}
+		return fmt.Sprintf("openai-%s", hashStr)
+	}
+
+	// 如果没有 custom_id，返回固定 ID
+	return "openai-default"
+}
+
 // ParseFullRequest parses the request body once and returns all extracted info
-func (o openaiProvider) ParseFullRequest(body []byte) (*RequestInfo, error) {
+func (o openaiProvider) ParseFullRequest(hostname string, headers map[string]string, body []byte) (*RequestInfo, error) {
 	var req OpenAIRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		return nil, fmt.Errorf("failed to parse OpenAI request: %w", err)
 	}
 
 	return &RequestInfo{
-		ConversationID: "openai-default",
+		ConversationID: o.extractConversationID(hostname, headers, &req),
 		Model:          req.Model,
 		Messages:       convertOpenAIMessages(req.Messages),
 		SystemPrompts:  o.extractSystemPromptsFromReq(&req),

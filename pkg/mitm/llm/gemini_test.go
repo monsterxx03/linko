@@ -116,7 +116,7 @@ func TestGeminiParseFullRequest(t *testing.T) {
 		t.Fatalf("failed to marshal request: %v", err)
 	}
 
-	info, err := provider.ParseFullRequest(body)
+	info, err := provider.ParseFullRequest("", nil, body)
 	if err != nil {
 		t.Fatalf("ParseFullRequest() error = %v", err)
 	}

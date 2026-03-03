@@ -92,12 +92,19 @@ func (g geminiProvider) parseGeminiCandidates(candidates []GeminiCandidate, usag
 	}, nil
 }
 
-func (g geminiProvider) ParseFullRequest(body []byte) (*RequestInfo, error) {
+func (g geminiProvider) ParseFullRequest(hostname string, headers map[string]string, body []byte) (*RequestInfo, error) {
 	// First try standard Gemini format
 	var req GeminiRequest
 	if err := json.Unmarshal(body, &req); err == nil && len(req.Contents) > 0 {
+		// 当 hostname 是 opencode.ai 时，优先从 header X-Opencode-Session 获取会话 ID
+		conversationID := "gemini-default"
+		if hostname == "opencode.ai" {
+			if sessionID, ok := headers["X-Opencode-Session"]; ok && sessionID != "" {
+				conversationID = fmt.Sprintf("opencode-%s", sessionID)
+			}
+		}
 		return &RequestInfo{
-			ConversationID: "gemini-default",
+			ConversationID: conversationID,
 			Model:          req.Model,
 			Messages:       convertGeminiMessages(req.Contents),
 			SystemPrompts:  g.extractSystemPromptsFromReq(&req),

@@ -86,7 +86,7 @@ func (m *mockProvider) ParseSSEStreamFrom(body []byte, startPos int) []llm.Token
 	return m.deltas
 }
 
-func (m *mockProvider) ParseFullRequest(body []byte) (*llm.RequestInfo, error) {
+func (m *mockProvider) ParseFullRequest(hostname string, headers map[string]string, body []byte) (*llm.RequestInfo, error) {
 	return m.reqInfo, m.reqInfoErr
 }
 

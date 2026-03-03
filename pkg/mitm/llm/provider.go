@@ -20,7 +20,7 @@ type Provider interface {
 	ParseSSEStreamFrom(body []byte, startPos int) []TokenDelta
 	// ParseFullRequest parses the request body once and returns all extracted info
 	// This avoids multiple JSON unmarshaling of the same request
-	ParseFullRequest(body []byte) (*RequestInfo, error)
+	ParseFullRequest(hostname string, headers map[string]string, body []byte) (*RequestInfo, error)
 }
 
 // FindProvider returns the appropriate provider for the given request

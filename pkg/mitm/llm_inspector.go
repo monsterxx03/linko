@@ -83,7 +83,7 @@ func (l *LLMInspector) processCompleteRequest(httpMsg *HTTPMessage, requestID st
 	}
 
 	// 一次解析获取所有信息
-	reqInfo, err := provider.ParseFullRequest(bodyBytes)
+	reqInfo, err := provider.ParseFullRequest(httpMsg.Hostname, httpMsg.Headers, bodyBytes)
 	if err != nil {
 		l.logger.Debug("failed to parse LLM request", "error", err)
 		return

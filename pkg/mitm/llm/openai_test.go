@@ -349,7 +349,7 @@ func TestOpenAIParseFullRequest(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := provider.ParseFullRequest([]byte(tt.body))
+			got, err := provider.ParseFullRequest("", nil, []byte(tt.body))
 			if tt.want == nil {
 				if err == nil {
 					t.Error("expected error for invalid JSON")

@@ -20,6 +20,7 @@ var compatibleHosts = map[string]bool{
 	"api.longcat.chat":       true,
 	"api.tbox.cn":            true,
 	"api.xiaomimimo.com":     true,
+	"opencode.ai":            true,
 }
 
 // Anthropic API types
@@ -103,7 +104,7 @@ type AnthropicStreamEvent struct {
 		Usage      AnthropicUsage     `json:"usage,omitempty"`
 	} `json:"message,omitempty"`
 	// Usage 用于 message_delta 事件的根级别 usage（不在 message 对象内）
-	Usage AnthropicUsage `json:"usage,omitempty"`
+	Usage        AnthropicUsage `json:"usage,omitempty"`
 	ContentBlock struct {
 		Type     string `json:"type"`
 		Text     string `json:"text,omitempty"`
@@ -126,7 +127,7 @@ func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
 	}
 
 	// Compatible APIs: check if hostname in list and path contains "anthropic"
-	if compatibleHosts[hostname] && strings.Contains(path, "anthropic") {
+	if compatibleHosts[hostname] && strings.Contains(path, "/v1/messages") {
 		return true
 	}
 
@@ -142,9 +143,15 @@ func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
 	return false
 }
 
-// matchCustomPattern checks if hostname/path matches a custom pattern (format: "hostname/path")
-// extractConversationIDFromReq extracts conversation ID from a parsed AnthropicRequest
-func (a anthropicProvider) extractConversationIDFromReq(req *AnthropicRequest) string {
+// extractConversationID extracts conversation ID from request
+func (a anthropicProvider) extractConversationID(hostname string, headers map[string]string, req *AnthropicRequest) string {
+	// 当 hostname 是 opencode.ai 时，优先从 header X-Opencode-Session 获取会话 ID
+	if hostname == "opencode.ai" {
+		if sessionID, ok := headers["X-Opencode-Session"]; ok && sessionID != "" {
+			return fmt.Sprintf("opencode-%s", sessionID)
+		}
+	}
+
 	// 从 metadata.user_id 获取会话 ID
 	if req.Metadata != nil && req.Metadata.UserID != "" {
 		// 对 UserID 进行哈希处理，取前6位
@@ -253,14 +260,14 @@ func (a anthropicProvider) extractToolsFromReq(req *AnthropicRequest) []ToolDef 
 }
 
 // ParseFullRequest parses the request body once and returns all extracted info
-func (a anthropicProvider) ParseFullRequest(body []byte) (*RequestInfo, error) {
+func (a anthropicProvider) ParseFullRequest(hostname string, headers map[string]string, body []byte) (*RequestInfo, error) {
 	var req AnthropicRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		return nil, fmt.Errorf("failed to parse Anthropic request: %w", err)
 	}
 
 	return &RequestInfo{
-		ConversationID: a.extractConversationIDFromReq(&req),
+		ConversationID: a.extractConversationID(hostname, headers, &req),
 		Model:          req.Model,
 		Messages:       convertAnthropicMessages(req.Messages),
 		SystemPrompts:  a.extractSystemPromptsFromReq(&req),
