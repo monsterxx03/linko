@@ -122,7 +122,7 @@ type anthropicProvider struct {
 
 func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
 	// Anthropic official API
-	if hostname == "api.anthropic.com" && path == "/v1/messages" {
+	if hostname == "api.anthropic.com" && strings.Contains(path, "/v1/messages") {
 		return true
 	}
 

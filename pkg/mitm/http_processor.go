@@ -331,7 +331,7 @@ func (p *HTTPProcessor) buildRequestMessage(data []byte) *HTTPMessage {
 
 	return &HTTPMessage{
 		Hostname:    req.Host,
-		Path:        req.URL.Path,
+		Path:        req.URL.RequestURI(),
 		Method:      req.Method,
 		Headers:     extractHeaders(req.Header),
 		Body:        bodyBytes,
