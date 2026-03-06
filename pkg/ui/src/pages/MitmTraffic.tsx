@@ -1,10 +1,10 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useTraffic } from '../hooks/useTraffic';
 import { TrafficEvent } from '../contexts/SSEContext';
 import { TrafficHeader, TrafficControls, TrafficItem } from '../components/mitm';
 
 function MitmTraffic() {
-  const { events, isConnected, error, search, setSearch, autoScroll, setAutoScroll, clear, reconnect } = useTraffic({ maxEvents: 100, autoScroll: true });
+  const { events, isConnected, error, search, setSearch, clear, reconnect } = useTraffic();
   const [collapseVer, setCollapseVer] = useState(0);
   const [bodyExpanded, setBodyExpanded] = useState(true);
   const listRef = useRef<HTMLDivElement>(null);
@@ -12,10 +12,6 @@ function MitmTraffic() {
   const handleSearchChange = useCallback((value: string) => {
     setSearch(value);
   }, [setSearch]);
-
-  const handleAutoScrollChange = useCallback((checked: boolean) => {
-    setAutoScroll(checked);
-  }, [setAutoScroll]);
 
   const handleCollapseBodies = useCallback(() => {
     setBodyExpanded(false);
@@ -25,13 +21,6 @@ function MitmTraffic() {
   const connectedClients = useMemo(() => {
     return events.length > 0 ? '1' : '0';
   }, [events.length]);
-
-  // Auto scroll effect
-  useEffect(() => {
-    if (autoScroll && listRef.current) {
-      listRef.current.scrollTop = listRef.current.scrollHeight;
-    }
-  }, [events.length, autoScroll]);
 
   return (
     <div className="tab-section">
@@ -46,9 +35,7 @@ function MitmTraffic() {
 
       <TrafficControls
         search={search}
-        autoScroll={autoScroll}
         onSearchChange={handleSearchChange}
-        onAutoScrollChange={handleAutoScrollChange}
       />
 
       <div className="bg-white rounded-xl border border-bg-200 shadow-sm overflow-hidden">

@@ -47,7 +47,7 @@ export function formatTimestamp(ts: number): string {
 }
 
 export function toCurl(event: TrafficEvent): string {
-  const { request } = event;
+  const { request, hostname } = event;
   if (!request) return '';
 
   let curl = `curl -X ${request.method || 'GET'}`;
@@ -64,7 +64,14 @@ export function toCurl(event: TrafficEvent): string {
     curl += ` \\\n  -d '${request.body.replace(/'/g, "'\\''")}'`;
   }
 
-  curl += ` \\\n  '${request.url}'`;
+  // Build full URL with hostname
+  // Default to https, but use http for IP or localhost
+  const isLocalhost = hostname === 'localhost' || hostname?.startsWith('127.') || hostname?.startsWith('192.168.') || hostname?.startsWith('10.') || hostname?.startsWith('172.');
+  const isIP = hostname ? /^\d+\.\d+\.\d+\.\d+$/.test(hostname) : false;
+  const scheme = isLocalhost || isIP ? 'http' : 'https';
+  const fullUrl = hostname && request.url ? `${scheme}://${hostname}${request.url}` : (request.url || '');
+
+  curl += ` \\\n  '${fullUrl}'`;
 
   return curl;
 }

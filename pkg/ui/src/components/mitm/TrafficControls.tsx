@@ -2,24 +2,16 @@ import React, { useCallback } from 'react';
 
 export interface TrafficControlsProps {
   search: string;
-  autoScroll: boolean;
   onSearchChange: (value: string) => void;
-  onAutoScrollChange: (checked: boolean) => void;
 }
 
 export function TrafficControls({
   search,
-  autoScroll,
   onSearchChange,
-  onAutoScrollChange,
 }: TrafficControlsProps) {
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     onSearchChange(e.target.value);
   }, [onSearchChange]);
-
-  const handleAutoScrollChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    onAutoScrollChange(e.target.checked);
-  }, [onAutoScrollChange]);
 
   return (
     <div className="bg-white rounded-xl border border-bg-200 p-4 mb-6 shadow-sm">
@@ -46,18 +38,6 @@ export function TrafficControls({
               </svg>
             </button>
           )}
-        </div>
-        <div className="flex items-center gap-2 ml-auto">
-          <input
-            type="checkbox"
-            id="auto-scroll"
-            checked={autoScroll}
-            onChange={handleAutoScrollChange}
-            className="rounded text-accent-500 focus:ring-accent-500 focus:ring-offset-0"
-          />
-          <label htmlFor="auto-scroll" className="text-sm text-bg-600 cursor-pointer select-none">
-            Auto scroll
-          </label>
         </div>
       </div>
     </div>
