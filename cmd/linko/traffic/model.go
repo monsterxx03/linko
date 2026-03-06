@@ -133,9 +133,35 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case trafficEventMsg:
-		m.events = append([]TrafficEvent{msg.event}, m.events...)
-		if len(m.events) > 100 {
-			m.events = m.events[:100]
+		// Try to find existing event with same ID (requestID) for merging
+		eventID := msg.event.ID
+		merged := false
+		for i, e := range m.events {
+			if e.ID == eventID {
+				// Merge event data: update fields that are present in new event
+				m.events[i].Timestamp = msg.event.Timestamp
+				if msg.event.Direction != "" {
+					m.events[i].Direction = msg.event.Direction
+				}
+				if msg.event.Request != nil {
+					m.events[i].Request = msg.event.Request
+				}
+				if msg.event.Response != nil {
+					m.events[i].Response = msg.event.Response
+				}
+				if msg.event.Hostname != "" {
+					m.events[i].Hostname = msg.event.Hostname
+				}
+				merged = true
+				break
+			}
+		}
+		// If not merged, add as new event at the beginning
+		if !merged {
+			m.events = append([]TrafficEvent{msg.event}, m.events...)
+			if len(m.events) > 100 {
+				m.events = m.events[:100]
+			}
 		}
 		m.applyFilters()
 		if m.selectedIndex >= len(m.filteredEvents) && len(m.filteredEvents) > 0 {

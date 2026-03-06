@@ -224,12 +224,9 @@ func renderEventsFrame(m Model) string {
 }
 
 func renderEventItem(event TrafficEvent, m Model, isSelected, isExpanded bool) string {
-	// Direction indicator
-	dirIndicator := "→"
-	dirSty := dirOutStyle
-	if event.Direction == "server->client" {
-		dirIndicator = "←"
-		dirSty = dirInStyle
+	width := m.Width()
+	if width < 60 {
+		width = 60
 	}
 
 	// Method
@@ -239,87 +236,95 @@ func renderEventItem(event TrafficEvent, m Model, isSelected, isExpanded bool) s
 	}
 	methodSty := getMethodStyle(method)
 
-	// Hostname
-	hostname := event.Hostname
-	if len(hostname) > 25 {
-		hostname = hostname[:22] + "..."
-	}
-
-	// URL path
-	path := ""
+	// Hostname + path combined
+	hostPath := event.Hostname
 	if event.Request != nil {
 		url := event.Request.URL
 		if idx := strings.Index(url, event.Hostname); idx >= 0 {
-			path = url[idx+len(event.Hostname):]
-		} else {
-			path = url
-		}
-		// Truncate but preserve query string if possible
-		if len(path) > 30 {
-			// Try to keep query string
-			if qIdx := strings.Index(path, "?"); qIdx > 0 && qIdx < 25 {
-				// Keep path up to query and truncate query
-				path = path[:25] + "..."
-			} else {
-				path = path[:27] + "..."
+			path := url[idx+len(event.Hostname):]
+			if path != "" {
+				hostPath = event.Hostname + path
 			}
-		}
-	}
-
-	// Status and latency
-	statusStr := ""
-	latencyStr := ""
-	if event.Response != nil {
-		statusStr = statusCodeStyle(event.Response.StatusCode).Render(fmt.Sprintf("%d", event.Response.StatusCode))
-		latencyStr = latencyStyle.Render(FormatLatency(event.Response.Latency))
-	}
-
-	// Build the line content
-	var lineContent string
-	if isSelected {
-		// Selected row with background
-		lineContent = fmt.Sprintf("│ %s %s │ %s │ %s",
-			dirSty.Render(dirIndicator),
-			methodSty.Render(padRight(method, 7)),
-			hostnameStyle.Render(padRight(hostname, 25)),
-			padRight(path, 30))
-		if statusStr != "" {
-			lineContent += fmt.Sprintf("│ %s %s │", statusStr, latencyStr)
+		} else if strings.HasPrefix(url, "/") {
+			hostPath = event.Hostname + url
 		} else {
-			lineContent += "│"
+			hostPath = event.Hostname + "/" + url
 		}
+	}
 
-		// Apply background to entire line
+	// Status
+	statusStr := ""
+	if event.Response != nil {
+		statusStr = fmt.Sprintf("%d", event.Response.StatusCode)
+	}
+
+	// Request ID (full, no truncate)
+	reqID := event.ID
+
+	// Timestamp (format: 15:04:05)
+	timestamp := event.Timestamp.Format("15:04:05")
+
+	// Calculate dynamic widths based on terminal width
+	// Layout: dir(2) + method(6) + hostPath + reqID(20) + timestamp(8) + status(4) + borders/spaces(~10)
+	fixedWidth := 2 + 6 + 20 + 8 + 4 + 10
+	maxHostPath := width - fixedWidth
+	if maxHostPath < 15 {
+		maxHostPath = 15
+	}
+	if len(hostPath) > maxHostPath {
+		hostPath = hostPath[:maxHostPath-3] + "..."
+	}
+
+	// Request ID and timestamp styles
+	reqIDStyle := lipgloss.NewStyle().Foreground(colorGray)
+	timeStyle := lipgloss.NewStyle().Foreground(colorGray)
+
+	// Build line content based on available width
+	var lineContent string
+	if width >= 70 {
+		// Layout: method + hostPath + reqID + timestamp + status
+		lineContent = fmt.Sprintf("│ %s %s %s %s %s │",
+			methodSty.Render(padRight(method, 6)),
+			hostnameStyle.Render(padRight(hostPath, maxHostPath)),
+			reqIDStyle.Render(reqID),
+			timeStyle.Render(timestamp),
+			statusCodeStyle(event.Response.StatusCode).Render(padRight(statusStr, 4)))
+	} else if width >= 60 {
+		// Layout: method + hostPath + reqID + timestamp
+		lineContent = fmt.Sprintf("│ %s %s %s %s │",
+			methodSty.Render(padRight(method, 6)),
+			hostnameStyle.Render(padRight(hostPath, maxHostPath)),
+			reqIDStyle.Render(reqID),
+			timeStyle.Render(timestamp))
+	} else if width >= 50 {
+		// Compact: method + hostPath + reqID
+		lineContent = fmt.Sprintf("│ %s %s %s │",
+			methodSty.Render(padRight(method, 6)),
+			hostnameStyle.Render(padRight(hostPath, max(15, width-25))),
+			reqIDStyle.Render(reqID))
+	} else {
+		// Minimal: method + hostPath
+		lineContent = fmt.Sprintf("│ %s %s │",
+			methodSty.Render(padRight(method, 6)),
+			hostnameStyle.Render(padRight(hostPath, max(15, width-15))))
+	}
+
+	if isSelected {
 		result := selectedBgStyle.Render(lineContent)
-
-		// Add expand indicator and details
 		if isExpanded {
 			expandIndicator := "▼"
 			expandSty := lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
 			result += "\n" + expandSty.Render("  "+expandIndicator+" ")
-			result += renderEventDetails(event, m, m.Width()-4)
+			result += renderEventDetails(event, m, width-4)
 		} else {
 			expandIndicator := "▶"
 			expandSty := lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
 			result += " " + expandSty.Render(expandIndicator)
 		}
-
 		return result
-	} else {
-		// Normal row
-		lineContent = fmt.Sprintf("│ %s %s │ %s │ %s",
-			dirSty.Render(dirIndicator),
-			methodSty.Render(padRight(method, 7)),
-			hostnameStyle.Render(padRight(hostname, 25)),
-			padRight(path, 30))
-		if statusStr != "" {
-			lineContent += fmt.Sprintf(" │ %s %s │", statusStr, latencyStr)
-		} else {
-			lineContent += " │"
-		}
-
-		return lineContent
 	}
+
+	return lineContent
 }
 
 func getMethodStyle(method string) lipgloss.Style {
