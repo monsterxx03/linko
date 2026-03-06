@@ -99,6 +99,29 @@ pkg/mitm/llm/
 - Tool calls 和 tool role 消息
 - 多模态内容 (image_url)
 
+## TUI 调试技巧
+
+使用 tmux 调试 Bubble Tea TUI 应用：
+
+```bash
+# 启动 TUI
+tmux new-session -d -s linko-tui 'go run ./cmd/linko tui'
+
+# 查看输出
+tmux capture-pane -t linko-tui -p
+
+# 发送按键测试
+tmux send-keys -t linko-tui 'j'    # 向下移动
+tmux send-keys -t linko-tui 'k'    # 向上移动
+tmux send-keys -t linko-tui Enter  # 确认
+
+# 调整窗口大小
+tmux resize-pane -t linko-tui -y 40
+
+# 关闭
+tmux kill-session -t linko-tui
+```
+
 ## Gotchas
 
 - **SSE 流式累积**：SSE 响应可能分多个 HTTP chunk 到达，需使用缓存累积内容

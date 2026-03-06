@@ -413,20 +413,7 @@ func renderEventDetails(event TrafficEvent, m Model, width int) string {
 }
 
 func renderHelp(m Model) string {
-	filter := m.DirectionFilter()
-
-	var filterStr string
-	switch filter {
-	case DirectionAll:
-		filterStr = filterActiveStyle.Render("[All]") + filterInactiveStyle.Render(" Req Resp")
-	case DirectionClientServer:
-		filterStr = filterInactiveStyle.Render("All ") + filterActiveStyle.Render("[Req]") + filterInactiveStyle.Render(" Resp")
-	case DirectionServerClient:
-		filterStr = filterInactiveStyle.Render("All  Req ") + filterActiveStyle.Render("[Resp]")
-	}
-
-	helpText := fmt.Sprintf(" %s │ [↑↓] Navigate │ [Enter] Expand │ [Tab] Headers/Body │ [/] Search │ [c] Clear │ [r] Reconnect │ [q] Quit",
-		filterStr)
+	helpText := fmt.Sprintf(" [↑↓/jk] Navigate │ [Enter] Expand │ [Tab] Headers/Body │ [/] Search │ [c] Clear │ [r] Reconnect │ [q] Quit")
 
 	return helpStyle.Render(helpText)
 }

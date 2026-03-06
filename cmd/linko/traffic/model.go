@@ -23,8 +23,7 @@ type Model struct {
 	searchInput textinput.Model
 
 	// Filters
-	directionFilter DirectionFilter
-	showHeaders    bool // true = show headers, false = show body
+	showHeaders bool // true = show headers, false = show body
 
 	// Status
 	status      ConnectionStatus
@@ -50,7 +49,6 @@ func NewModel(serverURL string) Model {
 		events:         make([]TrafficEvent, 0, 100),
 		filteredEvents: make([]TrafficEvent, 0, 100),
 		searchInput:    ti,
-		directionFilter: DirectionAll,
 		status:         StatusConnecting,
 		width:          80,
 		height:         24,
@@ -119,12 +117,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "/":
 				focusCmd := m.searchInput.Focus()
 				cmd = focusCmd
-			case "1":
-				m.SetDirectionFilter(DirectionClientServer)
-			case "2":
-				m.SetDirectionFilter(DirectionServerClient)
-			case "a":
-				m.SetDirectionFilter(DirectionAll)
+			case "j":
+				if m.selectedIndex < len(m.filteredEvents)-1 {
+					m.selectedIndex++
+				}
+			case "k":
+				if m.selectedIndex > 0 {
+					m.selectedIndex--
+				}
 			}
 		}
 
@@ -162,11 +162,6 @@ func (m *Model) applyFilters() {
 	m.filteredEvents = make([]TrafficEvent, 0, len(m.events))
 
 	for _, e := range m.events {
-		// Direction filter
-		if m.directionFilter != DirectionAll && e.Direction != string(m.directionFilter) {
-			continue
-		}
-
 		// Search filter
 		if query != "" {
 			match := false
@@ -226,12 +221,6 @@ func toLower(s string) string {
 	return string(result)
 }
 
-// SetDirectionFilter sets the direction filter
-func (m *Model) SetDirectionFilter(filter DirectionFilter) {
-	m.directionFilter = filter
-	m.applyFilters()
-}
-
 // Events returns the filtered events
 func (m Model) Events() []TrafficEvent {
 	return m.filteredEvents
@@ -250,11 +239,6 @@ func (m Model) ExpandedIndex() *int {
 // SearchInput returns the search input
 func (m Model) SearchInput() textinput.Model {
 	return m.searchInput
-}
-
-// DirectionFilter returns the direction filter
-func (m Model) DirectionFilter() DirectionFilter {
-	return m.directionFilter
 }
 
 // Status returns the connection status

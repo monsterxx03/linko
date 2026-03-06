@@ -5,8 +5,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var trafficCmd = &cobra.Command{
-	Use:   "traffic",
+var tuiCmd = &cobra.Command{
+	Use:   "tui",
 	Short: "MITM traffic monitor TUI",
 	Long:  `Real-time MITM traffic monitor using a TUI interface. Connects to the local Admin API and displays traffic events in real-time.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -19,6 +19,6 @@ var trafficCmd = &cobra.Command{
 }
 
 func init() {
-	trafficCmd.Flags().StringP("server", "s", "http://localhost:9810/api/mitm/traffic/sse", "SSE endpoint URL")
-	rootCmd.AddCommand(trafficCmd)
+	tuiCmd.Flags().StringP("server", "s", "http://localhost:9810/api/mitm/traffic/sse", "SSE endpoint URL")
+	rootCmd.AddCommand(tuiCmd)
 }
