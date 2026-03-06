@@ -17,7 +17,6 @@ var (
 	colorRed      = lipgloss.Color("203")
 	colorMagenta  = lipgloss.Color("212")
 	colorGray     = lipgloss.Color("243")
-	colorDarkGray = lipgloss.Color("236")
 	colorWhite    = lipgloss.Color("15")
 	colorBlack    = lipgloss.Color("16")
 
@@ -84,8 +83,8 @@ var (
 
 	// Selected item style - use background to highlight
 	selectedBgStyle = lipgloss.NewStyle().
-			Background(colorDarkGray).
-			Foreground(colorWhite)
+			Background(colorCyan).
+			Foreground(colorBlack)
 
 	// Detail styles
 	detailHeaderStyle = lipgloss.NewStyle().
@@ -121,6 +120,11 @@ var (
 
 // Render renders the view
 func Render(m Model) string {
+	// If popup is shown, render only the popup
+	if m.ShowPopup() {
+		return renderPopup(m)
+	}
+
 	var sb strings.Builder
 
 	// Header
@@ -139,6 +143,68 @@ func Render(m Model) string {
 	sb.WriteString(renderHelp(m))
 
 	return sb.String()
+}
+
+// renderPopup renders a full-screen popup with event details
+func renderPopup(m Model) string {
+	event := m.SelectedEvent()
+	if event == nil {
+		return "No event selected"
+	}
+
+	width := m.Width()
+	height := m.Height()
+
+	// Build the popup content
+	var sb strings.Builder
+
+	// Header
+	sb.WriteString(renderHeader(m))
+	sb.WriteString("\n\n")
+
+	// Event summary (use full width)
+	sb.WriteString(renderEventSummary(event, width))
+	sb.WriteString("\n\n")
+
+	// Full details (use full width)
+	sb.WriteString(renderEventDetailsFull(event, m, width, height-10))
+
+	// Help text
+	sb.WriteString("\n")
+	sb.WriteString(helpStyle.Render(" [Enter] Close │ [Tab] Toggle Headers/Body │ [q] Quit "))
+
+	return sb.String()
+}
+
+func renderEventSummary(event *TrafficEvent, width int) string {
+	method := ""
+	if event.Request != nil {
+		method = event.Request.Method
+	}
+	methodSty := getMethodStyle(method)
+
+	hostPath := event.Hostname
+	if event.Request != nil {
+		url := event.Request.URL
+		if idx := strings.Index(url, event.Hostname); idx >= 0 {
+			path := url[idx+len(event.Hostname):]
+			if path != "" {
+				hostPath = event.Hostname + path
+			}
+		} else if strings.HasPrefix(url, "/") {
+			hostPath = event.Hostname + url
+		} else {
+			hostPath = event.Hostname + "/" + url
+		}
+	}
+
+	statusStr := ""
+	if event.Response != nil {
+		statusStr = fmt.Sprintf("%d", event.Response.StatusCode)
+	}
+
+	// No border
+	return fmt.Sprintf("%s %s %s", methodSty.Render(method), hostnameStyle.Render(hostPath), statusCodeStyle(event.Response.StatusCode).Render(statusStr))
 }
 
 func renderHeader(m Model) string {
@@ -190,7 +256,6 @@ func renderEventsFrame(m Model) string {
 	}
 
 	selectedIdx := m.SelectedIndex()
-	expandedIdx := m.ExpandedIndex()
 
 	// Render as a list with selection indicator
 	var sb strings.Builder
@@ -201,7 +266,7 @@ func renderEventsFrame(m Model) string {
 		}
 
 		isSelected := i == selectedIdx
-		isExpanded := expandedIdx != nil && *expandedIdx == i
+		isExpanded := false // popup instead of inline expansion
 
 		// Render item
 		item := renderEventItem(event, m, isSelected, isExpanded)
@@ -212,12 +277,10 @@ func renderEventsFrame(m Model) string {
 		}
 	}
 
-	// Add frame
+	// Frame without border (items already have borders)
 	frame := lipgloss.NewStyle().
 		Width(m.Width()).
 		Height(availableHeight + 2).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorCyan).
 		Foreground(colorWhite)
 
 	return frame.Render(sb.String())
@@ -264,67 +327,94 @@ func renderEventItem(event TrafficEvent, m Model, isSelected, isExpanded bool) s
 	// Timestamp (format: 15:04:05)
 	timestamp := event.Timestamp.Format("15:04:05")
 
-	// Calculate dynamic widths based on terminal width
-	// Layout: dir(2) + method(6) + hostPath + reqID(20) + timestamp(8) + status(4) + borders/spaces(~10)
-	fixedWidth := 2 + 6 + 20 + 8 + 4 + 10
-	maxHostPath := width - fixedWidth
-	if maxHostPath < 15 {
-		maxHostPath = 15
+	// Calculate column widths - use lipgloss to fill width
+	// Format: │ <method> <hostPath> <reqID> <timestamp> <status> │
+	// Borders take 2 chars, so content = width - 2
+	contentWidth := width - 2
+
+	// For different widths, calculate hostPath width
+	hostPathWidth := contentWidth - 6 - len(reqID) - 8 - 4 // method + reqID + timestamp + status + spaces
+	if hostPathWidth < 10 {
+		hostPathWidth = 10
 	}
-	if len(hostPath) > maxHostPath {
-		hostPath = hostPath[:maxHostPath-3] + "..."
+	if len(hostPath) > hostPathWidth {
+		hostPath = hostPath[:hostPathWidth-3] + "..."
 	}
 
-	// Request ID and timestamp styles
-	reqIDStyle := lipgloss.NewStyle().Foreground(colorGray)
-	timeStyle := lipgloss.NewStyle().Foreground(colorGray)
+	// Build content with proper padding to fill terminal
+	// Format: <method> <hostPath> <reqID> <timestamp> <status>
+	// All columns except hostPath have fixed width, hostPath fills remaining space
+	totalFixed := 6 + 1 + len(reqID) + 1 + 8 + 1 + len(statusStr) // including spaces
+	if totalFixed > width {
+		totalFixed = width
+	}
+	actualHostPathWidth := width - totalFixed - 1 // -1 for space after method
+	if actualHostPathWidth < 5 {
+		actualHostPathWidth = 5
+	}
+	if len(hostPath) > actualHostPathWidth {
+		hostPath = hostPath[:actualHostPathWidth-3] + "..."
+	}
+	hostPathPadded := padRight(hostPath, actualHostPathWidth)
 
-	// Build line content based on available width
-	var lineContent string
+	// Build full line content
 	if width >= 70 {
-		// Layout: method + hostPath + reqID + timestamp + status
-		lineContent = fmt.Sprintf("│ %s %s %s %s %s │",
+		// Full layout with status
+		line := fmt.Sprintf("%s %s %s %s %s",
+			padRight(method, 6),
+			hostPathPadded,
+			reqID,
+			timestamp,
+			statusStr)
+		if isSelected {
+			return selectedBgStyle.Render(line)
+		}
+		return fmt.Sprintf("%s %s %s %s %s",
 			methodSty.Render(padRight(method, 6)),
-			hostnameStyle.Render(padRight(hostPath, maxHostPath)),
-			reqIDStyle.Render(reqID),
-			timeStyle.Render(timestamp),
-			statusCodeStyle(event.Response.StatusCode).Render(padRight(statusStr, 4)))
+			hostnameStyle.Render(hostPathPadded),
+			reqID,
+			timestamp,
+			statusStr)
 	} else if width >= 60 {
-		// Layout: method + hostPath + reqID + timestamp
-		lineContent = fmt.Sprintf("│ %s %s %s %s │",
+		// Without status
+		line := fmt.Sprintf("%s %s %s %s",
+			padRight(method, 6),
+			hostPathPadded,
+			reqID,
+			timestamp)
+		if isSelected {
+			return selectedBgStyle.Render(line)
+		}
+		return fmt.Sprintf("%s %s %s %s",
 			methodSty.Render(padRight(method, 6)),
-			hostnameStyle.Render(padRight(hostPath, maxHostPath)),
-			reqIDStyle.Render(reqID),
-			timeStyle.Render(timestamp))
+			hostnameStyle.Render(hostPathPadded),
+			reqID,
+			timestamp)
 	} else if width >= 50 {
-		// Compact: method + hostPath + reqID
-		lineContent = fmt.Sprintf("│ %s %s %s │",
+		// Without timestamp and status
+		line := fmt.Sprintf("%s %s %s",
+			padRight(method, 6),
+			hostPathPadded,
+			reqID)
+		if isSelected {
+			return selectedBgStyle.Render(line)
+		}
+		return fmt.Sprintf("%s %s %s",
 			methodSty.Render(padRight(method, 6)),
-			hostnameStyle.Render(padRight(hostPath, max(15, width-25))),
-			reqIDStyle.Render(reqID))
+			hostnameStyle.Render(hostPathPadded),
+			reqID)
 	} else {
 		// Minimal: method + hostPath
-		lineContent = fmt.Sprintf("│ %s %s │",
-			methodSty.Render(padRight(method, 6)),
-			hostnameStyle.Render(padRight(hostPath, max(15, width-15))))
-	}
-
-	if isSelected {
-		result := selectedBgStyle.Render(lineContent)
-		if isExpanded {
-			expandIndicator := "▼"
-			expandSty := lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
-			result += "\n" + expandSty.Render("  "+expandIndicator+" ")
-			result += renderEventDetails(event, m, width-4)
-		} else {
-			expandIndicator := "▶"
-			expandSty := lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
-			result += " " + expandSty.Render(expandIndicator)
+		line := fmt.Sprintf("%s %s",
+			padRight(method, 6),
+			hostPathPadded)
+		if isSelected {
+			return selectedBgStyle.Render(line)
 		}
-		return result
+		return fmt.Sprintf("%s %s",
+			methodSty.Render(padRight(method, 6)),
+			hostnameStyle.Render(hostPathPadded))
 	}
-
-	return lineContent
 }
 
 func getMethodStyle(method string) lipgloss.Style {
@@ -351,70 +441,142 @@ func renderEventDetails(event TrafficEvent, m Model, width int) string {
 	if m.ShowHeaders() {
 		// Request headers
 		if event.Request != nil && len(event.Request.Headers) > 0 {
-			sb.WriteString(detailHeaderStyle.Render("┌─ Request Headers ─┐"))
+			sb.WriteString(detailHeaderStyle.Render("Request Headers:"))
 			sb.WriteString("\n")
 			for k, v := range event.Request.Headers {
-				sb.WriteString(fmt.Sprintf("│ %s: %s", headerKeyStyle.Render(k), headerValueStyle.Render(truncate(v, width-20))))
-				sb.WriteString(strings.Repeat(" ", max(0, width-len(k)-len(v)-25)))
-				sb.WriteString("│\n")
+				sb.WriteString(fmt.Sprintf("  %s: %s\n", headerKeyStyle.Render(k), headerValueStyle.Render(truncate(v, width-20))))
 			}
-			sb.WriteString(detailHeaderStyle.Render("└────────────────────┘"))
 			sb.WriteString("\n")
 		}
 
 		// Response headers
 		if event.Response != nil && len(event.Response.Headers) > 0 {
-			sb.WriteString(detailHeaderStyle.Render("┌─ Response Headers ─┐"))
+			sb.WriteString(detailHeaderStyle.Render("Response Headers:"))
 			sb.WriteString("\n")
 			for k, v := range event.Response.Headers {
-				sb.WriteString(fmt.Sprintf("│ %s: %s", headerKeyStyle.Render(k), headerValueStyle.Render(truncate(v, width-20))))
-				sb.WriteString(strings.Repeat(" ", max(0, width-len(k)-len(v)-25)))
-				sb.WriteString("│\n")
+				sb.WriteString(fmt.Sprintf("  %s: %s\n", headerKeyStyle.Render(k), headerValueStyle.Render(truncate(v, width-20))))
 			}
-			sb.WriteString(detailHeaderStyle.Render("└─────────────────────┘"))
 			sb.WriteString("\n")
 		}
 	} else {
 		// Request body
 		if event.Request != nil && event.Request.Body != "" {
-			sb.WriteString(detailHeaderStyle.Render("┌─ Request Body ─┐"))
+			sb.WriteString(detailHeaderStyle.Render("Request Body:"))
 			sb.WriteString("\n")
 			body := truncateBody(event.Request.Body, 500)
 			lines := strings.Split(body, "\n")
 			for _, line := range lines {
-				if len(line) > width-4 {
-					line = line[:width-7] + "..."
-				}
-				sb.WriteString("│ ")
 				sb.WriteString(bodyStyle.Render(line))
-				sb.WriteString(strings.Repeat(" ", max(0, width-len(line)-6)))
-				sb.WriteString("│\n")
+				sb.WriteString("\n")
 			}
-			sb.WriteString(detailHeaderStyle.Render("└──────────────────┘"))
 			sb.WriteString("\n")
 		}
 
 		// Response body
 		if event.Response != nil && event.Response.Body != "" {
-			sb.WriteString(detailHeaderStyle.Render("┌─ Response Body ─┐"))
+			sb.WriteString(detailHeaderStyle.Render("Response Body:"))
 			sb.WriteString("\n")
 			body := truncateBody(event.Response.Body, 1000)
 			lines := strings.Split(body, "\n")
 			for _, line := range lines {
-				if len(line) > width-4 {
-					line = line[:width-7] + "..."
-				}
-				sb.WriteString("│ ")
 				sb.WriteString(bodyStyle.Render(line))
-				sb.WriteString(strings.Repeat(" ", max(0, width-len(line)-6)))
-				sb.WriteString("│\n")
+				sb.WriteString("\n")
 			}
-			sb.WriteString(detailHeaderStyle.Render("└───────────────────┘"))
 			sb.WriteString("\n")
 		}
 	}
 
 	return sb.String()
+}
+
+// renderEventDetailsFull shows full event details without truncation
+func renderEventDetailsFull(event *TrafficEvent, m Model, width, maxHeight int) string {
+	var sb strings.Builder
+
+	// Show headers or body based on toggle
+	if m.ShowHeaders() {
+		// Request headers
+		if event.Request != nil && len(event.Request.Headers) > 0 {
+			sb.WriteString(detailHeaderStyle.Render("Request Headers:"))
+			sb.WriteString("\n")
+			for k, v := range event.Request.Headers {
+				sb.WriteString(fmt.Sprintf("  %s: %s\n", headerKeyStyle.Render(k), headerValueStyle.Render(v)))
+			}
+			sb.WriteString("\n")
+		}
+
+		// Response headers
+		if event.Response != nil && len(event.Response.Headers) > 0 {
+			sb.WriteString(detailHeaderStyle.Render("Response Headers:"))
+			sb.WriteString("\n")
+			for k, v := range event.Response.Headers {
+				sb.WriteString(fmt.Sprintf("  %s: %s\n", headerKeyStyle.Render(k), headerValueStyle.Render(v)))
+			}
+			sb.WriteString("\n")
+		}
+	} else {
+		// Request body - full content with word wrap
+		if event.Request != nil && event.Request.Body != "" {
+			sb.WriteString(detailHeaderStyle.Render("Request Body:"))
+			sb.WriteString("\n")
+			wrapped := wrapText(event.Request.Body, width-4)
+			for _, line := range wrapped {
+				sb.WriteString(bodyStyle.Render(line))
+				sb.WriteString("\n")
+			}
+			sb.WriteString("\n")
+		}
+
+		// Response body - full content with word wrap
+		if event.Response != nil && event.Response.Body != "" {
+			sb.WriteString(detailHeaderStyle.Render("Response Body:"))
+			sb.WriteString("\n")
+			wrapped := wrapText(event.Response.Body, width-4)
+			for _, line := range wrapped {
+				sb.WriteString(bodyStyle.Render(line))
+				sb.WriteString("\n")
+			}
+			sb.WriteString("\n")
+		}
+	}
+
+	// No outer border, just return the content
+	return sb.String()
+}
+
+// wrapText wraps text to fit within maxWidth by breaking at word boundaries
+func wrapText(text string, maxWidth int) []string {
+	if maxWidth <= 0 {
+		maxWidth = 80
+	}
+
+	var lines []string
+	// Split by existing newlines first
+	paragraphs := strings.Split(text, "\n")
+
+	for _, para := range paragraphs {
+		words := strings.Fields(para)
+		if len(words) == 0 {
+			continue
+		}
+
+		currentLine := ""
+		for _, word := range words {
+			if currentLine == "" {
+				currentLine = word
+			} else if len(currentLine)+1+len(word) <= maxWidth {
+				currentLine += " " + word
+			} else {
+				lines = append(lines, currentLine)
+				currentLine = word
+			}
+		}
+		if currentLine != "" {
+			lines = append(lines, currentLine)
+		}
+	}
+
+	return lines
 }
 
 func renderHelp(m Model) string {

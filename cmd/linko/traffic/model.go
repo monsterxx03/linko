@@ -17,7 +17,7 @@ type Model struct {
 
 	// UI state
 	selectedIndex int
-	expandedIndex *int
+	showPopup     bool // popup/dialog for details
 
 	// Search
 	searchInput textinput.Model
@@ -87,12 +87,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case tea.KeyEnter:
 			if m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredEvents) {
-				if m.expandedIndex != nil && *m.expandedIndex == m.selectedIndex {
-					m.expandedIndex = nil
-				} else {
-					idx := m.selectedIndex
-					m.expandedIndex = &idx
-				}
+				m.showPopup = !m.showPopup
 			}
 		case tea.KeyTab:
 			m.showHeaders = !m.showHeaders
@@ -113,7 +108,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.events = make([]TrafficEvent, 0, 100)
 				m.filteredEvents = make([]TrafficEvent, 0, 100)
 				m.selectedIndex = 0
-				m.expandedIndex = nil
+				m.showPopup = false
 			case "/":
 				focusCmd := m.searchInput.Focus()
 				cmd = focusCmd
@@ -257,9 +252,17 @@ func (m Model) SelectedIndex() int {
 	return m.selectedIndex
 }
 
-// ExpandedIndex returns the expanded index
-func (m Model) ExpandedIndex() *int {
-	return m.expandedIndex
+// ShowPopup returns whether to show popup
+func (m Model) ShowPopup() bool {
+	return m.showPopup
+}
+
+// SelectedEvent returns the selected event
+func (m Model) SelectedEvent() *TrafficEvent {
+	if m.selectedIndex >= 0 && m.selectedIndex < len(m.filteredEvents) {
+		return &m.filteredEvents[m.selectedIndex]
+	}
+	return nil
 }
 
 // SearchInput returns the search input
