@@ -21,6 +21,12 @@ type SSEClient struct {
 	done       chan struct{}
 }
 
+// Regex patterns for SSE parsing - compiled once at package level
+var (
+	dataLineRegex  = regexp.MustCompile(`^data:\s*(.*)$`)
+	eventLineRegex = regexp.MustCompile(`^event:\s*(.*)$`)
+)
+
 // NewSSEClient creates a new SSE client
 func NewSSEClient(url string) *SSEClient {
 	return &SSEClient{
@@ -28,7 +34,7 @@ func NewSSEClient(url string) *SSEClient {
 		httpClient: &http.Client{
 			Timeout: 0, // No timeout for SSE
 		},
-		events: make(chan *TrafficEvent, 100),
+		events: make(chan *TrafficEvent, 1000),
 		errors: make(chan error, 10),
 		done:   make(chan struct{}),
 	}
@@ -80,6 +86,9 @@ func (c *SSEClient) Connect(ctx context.Context) error {
 	return nil
 }
 
+// SSE event type constant
+const sseEventTypeTraffic = "traffic"
+
 // readStream reads the SSE stream
 func (c *SSEClient) readStream(ctx context.Context, body io.Reader) {
 	scanner := bufio.NewScanner(body)
@@ -87,10 +96,6 @@ func (c *SSEClient) readStream(ctx context.Context, body io.Reader) {
 
 	var eventType string
 	var eventData string
-
-	// Regex to parse SSE lines
-	dataLineRegex := regexp.MustCompile(`^data:\s*(.*)$`)
-	eventLineRegex := regexp.MustCompile(`^event:\s*(.*)$`)
 
 	for scanner.Scan() {
 		select {
@@ -107,7 +112,7 @@ func (c *SSEClient) readStream(ctx context.Context, body io.Reader) {
 
 		// Empty line marks end of event
 		if line == "" {
-			if eventType == "traffic" && eventData != "" {
+			if eventType == sseEventTypeTraffic && eventData != "" {
 				event, err := ParseTrafficEvent([]byte(eventData))
 				if err != nil {
 					select {
@@ -177,13 +182,6 @@ func JSONPretty(data string) string {
 	return string(b)
 }
 
-// Truncate truncates a string to max length
-func Truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
 
 // FormatLatency formats latency in milliseconds to a human readable string
 func FormatLatency(ms int64) string {

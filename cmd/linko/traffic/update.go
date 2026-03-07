@@ -52,8 +52,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	default:
 		// Let search input handle other messages
+		oldQuery := m.searchInput.Value()
 		m.searchInput, cmd = m.searchInput.Update(msg)
-		m.applyFilters()
+		// Only apply filters if search query changed
+		if m.searchInput.Value() != oldQuery {
+			m.applyFilters()
+		}
 	}
 
 	return m, cmd
@@ -64,7 +68,9 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
 	// Let textinput handle the key first
+	oldQuery := m.searchInput.Value()
 	m.searchInput, cmd = m.searchInput.Update(msg)
+	queryChanged := m.searchInput.Value() != oldQuery
 
 	// Then handle navigation keys
 	key := msg.Key()
@@ -203,8 +209,10 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// Apply filters after any input changes
-	m.applyFilters()
+	// Apply filters only if search query changed
+	if queryChanged {
+		m.applyFilters()
+	}
 	return m, cmd
 }
 

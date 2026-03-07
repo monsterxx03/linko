@@ -531,9 +531,17 @@ func renderEventDetailsFull(event *TrafficEvent, m *Model, width, maxHeight, scr
 		sb.WriteString("\n")
 	}
 
+	// Known header lines that should be styled as headers
+	headerLines := map[string]bool{
+		"Request Headers:":  true,
+		"Response Headers:": true,
+		"Request Body:":     true,
+		"Response Body:":     true,
+	}
+
 	for i := scrollOffset; i < scrollOffset+visibleLines && i < len(lines); i++ {
 		style := bodyStyle
-		if strings.HasSuffix(lines[i], ":") {
+		if headerLines[lines[i]] {
 			style = detailHeaderStyle
 		}
 		sb.WriteString(style.Render(lines[i]))

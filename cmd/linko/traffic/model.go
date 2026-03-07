@@ -25,7 +25,6 @@ type Model struct {
 	selectedIndex int
 	showPopup     bool // popup/dialog for details
 	scrollOffset  int  // scroll offset for popup content
-	scrollToBottom bool // flag to indicate scroll to bottom is requested
 
 	// Search
 	searchInput textinput.Model
