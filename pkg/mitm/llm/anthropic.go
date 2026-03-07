@@ -21,6 +21,7 @@ var compatibleHosts = map[string]bool{
 	"api.tbox.cn":            true,
 	"api.xiaomimimo.com":     true,
 	"opencode.ai":            true,
+	"api.kimi.com":           true,
 }
 
 // Anthropic API types
@@ -352,15 +353,23 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "event: ") {
-			continue
-		}
-		if !strings.HasPrefix(line, "data: ") {
-			a.logger.Warn("skiping sse line", "line", line)
+		if line == "" {
 			continue
 		}
 
-		data := strings.TrimPrefix(line, "data: ")
+		// Parse event/data lines, supporting both "event:" and "event: " (with/without space)
+		var data string
+
+		if strings.HasPrefix(line, "event:") {
+			// Event type line - skip, we'll extract type from data JSON
+			continue
+		} else if strings.HasPrefix(line, "data:") {
+			data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		} else {
+			a.logger.Warn("skipping sse line", "line", line)
+			continue
+		}
+
 		if data == "" || data == "[DONE]" {
 			continue
 		}
