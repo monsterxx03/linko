@@ -18,6 +18,7 @@ type Model struct {
 	// UI state
 	selectedIndex int
 	showPopup     bool // popup/dialog for details
+	scrollOffset  int  // scroll offset for popup content
 
 	// Search
 	searchInput textinput.Model
@@ -92,7 +93,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case tea.KeyTab:
 			m.showHeaders = !m.showHeaders
 		case tea.KeyEscape:
-			return m, tea.Quit
+			if m.showPopup {
+				m.showPopup = false
+				m.scrollOffset = 0
+			} else {
+				return m, tea.Quit
+			}
+		case tea.KeySpace:
+			if m.showPopup {
+				m.scrollOffset++
+			}
 		default:
 			// Handle Ctrl+C and q using string comparison
 			if key.String() == "ctrl+c" || key.String() == "q" {
@@ -255,6 +265,11 @@ func (m Model) SelectedIndex() int {
 // ShowPopup returns whether to show popup
 func (m Model) ShowPopup() bool {
 	return m.showPopup
+}
+
+// ScrollOffset returns the scroll offset for popup
+func (m Model) ScrollOffset() int {
+	return m.scrollOffset
 }
 
 // SelectedEvent returns the selected event

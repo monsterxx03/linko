@@ -154,6 +154,7 @@ func renderPopup(m Model) string {
 
 	width := m.Width()
 	height := m.Height()
+	scrollOffset := m.ScrollOffset()
 
 	// Build the popup content
 	var sb strings.Builder
@@ -166,14 +167,21 @@ func renderPopup(m Model) string {
 	sb.WriteString(renderEventSummary(event, width))
 	sb.WriteString("\n\n")
 
-	// Full details (use full width)
-	sb.WriteString(renderEventDetailsFull(event, m, width, height-10))
+	// Full details with scroll offset
+	sb.WriteString(renderEventDetailsFull(event, m, width, height-10, scrollOffset))
 
 	// Help text
 	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render(" [Enter] Close │ [Tab] Toggle Headers/Body │ [q] Quit "))
+	sb.WriteString(helpStyle.Render(" [Space] Down │ [Enter] Close │ [Tab] Headers/Body │ [q] Quit "))
 
-	return sb.String()
+	// Wrap in a bordered box with no inner padding
+	popupStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorCyan).
+		Padding(0, 1).
+		Width(width)
+
+	return popupStyle.Render(sb.String())
 }
 
 func renderEventSummary(event *TrafficEvent, width int) string {
@@ -489,58 +497,69 @@ func renderEventDetails(event TrafficEvent, m Model, width int) string {
 	return sb.String()
 }
 
-// renderEventDetailsFull shows full event details without truncation
-func renderEventDetailsFull(event *TrafficEvent, m Model, width, maxHeight int) string {
-	var sb strings.Builder
+// renderEventDetailsFull shows full event details with pagination
+func renderEventDetailsFull(event *TrafficEvent, m Model, width, maxHeight, scrollOffset int) string {
+	var lines []string
 
 	// Show headers or body based on toggle
 	if m.ShowHeaders() {
 		// Request headers
 		if event.Request != nil && len(event.Request.Headers) > 0 {
-			sb.WriteString(detailHeaderStyle.Render("Request Headers:"))
-			sb.WriteString("\n")
+			lines = append(lines, "Request Headers:")
 			for k, v := range event.Request.Headers {
-				sb.WriteString(fmt.Sprintf("  %s: %s\n", headerKeyStyle.Render(k), headerValueStyle.Render(v)))
+				lines = append(lines, fmt.Sprintf("  %s: %s", k, v))
 			}
-			sb.WriteString("\n")
+			lines = append(lines, "")
 		}
 
 		// Response headers
 		if event.Response != nil && len(event.Response.Headers) > 0 {
-			sb.WriteString(detailHeaderStyle.Render("Response Headers:"))
-			sb.WriteString("\n")
+			lines = append(lines, "Response Headers:")
 			for k, v := range event.Response.Headers {
-				sb.WriteString(fmt.Sprintf("  %s: %s\n", headerKeyStyle.Render(k), headerValueStyle.Render(v)))
+				lines = append(lines, fmt.Sprintf("  %s: %s", k, v))
 			}
-			sb.WriteString("\n")
+			lines = append(lines, "")
 		}
 	} else {
 		// Request body - full content with word wrap
 		if event.Request != nil && event.Request.Body != "" {
-			sb.WriteString(detailHeaderStyle.Render("Request Body:"))
-			sb.WriteString("\n")
+			lines = append(lines, "Request Body:")
 			wrapped := wrapText(event.Request.Body, width-4)
-			for _, line := range wrapped {
-				sb.WriteString(bodyStyle.Render(line))
-				sb.WriteString("\n")
-			}
-			sb.WriteString("\n")
+			lines = append(lines, wrapped...)
+			lines = append(lines, "")
 		}
 
 		// Response body - full content with word wrap
 		if event.Response != nil && event.Response.Body != "" {
-			sb.WriteString(detailHeaderStyle.Render("Response Body:"))
-			sb.WriteString("\n")
+			lines = append(lines, "Response Body:")
 			wrapped := wrapText(event.Response.Body, width-4)
-			for _, line := range wrapped {
-				sb.WriteString(bodyStyle.Render(line))
-				sb.WriteString("\n")
-			}
-			sb.WriteString("\n")
+			lines = append(lines, wrapped...)
 		}
 	}
 
-	// No outer border, just return the content
+	// Apply scroll offset
+	if scrollOffset > len(lines)-1 {
+		scrollOffset = len(lines) - 1
+	}
+	if scrollOffset < 0 {
+		scrollOffset = 0
+	}
+
+	visibleLines := maxHeight
+	if visibleLines > len(lines)-scrollOffset {
+		visibleLines = len(lines) - scrollOffset
+	}
+
+	var sb strings.Builder
+	for i := scrollOffset; i < scrollOffset+visibleLines && i < len(lines); i++ {
+		style := bodyStyle
+		if strings.HasSuffix(lines[i], ":") {
+			style = detailHeaderStyle
+		}
+		sb.WriteString(style.Render(lines[i]))
+		sb.WriteString("\n")
+	}
+
 	return sb.String()
 }
 
