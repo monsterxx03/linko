@@ -181,6 +181,50 @@ When you make requests to supported LLM providers through the MITM proxy, the ad
 
 For OpenAI-compatible APIs (e.g., OpenAI, Azure OpenAI, Ollama, DeepSeek), Linko supports the `/chat/completions` endpoint.
 
+## TUI Traffic Monitor
+
+Linko includes a real-time terminal-based traffic monitor built with Bubble Tea. It connects to the Admin API via Server-Sent Events (SSE) and displays MITM traffic in a TUI interface.
+
+![TUI Demo](./screenshots/linko-tui.gif)
+
+### Start TUI
+
+Make sure MITM proxy is running first, then launch the TUI:
+
+```bash
+linko tui
+```
+
+By default, it connects to `http://localhost:9810/api/mitm/traffic/sse`. You can specify a different server with the `-s` flag:
+
+```bash
+linko tui -s http://localhost:9810/api/mitm/traffic/sse
+```
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` / `j` / `k` | Navigate through traffic list |
+| `Enter` | Expand traffic details |
+| `g` / `G` | Jump to top / bottom |
+| `/` | Search/filter traffic |
+| `Tab` | Toggle between Headers and Body view |
+| `u` / `d` | Page up / down |
+| `c` | Clear all traffic |
+| `d` | Delete selected traffic |
+| `r` | Reconnect to server |
+| `q` | Quit |
+
+### Features
+
+- Real-time traffic streaming via SSE
+- Auto-reconnect on connection loss
+- View request/response headers and body
+- Search and filter traffic
+- Delete individual traffic entries
+- Color-coded status indicators
+
 ## Command Reference
 
 | Command                                         | Description                                                    |
@@ -189,6 +233,7 @@ For OpenAI-compatible APIs (e.g., OpenAI, Azure OpenAI, Ollama, DeepSeek), Linko
 | `sudo linko mitm`                               | Start MITM proxy, intercepts all HTTPS traffic (requires sudo) |
 | `sudo linko mitm --whitelist "domain1,domain2"` | Start MITM proxy with whitelist (requires sudo)                |
 | `linko mitm -h`                                 | Show MITM command help                                         |
+| `linko tui`                                     | Start TUI traffic monitor (requires MITM running)            |
 
 ## Troubleshooting
 
