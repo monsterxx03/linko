@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -10,15 +11,15 @@ import (
 // Styles defines the UI styles
 var (
 	// Colors - using true color codes for better compatibility
-	colorGreen    = lipgloss.Color("99")
-	colorCyan     = lipgloss.Color("45")
-	colorBlue     = lipgloss.Color("39")
-	colorYellow   = lipgloss.Color("226")
-	colorRed      = lipgloss.Color("203")
-	colorMagenta  = lipgloss.Color("212")
-	colorGray     = lipgloss.Color("243")
-	colorWhite    = lipgloss.Color("15")
-	colorBlack    = lipgloss.Color("16")
+	colorGreen   = lipgloss.Color("99")
+	colorCyan    = lipgloss.Color("45")
+	colorBlue    = lipgloss.Color("39")
+	colorYellow  = lipgloss.Color("226")
+	colorRed     = lipgloss.Color("203")
+	colorMagenta = lipgloss.Color("212")
+	colorGray    = lipgloss.Color("243")
+	colorWhite   = lipgloss.Color("15")
+	colorBlack   = lipgloss.Color("16")
 
 	// Header styles
 	headerStyle = lipgloss.NewStyle().
@@ -34,8 +35,8 @@ var (
 				Bold(true)
 
 	statusErrorStyle = lipgloss.NewStyle().
-			Foreground(colorRed).
-			Bold(true)
+				Foreground(colorRed).
+				Bold(true)
 
 	statusDisconnectedStyle = lipgloss.NewStyle().
 				Foreground(colorGray)
@@ -46,7 +47,7 @@ var (
 	methodPutStyle    = lipgloss.NewStyle().Foreground(colorYellow).Bold(true)
 	methodDeleteStyle = lipgloss.NewStyle().Foreground(colorRed).Bold(true)
 	methodPatchStyle  = lipgloss.NewStyle().Foreground(colorMagenta).Bold(true)
-	methodOtherStyle = lipgloss.NewStyle().Foreground(colorWhite).Bold(true)
+	methodOtherStyle  = lipgloss.NewStyle().Foreground(colorWhite).Bold(true)
 
 	// Status code styles
 	statusCodeStyle = func(code int) lipgloss.Style {
@@ -95,7 +96,7 @@ var (
 			Foreground(colorYellow)
 
 	headerValueStyle = lipgloss.NewStyle().
-			Foreground(colorWhite)
+				Foreground(colorWhite)
 
 	bodyStyle = lipgloss.NewStyle().
 			Foreground(colorWhite)
@@ -116,10 +117,15 @@ var (
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(colorCyan).
 			Foreground(colorWhite)
+
+	// Scroll indicator style
+	scrollIndicatorStyle = lipgloss.NewStyle().
+				Foreground(colorYellow).
+				Bold(true)
 )
 
 // Render renders the view
-func Render(m Model) string {
+func Render(m *Model) string {
 	// If popup is shown, render only the popup
 	if m.ShowPopup() {
 		return renderPopup(m)
@@ -146,7 +152,7 @@ func Render(m Model) string {
 }
 
 // renderPopup renders a full-screen popup with event details
-func renderPopup(m Model) string {
+func renderPopup(m *Model) string {
 	event := m.SelectedEvent()
 	if event == nil {
 		return "No event selected"
@@ -172,7 +178,7 @@ func renderPopup(m Model) string {
 
 	// Help text
 	sb.WriteString("\n")
-	sb.WriteString(helpStyle.Render(" [Space] Down │ [Enter] Close │ [Tab] Headers/Body │ [q] Quit "))
+	sb.WriteString(helpStyle.Render(" [↑↓/j/k] Scroll │ [u/d] Page │ [g/G] Top/Bottom │ [Tab] Headers/Body │ [Enter/q] Close "))
 
 	// Wrap in a bordered box with no inner padding
 	popupStyle := lipgloss.NewStyle().
@@ -215,7 +221,7 @@ func renderEventSummary(event *TrafficEvent, width int) string {
 	return fmt.Sprintf("%s %s %s", methodSty.Render(method), hostnameStyle.Render(hostPath), statusCodeStyle(event.Response.StatusCode).Render(statusStr))
 }
 
-func renderHeader(m Model) string {
+func renderHeader(m *Model) string {
 	var statusStr string
 	switch m.Status() {
 	case StatusConnecting:
@@ -232,10 +238,16 @@ func renderHeader(m Model) string {
 		statusStr = statusStr + " " + statusErrorStyle.Render(m.ErrMsg())
 	}
 
-	return headerStyle.Render(" MITM Traffic ") + statusStr
+	// Add connection info
+	info := fmt.Sprintf(" [%d/%d]", m.FilteredCount(), m.TotalEvents())
+	if m.ReconnectCount() > 0 {
+		info = fmt.Sprintf(" [%d/%d] [reconnect: %d]", m.FilteredCount(), m.TotalEvents(), m.ReconnectCount())
+	}
+
+	return headerStyle.Render(" MITM Traffic ") + statusStr + helpStyle.Render(info)
 }
 
-func renderSearchInput(m Model) string {
+func renderSearchInput(m *Model) string {
 	searchWidth := m.Width() - 10
 	if searchWidth < 20 {
 		searchWidth = 20
@@ -247,7 +259,7 @@ func renderSearchInput(m Model) string {
 	return searchInput.View()
 }
 
-func renderEventsFrame(m Model) string {
+func renderEventsFrame(m *Model) string {
 	events := m.Events()
 	if len(events) == 0 {
 		emptyStyle := lipgloss.NewStyle().
@@ -274,10 +286,9 @@ func renderEventsFrame(m Model) string {
 		}
 
 		isSelected := i == selectedIdx
-		isExpanded := false // popup instead of inline expansion
 
 		// Render item
-		item := renderEventItem(event, m, isSelected, isExpanded)
+		item := renderEventItem(event, m, isSelected)
 		sb.WriteString(item)
 
 		if i < len(events)-1 && i < availableHeight-1 {
@@ -294,7 +305,7 @@ func renderEventsFrame(m Model) string {
 	return frame.Render(sb.String())
 }
 
-func renderEventItem(event TrafficEvent, m Model, isSelected, isExpanded bool) string {
+func renderEventItem(event TrafficEvent, m *Model, isSelected bool) string {
 	width := m.Width()
 	if width < 60 {
 		width = 60
@@ -336,9 +347,7 @@ func renderEventItem(event TrafficEvent, m Model, isSelected, isExpanded bool) s
 	timestamp := event.Timestamp.Format("15:04:05")
 
 	// Calculate column widths - use lipgloss to fill width
-	// Format: │ <method> <hostPath> <reqID> <timestamp> <status> │
-	// Borders take 2 chars, so content = width - 2
-	contentWidth := width - 2
+	contentWidth := width
 
 	// For different widths, calculate hostPath width
 	hostPathWidth := contentWidth - 6 - len(reqID) - 8 - 4 // method + reqID + timestamp + status + spaces
@@ -350,8 +359,6 @@ func renderEventItem(event TrafficEvent, m Model, isSelected, isExpanded bool) s
 	}
 
 	// Build content with proper padding to fill terminal
-	// Format: <method> <hostPath> <reqID> <timestamp> <status>
-	// All columns except hostPath have fixed width, hostPath fills remaining space
 	totalFixed := 6 + 1 + len(reqID) + 1 + 8 + 1 + len(statusStr) // including spaces
 	if totalFixed > width {
 		totalFixed = width
@@ -442,63 +449,8 @@ func getMethodStyle(method string) lipgloss.Style {
 	}
 }
 
-func renderEventDetails(event TrafficEvent, m Model, width int) string {
-	var sb strings.Builder
-
-	// Show headers or body based on toggle
-	if m.ShowHeaders() {
-		// Request headers
-		if event.Request != nil && len(event.Request.Headers) > 0 {
-			sb.WriteString(detailHeaderStyle.Render("Request Headers:"))
-			sb.WriteString("\n")
-			for k, v := range event.Request.Headers {
-				sb.WriteString(fmt.Sprintf("  %s: %s\n", headerKeyStyle.Render(k), headerValueStyle.Render(truncate(v, width-20))))
-			}
-			sb.WriteString("\n")
-		}
-
-		// Response headers
-		if event.Response != nil && len(event.Response.Headers) > 0 {
-			sb.WriteString(detailHeaderStyle.Render("Response Headers:"))
-			sb.WriteString("\n")
-			for k, v := range event.Response.Headers {
-				sb.WriteString(fmt.Sprintf("  %s: %s\n", headerKeyStyle.Render(k), headerValueStyle.Render(truncate(v, width-20))))
-			}
-			sb.WriteString("\n")
-		}
-	} else {
-		// Request body
-		if event.Request != nil && event.Request.Body != "" {
-			sb.WriteString(detailHeaderStyle.Render("Request Body:"))
-			sb.WriteString("\n")
-			body := truncateBody(event.Request.Body, 500)
-			lines := strings.Split(body, "\n")
-			for _, line := range lines {
-				sb.WriteString(bodyStyle.Render(line))
-				sb.WriteString("\n")
-			}
-			sb.WriteString("\n")
-		}
-
-		// Response body
-		if event.Response != nil && event.Response.Body != "" {
-			sb.WriteString(detailHeaderStyle.Render("Response Body:"))
-			sb.WriteString("\n")
-			body := truncateBody(event.Response.Body, 1000)
-			lines := strings.Split(body, "\n")
-			for _, line := range lines {
-				sb.WriteString(bodyStyle.Render(line))
-				sb.WriteString("\n")
-			}
-			sb.WriteString("\n")
-		}
-	}
-
-	return sb.String()
-}
-
 // renderEventDetailsFull shows full event details with pagination
-func renderEventDetailsFull(event *TrafficEvent, m Model, width, maxHeight, scrollOffset int) string {
+func renderEventDetailsFull(event *TrafficEvent, m *Model, width, maxHeight, scrollOffset int) string {
 	var lines []string
 
 	// Show headers or body based on toggle
@@ -506,8 +458,8 @@ func renderEventDetailsFull(event *TrafficEvent, m Model, width, maxHeight, scro
 		// Request headers
 		if event.Request != nil && len(event.Request.Headers) > 0 {
 			lines = append(lines, "Request Headers:")
-			for k, v := range event.Request.Headers {
-				lines = append(lines, fmt.Sprintf("  %s: %s", k, v))
+			for _, k := range sortedKeys(event.Request.Headers) {
+				lines = append(lines, fmt.Sprintf("  %s: %s", k, event.Request.Headers[k]))
 			}
 			lines = append(lines, "")
 		}
@@ -515,8 +467,8 @@ func renderEventDetailsFull(event *TrafficEvent, m Model, width, maxHeight, scro
 		// Response headers
 		if event.Response != nil && len(event.Response.Headers) > 0 {
 			lines = append(lines, "Response Headers:")
-			for k, v := range event.Response.Headers {
-				lines = append(lines, fmt.Sprintf("  %s: %s", k, v))
+			for _, k := range sortedKeys(event.Response.Headers) {
+				lines = append(lines, fmt.Sprintf("  %s: %s", k, event.Response.Headers[k]))
 			}
 			lines = append(lines, "")
 		}
@@ -537,20 +489,48 @@ func renderEventDetailsFull(event *TrafficEvent, m Model, width, maxHeight, scro
 		}
 	}
 
-	// Apply scroll offset
-	if scrollOffset > len(lines)-1 {
-		scrollOffset = len(lines) - 1
+	// Calculate maximum valid scroll offset based on content height and view height
+	maxScrollOffset := len(lines) - maxHeight
+	if maxScrollOffset < 0 {
+		maxScrollOffset = 0 // Content fits in view, no scrolling needed
+	}
+
+	// Handle special marker -1 for "go to bottom"
+	if scrollOffset == -1 {
+		scrollOffset = maxScrollOffset
+		// Force sync back to model
+		m.SetScrollOffset(scrollOffset)
+	}
+
+	// Apply scroll offset clamping
+	if scrollOffset > maxScrollOffset {
+		scrollOffset = maxScrollOffset
 	}
 	if scrollOffset < 0 {
 		scrollOffset = 0
+	}
+
+	// Update model's scroll offset if it was clamped
+	if scrollOffset != m.ScrollOffset() {
+		m.SetScrollOffset(scrollOffset)
 	}
 
 	visibleLines := maxHeight
 	if visibleLines > len(lines)-scrollOffset {
 		visibleLines = len(lines) - scrollOffset
 	}
+	if visibleLines < 0 {
+		visibleLines = 0
+	}
 
 	var sb strings.Builder
+
+	// Add scroll indicator at top if not at beginning
+	if scrollOffset > 0 {
+		sb.WriteString(scrollIndicatorStyle.Render("▲ " + fmt.Sprintf("%d lines above", scrollOffset)))
+		sb.WriteString("\n")
+	}
+
 	for i := scrollOffset; i < scrollOffset+visibleLines && i < len(lines); i++ {
 		style := bodyStyle
 		if strings.HasSuffix(lines[i], ":") {
@@ -558,6 +538,12 @@ func renderEventDetailsFull(event *TrafficEvent, m Model, width, maxHeight, scro
 		}
 		sb.WriteString(style.Render(lines[i]))
 		sb.WriteString("\n")
+	}
+
+	// Add scroll indicator at bottom if not at end
+	remaining := len(lines) - (scrollOffset + visibleLines)
+	if remaining > 0 {
+		sb.WriteString(scrollIndicatorStyle.Render("▼ " + fmt.Sprintf("%d lines below", remaining)))
 	}
 
 	return sb.String()
@@ -598,8 +584,8 @@ func wrapText(text string, maxWidth int) []string {
 	return lines
 }
 
-func renderHelp(m Model) string {
-	helpText := fmt.Sprintf(" [↑↓/jk] Navigate │ [Enter] Expand │ [Tab] Headers/Body │ [/] Search │ [c] Clear │ [r] Reconnect │ [q] Quit")
+func renderHelp(m *Model) string {
+	helpText := " [↑↓/j/k] Navigate │ [Enter] Expand │ [PgUp/PgDn] Page │ [g/G] Top/Bottom │ [/] Search │ [Tab] Headers/Body │ [c] Clear │ [d] Delete │ [r] Reconnect │ [q] Quit"
 
 	return helpStyle.Render(helpText)
 }
@@ -618,16 +604,57 @@ func truncate(s string, maxLen int) string {
 	return s[:maxLen-3] + "..."
 }
 
-func truncateBody(body string, maxLen int) string {
-	if len(body) <= maxLen {
-		return body
-	}
-	return body[:maxLen-3] + "..."
-}
-
 func max(a, b int) int {
 	if a > b {
 		return a
 	}
 	return b
+}
+
+// sortedKeys returns sorted keys from a map[string]string
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// countEventDetailLines counts the number of lines in event details (for calculating max scroll)
+func countEventDetailLines(event *TrafficEvent, width int, showHeaders bool) int {
+	var count int
+
+	if showHeaders {
+		// Request headers
+		if event.Request != nil && len(event.Request.Headers) > 0 {
+			count++ // "Request Headers:"
+			count += len(event.Request.Headers)
+			count++ // empty line
+		}
+
+		// Response headers
+		if event.Response != nil && len(event.Response.Headers) > 0 {
+			count++ // "Response Headers:"
+			count += len(event.Response.Headers)
+			count++ // empty line
+		}
+	} else {
+		// Request body
+		if event.Request != nil && event.Request.Body != "" {
+			count++ // "Request Body:"
+			wrapped := wrapText(event.Request.Body, width)
+			count += len(wrapped)
+			count++ // empty line
+		}
+
+		// Response body
+		if event.Response != nil && event.Response.Body != "" {
+			count++ // "Response Body:"
+			wrapped := wrapText(event.Response.Body, width)
+			count += len(wrapped)
+		}
+	}
+
+	return count
 }

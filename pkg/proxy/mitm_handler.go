@@ -38,7 +38,7 @@ func NewMITMHandler(proxy *TransparentProxy, manager *mitm.Manager, whitelist []
 // BufferedConn wraps a net.Conn and provides buffered data that was already read
 type BufferedConn struct {
 	net.Conn
-	 buffered []byte
+	buffered []byte
 }
 
 // Read returns buffered data first, then reads from underlying connection

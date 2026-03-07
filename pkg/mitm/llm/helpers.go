@@ -106,7 +106,7 @@ func convertGeminiMessages(contents []GeminiContent) []LLMMessage {
 					argsStr = string(argsJSON)
 				}
 				toolCalls = append(toolCalls, ToolCall{
-					ID: part.FunctionCall.ID,
+					ID:   part.FunctionCall.ID,
 					Type: "function",
 					Function: FunctionCall{
 						Name:      part.FunctionCall.Name,

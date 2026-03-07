@@ -14,14 +14,14 @@ import (
 // LLMInspector parses LLM API traffic and publishes structured events
 type LLMInspector struct {
 	*BaseInspector
-	logger          *slog.Logger
-	eventBus        *EventBus
-	httpProc        HTTPProcessorInterface
-	requestPaths    sync.Map // requestID -> string (path)
-	conversationIDs sync.Map // requestID -> string (conversationID)
-	processedBytes  sync.Map // requestID -> int (last processed byte position)
+	logger             *slog.Logger
+	eventBus           *EventBus
+	httpProc           HTTPProcessorInterface
+	requestPaths       sync.Map // requestID -> string (path)
+	conversationIDs    sync.Map // requestID -> string (conversationID)
+	processedBytes     sync.Map // requestID -> int (last processed byte position)
 	accumulatedContent sync.Map // requestID -> string (accumulated content for streaming)
-	providerMatcher *llm.ProviderMatcher
+	providerMatcher    *llm.ProviderMatcher
 }
 
 // NewLLMInspector creates a new LLMInspector

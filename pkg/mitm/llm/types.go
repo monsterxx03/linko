@@ -132,7 +132,7 @@ type GeminiRequest struct {
 	Contents          []GeminiContent `json:"contents"`
 	SystemInstruction *GeminiContent  `json:"systemInstruction,omitempty"`
 	Tools             []GeminiTool    `json:"tools,omitempty"`
-	GenerationConfig *GeminiConfig   `json:"generationConfig,omitempty"`
+	GenerationConfig  *GeminiConfig   `json:"generationConfig,omitempty"`
 }
 
 type GeminiContent struct {
@@ -141,11 +141,11 @@ type GeminiContent struct {
 }
 
 type GeminiPart struct {
-	Text              string              `json:"text,omitempty"`
-	Thought           bool                `json:"thought,omitempty"`       // thought: true from CloudCode
+	Text             string              `json:"text,omitempty"`
+	Thought          bool                `json:"thought,omitempty"`          // thought: true from CloudCode
 	ThoughtSignature string              `json:"thoughtSignature,omitempty"` // thinking content from Gemini
-	FunctionCall      *GeminiFunctionCall `json:"functionCall,omitempty"`
-	FunctionResponse  *struct {
+	FunctionCall     *GeminiFunctionCall `json:"functionCall,omitempty"`
+	FunctionResponse *struct {
 		Name     string `json:"name"`
 		Response any    `json:"response"`
 	} `json:"functionResponse,omitempty"`
@@ -154,7 +154,7 @@ type GeminiPart struct {
 type GeminiFunctionCall struct {
 	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
-	Args any   `json:"args"` // Can be string or object (for CloudCode)
+	Args any    `json:"args"` // Can be string or object (for CloudCode)
 }
 
 type GeminiTool struct {
@@ -180,38 +180,38 @@ type GeminiResponse struct {
 }
 
 type GeminiCandidate struct {
-	Content        GeminiContent `json:"content"`
-	FinishReason   string        `json:"finishReason,omitempty"`
-	Index          int           `json:"index"`
-	SafetyRatings  []any          `json:"safetyRatings,omitempty"`
+	Content       GeminiContent `json:"content"`
+	FinishReason  string        `json:"finishReason,omitempty"`
+	Index         int           `json:"index"`
+	SafetyRatings []any         `json:"safetyRatings,omitempty"`
 }
 
 type GeminiUsageMetadata struct {
-	PromptTokenCount               int `json:"promptTokenCount"`
-	CandidatesTokenCount           int `json:"candidatesTokenCount"`
-	TotalTokenCount                int `json:"totalTokenCount"`
-	PromptTokenDetails             any `json:"promptTokenDetails,omitempty"`
-	CandidatesTokenDetails         any `json:"candidatesTokenDetails,omitempty"`
+	PromptTokenCount       int `json:"promptTokenCount"`
+	CandidatesTokenCount   int `json:"candidatesTokenCount"`
+	TotalTokenCount        int `json:"totalTokenCount"`
+	PromptTokenDetails     any `json:"promptTokenDetails,omitempty"`
+	CandidatesTokenDetails any `json:"candidatesTokenDetails,omitempty"`
 }
 
 type GeminiStreamChunk struct {
-	Candidates     []GeminiCandidate `json:"candidates"`
-	UsageMetadata   *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
-	ModelVersion    string `json:"modelVersion,omitempty"`
+	Candidates    []GeminiCandidate    `json:"candidates"`
+	UsageMetadata *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
+	ModelVersion  string               `json:"modelVersion,omitempty"`
 }
 
 // CloudCodeResponse represents response from cloudcode-pa.googleapis.com
 // The candidates field is nested under "response" key
 type CloudCodeResponse struct {
 	Response struct {
-		Candidates     []GeminiCandidate `json:"candidates"`
+		Candidates    []GeminiCandidate    `json:"candidates"`
 		UsageMetadata *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
 	} `json:"response"`
 }
 
 type CloudCodeStreamChunk struct {
 	Response struct {
-		Candidates     []GeminiCandidate `json:"candidates"`
+		Candidates    []GeminiCandidate    `json:"candidates"`
 		UsageMetadata *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
 	} `json:"response"`
 }
@@ -223,10 +223,10 @@ type CloudCodeRequest struct {
 	Project      string `json:"project"`
 	UserPromptID string `json:"user_prompt_id"`
 	Request      struct {
-		Contents          []GeminiContent        `json:"contents"`
-		SystemInstruction *GeminiContent         `json:"systemInstruction,omitempty"`
-		Tools             []CloudCodeTools      `json:"tools,omitempty"`
-		GenerationConfig *GeminiConfig          `json:"generationConfig,omitempty"`
+		Contents          []GeminiContent  `json:"contents"`
+		SystemInstruction *GeminiContent   `json:"systemInstruction,omitempty"`
+		Tools             []CloudCodeTools `json:"tools,omitempty"`
+		GenerationConfig  *GeminiConfig    `json:"generationConfig,omitempty"`
 	} `json:"request"`
 }
 
@@ -237,7 +237,7 @@ type CloudCodeTools struct {
 }
 
 type CloudCodeFunction struct {
-	Name                string                 `json:"name"`
-	Description         string                 `json:"description,omitempty"`
+	Name                 string                 `json:"name"`
+	Description          string                 `json:"description,omitempty"`
 	ParametersJsonSchema map[string]interface{} `json:"parametersJsonSchema"`
 }

@@ -23,15 +23,15 @@ type Manager struct {
 
 // ManagerConfig contains MITM manager configuration
 type ManagerConfig struct {
-	CACertPath            string
-	CAKeyPath             string
-	CertCacheDir          string
-	SiteCertValidity      time.Duration
-	CACertValidity        time.Duration
-	Enabled               bool
-	MaxBodySize           int64
-	EventHistorySize      int
-	LLMEventHistorySize   int     // Event history size for LLM inspector
+	CACertPath             string
+	CAKeyPath              string
+	CertCacheDir           string
+	SiteCertValidity       time.Duration
+	CACertValidity         time.Duration
+	Enabled                bool
+	MaxBodySize            int64
+	EventHistorySize       int
+	LLMEventHistorySize    int      // Event history size for LLM inspector
 	CustomAnthropicMatches []string // Custom Anthropic API match patterns
 	CustomOpenAIMatches    []string // Custom OpenAI API match patterns
 }

@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+// Constants for TUI configuration
+const (
+	MaxEvents         = 100              // Maximum number of events to keep in memory
+	MaxBodySize       = 10 * 1024        // Maximum body size to store (10KB)
+	ReconnectDelay    = 3 * time.Second  // Delay before attempting to reconnect
+	MaxReconnectDelay = 30 * time.Second // Maximum reconnect delay
+)
+
 // TrafficEvent represents a single MITM traffic event
 type TrafficEvent struct {
 	ID           string        `json:"id"`
@@ -83,3 +91,23 @@ func ParseTrafficEvent(data []byte) (*TrafficEvent, error) {
 	}
 	return &event, nil
 }
+
+// Message types for Bubble Tea
+
+type trafficEventMsg struct {
+	event TrafficEvent
+}
+
+type connectionStatusMsg struct {
+	status ConnectionStatus
+}
+
+type errorMsg struct {
+	err error
+}
+
+type reconnectMsg struct{}
+
+type reconnectTickMsg struct{}
+
+type scrollToBottomMsg struct{}

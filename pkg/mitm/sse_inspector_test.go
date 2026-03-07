@@ -9,8 +9,8 @@ import (
 
 // mockSSEHTTPProcessor implements HTTPProcessorInterface for SSE inspector testing
 type mockSSEHTTPProcessor struct {
-	t                  *testing.T
-	processRequestFunc func(data []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
+	t                   *testing.T
+	processRequestFunc  func(data []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
 	processResponseFunc func(data []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
 }
 

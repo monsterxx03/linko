@@ -11,14 +11,14 @@ import (
 
 // OpenAI API types
 type OpenAIRequest struct {
-	Model       string           `json:"model"`
-	MaxTokens   int              `json:"max_tokens,omitempty"`
-	Messages    []OpenAIMessage  `json:"messages"`
-	System      string           `json:"system,omitempty"`
-	Stop        any              `json:"stop,omitempty"`
-	Temperature float64          `json:"temperature,omitempty"`
-	TopP        float64          `json:"top_p,omitempty"`
-	Tools       []OpenAITool     `json:"tools,omitempty"`
+	Model       string          `json:"model"`
+	MaxTokens   int             `json:"max_tokens,omitempty"`
+	Messages    []OpenAIMessage `json:"messages"`
+	System      string          `json:"system,omitempty"`
+	Stop        any             `json:"stop,omitempty"`
+	Temperature float64         `json:"temperature,omitempty"`
+	TopP        float64         `json:"top_p,omitempty"`
+	Tools       []OpenAITool    `json:"tools,omitempty"`
 	// ExtraFields 用于捕获未定义的字段，如 custom_id
 	ExtraFields map[string]any `json:"-"`
 }

@@ -112,7 +112,7 @@ func (eb *EventBus) Publish(event *TrafficEvent) {
 func (eb *EventBus) Subscribe() *Subscriber {
 	subscriber := &Subscriber{
 		ID:      time.Now().Format("20060102150405.000000") + "-sub",
-		Name:    "", // Name can be set by caller for logging
+		Name:    "",                            // Name can be set by caller for logging
 		Channel: make(chan *TrafficEvent, 100), // Buffered channel to prevent blocking
 	}
 

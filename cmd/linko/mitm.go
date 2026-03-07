@@ -13,11 +13,11 @@ import (
 )
 
 var (
-	mitmLogLevel            string
-	mitmWhitelist           string
-	mitmListenAddr          string
-	mitmAnthropicMatch      string
-	mitmOpenAIMatch         string
+	mitmLogLevel       string
+	mitmWhitelist      string
+	mitmListenAddr     string
+	mitmAnthropicMatch string
+	mitmOpenAIMatch    string
 )
 
 var mitmCmd = &cobra.Command{

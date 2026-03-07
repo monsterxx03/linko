@@ -8,8 +8,8 @@ import (
 // ProviderMatcher defines custom matching rules for LLM providers
 type ProviderMatcher struct {
 	CustomAnthropicMatches []string
-	CustomOpenAIMatches   []string
-	CustomGeminiMatches   []string
+	CustomOpenAIMatches    []string
+	CustomGeminiMatches    []string
 }
 
 // Provider interface defines the contract for LLM API parsers

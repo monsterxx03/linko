@@ -17,14 +17,14 @@ import (
 )
 
 type AdminServer struct {
-	addr      string
-	uiPath    string
-	uiEmbed   bool
-	server    *http.Server
-	listener  net.Listener
-	wg        sync.WaitGroup
-	dnsServer *dns.DNSServer
-	eventBus  *mitm.EventBus
+	addr        string
+	uiPath      string
+	uiEmbed     bool
+	server      *http.Server
+	listener    net.Listener
+	wg          sync.WaitGroup
+	dnsServer   *dns.DNSServer
+	eventBus    *mitm.EventBus
 	llmEventBus *mitm.EventBus
 }
 
@@ -36,11 +36,11 @@ type StatsResponse struct {
 
 func NewAdminServer(addr string, uiPath string, uiEmbed bool, dnsServer *dns.DNSServer, eventBus *mitm.EventBus, llmEventBus *mitm.EventBus) *AdminServer {
 	return &AdminServer{
-		addr:      addr,
-		uiPath:    uiPath,
-		uiEmbed:   uiEmbed,
-		dnsServer: dnsServer,
-		eventBus:  eventBus,
+		addr:        addr,
+		uiPath:      uiPath,
+		uiEmbed:     uiEmbed,
+		dnsServer:   dnsServer,
+		eventBus:    eventBus,
 		llmEventBus: llmEventBus,
 	}
 }

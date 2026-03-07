@@ -33,7 +33,7 @@ func TestAnthropicMatch(t *testing.T) {
 		{
 			name:     "DeepSeek compatible API",
 			hostname: "api.deepseek.com",
-			path:     "/v1/chat/completions",  // path doesn't contain "anthropic", so will return false
+			path:     "/v1/chat/completions", // path doesn't contain "anthropic", so will return false
 			body:     []byte(`{"model": "deepseek-chat"}`),
 			want:     false,
 		},
@@ -355,9 +355,9 @@ func TestAnthropicExtractSystemPrompts(t *testing.T) {
 	provider := anthropicProvider{logger: slog.Default()}
 
 	tests := []struct {
-		name    string
-		req     *AnthropicRequest
-		want    []string
+		name string
+		req  *AnthropicRequest
+		want []string
 	}{
 		{
 			name: "system as string",

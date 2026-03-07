@@ -24,9 +24,9 @@ type TransparentProxy struct {
 	wg           sync.WaitGroup
 	stats        *ProxyStats
 	upstream     *UpstreamClient
-	enableDirect bool           // Enable direct connection when upstream is disabled
-	mitmHandler  *MITMHandler   // MITM handler for HTTPS traffic
-	mitmEnabled  bool           // Whether MITM is enabled
+	enableDirect bool         // Enable direct connection when upstream is disabled
+	mitmHandler  *MITMHandler // MITM handler for HTTPS traffic
+	mitmEnabled  bool         // Whether MITM is enabled
 }
 
 // ProxyStats tracks proxy statistics

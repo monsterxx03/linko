@@ -294,8 +294,8 @@ func TestOpenAIParseFullRequest(t *testing.T) {
 				]
 			}`,
 			want: &RequestInfo{
-				Model:        "gpt-4",
-				Messages:     []LLMMessage{{Role: "user", Content: []string{"Hello"}}},
+				Model:         "gpt-4",
+				Messages:      []LLMMessage{{Role: "user", Content: []string{"Hello"}}},
 				SystemPrompts: []string{"You are a helpful assistant."},
 				Tools: []ToolDef{
 					{
@@ -337,8 +337,8 @@ func TestOpenAIParseFullRequest(t *testing.T) {
 				"messages": [{"role": "user", "content": "Hi"}]
 			}`,
 			want: &RequestInfo{
-				Model:     "gpt-3.5-turbo",
-				Messages:  []LLMMessage{{Role: "user", Content: []string{"Hi"}}},
+				Model:    "gpt-3.5-turbo",
+				Messages: []LLMMessage{{Role: "user", Content: []string{"Hi"}}},
 			},
 		},
 		{
@@ -456,9 +456,9 @@ func TestOpenAIExtractSystemPrompts(t *testing.T) {
 	provider := openaiProvider{logger: slog.Default()}
 
 	tests := []struct {
-		name    string
-		req     *OpenAIRequest
-		want    []string
+		name string
+		req  *OpenAIRequest
+		want []string
 	}{
 		{
 			name: "system as string",

@@ -9,10 +9,10 @@ import (
 func buildTLSClientHello(hostname string) []byte {
 	// TLS record header: 1 byte type + 2 bytes version + 2 bytes length
 	recordHeader := []byte{0x16, 0x03, 0x03} // handshake, TLS 1.2
-	recordLen := []byte{0x00, 0x00} // length placeholder
+	recordLen := []byte{0x00, 0x00}          // length placeholder
 
 	// Handshake header: 1 byte type + 3 bytes length
-	handshakeType := []byte{0x01} // ClientHello
+	handshakeType := []byte{0x01}            // ClientHello
 	handshakeLen := []byte{0x00, 0x00, 0x00} // length placeholder
 
 	// ClientHello body:
@@ -201,7 +201,7 @@ func TestParseSNI_NoSNIExtension(t *testing.T) {
 	random := make([]byte, 32)
 	sessionID := []byte{0x00}
 	cipherSuites := []byte{0x00, 0x02, 0x00, 0x0a} // 1 cipher suite
-	compression := []byte{0x01, 0x00}               // 1 compression method
+	compression := []byte{0x01, 0x00}              // 1 compression method
 
 	// Empty extensions
 	extensions := []byte{0x00, 0x00}

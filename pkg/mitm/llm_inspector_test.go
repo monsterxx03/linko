@@ -9,18 +9,18 @@ import (
 
 // mockHTTPProcessor implements HTTPProcessorInterface for testing
 type mockHTTPProcessor struct {
-	t                  *testing.T
-	pendingReqs       map[string]*HTTPMessage
-	pendingResps      map[string]*HTTPMessage
-	processRequestFunc func(data []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
+	t                   *testing.T
+	pendingReqs         map[string]*HTTPMessage
+	pendingResps        map[string]*HTTPMessage
+	processRequestFunc  func(data []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
 	processResponseFunc func(data []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
 }
 
 func newMockHTTPProcessor(t *testing.T) *mockHTTPProcessor {
 	return &mockHTTPProcessor{
-		t:             t,
-		pendingReqs:   make(map[string]*HTTPMessage),
-		pendingResps:  make(map[string]*HTTPMessage),
+		t:            t,
+		pendingReqs:  make(map[string]*HTTPMessage),
+		pendingResps: make(map[string]*HTTPMessage),
 	}
 }
 
@@ -57,14 +57,14 @@ func (m *mockHTTPProcessor) GetPendingMessage(requestID string) (*HTTPMessage, b
 
 // mockProvider implements llm.Provider for testing
 type mockProvider struct {
-	t             *testing.T
-	matched       bool
-	matchFunc     func(hostname, path string, body []byte) bool
-	resp          *llm.LLMResponse
-	respErr       error
-	reqInfo       *llm.RequestInfo
-	reqInfoErr    error
-	deltas        []llm.TokenDelta
+	t          *testing.T
+	matched    bool
+	matchFunc  func(hostname, path string, body []byte) bool
+	resp       *llm.LLMResponse
+	respErr    error
+	reqInfo    *llm.RequestInfo
+	reqInfoErr error
+	deltas     []llm.TokenDelta
 }
 
 func newMockProvider(t *testing.T) *mockProvider {
@@ -224,7 +224,7 @@ func TestLLMInspector_InspectResponse_Basic(t *testing.T) {
 		msg := &HTTPMessage{
 			Hostname:    "api.openai.com",
 			Path:        "/v1/chat/completions",
-			StatusCode: 200,
+			StatusCode:  200,
 			ContentType: "application/json",
 			Body:        []byte(`{"choices":[{"message":{"role":"assistant","content":"hi"}}]}`),
 		}
@@ -269,7 +269,7 @@ func TestLLMInspector_InspectResponse_SSE(t *testing.T) {
 		msg := &HTTPMessage{
 			Hostname:    "api.openai.com",
 			Path:        "/v1/chat/completions",
-			StatusCode: 200,
+			StatusCode:  200,
 			ContentType: "text/event-stream",
 			Body:        []byte("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n"),
 			IsSSE:       true,
