@@ -23,7 +23,7 @@ function MitmTraffic() {
   }, [events.length]);
 
   return (
-    <div className="tab-section">
+    <div className="tab-section flex-1 min-h-0 flex flex-col">
       <TrafficHeader
         isConnected={isConnected}
         error={error}
@@ -38,15 +38,15 @@ function MitmTraffic() {
         onSearchChange={handleSearchChange}
       />
 
-      <div className="bg-white rounded-xl border border-bg-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-bg-100 flex items-center justify-between bg-bg-50/50">
+      <div className="bg-white rounded-xl border border-bg-200 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+        <div className="px-5 py-4 border-b border-bg-100 flex items-center justify-between bg-bg-50/50 flex-shrink-0">
           <h2 className="font-semibold text-bg-800">MITM Traffic</h2>
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-xs text-bg-400 font-medium">Live</span>
           </div>
         </div>
-        <div ref={listRef} className="max-h-[600px] overflow-y-auto">
+        <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto">
           <div className="p-4">
             {!isConnected && !error && (
               <div className="text-center py-12">

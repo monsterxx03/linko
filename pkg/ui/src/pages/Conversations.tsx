@@ -52,7 +52,7 @@ const ConversationList = memo(function ConversationList({
   // Collapsed view: just show icons for each conversation
   if (isCollapsed) {
     return (
-      <div className="flex flex-col items-center py-2 h-full">
+      <div className="flex flex-col items-center py-2 min-h-0 h-full">
         {onCollapse && (
           <button
             type="button"
@@ -65,7 +65,7 @@ const ConversationList = memo(function ConversationList({
             </svg>
           </button>
         )}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto">
           {conversations.map((conv) => (
             <button
               key={conv.id}
@@ -93,7 +93,7 @@ const ConversationList = memo(function ConversationList({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col min-h-0 h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-bg-200">
         <span className="text-xs font-medium text-bg-500 uppercase tracking-wide">Conversations</span>
@@ -110,7 +110,7 @@ const ConversationList = memo(function ConversationList({
       </div>
 
       {/* List */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         {conversations.length === 0 ? (
           <div className="p-6 text-center">
             <svg className="w-12 h-12 mx-auto text-bg-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -234,7 +234,7 @@ const ConversationView = memo(function ConversationView({
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full">
+    <div className="flex-1 min-h-0 flex flex-col">
       {/* Header */}
       <div className="px-6 py-4 border-b border-bg-200 bg-white shrink-0">
         <div className="flex items-center justify-between">
@@ -325,13 +325,13 @@ export default function Conversations() {
   const handleSelect = useCallback((id: string) => setCurrentConversationId(id), [setCurrentConversationId]);
 
   return (
-    <div className="flex-1 flex flex-col h-[calc(100vh-120px)]">
+    <div className="flex-1 min-h-0 flex flex-col">
 
       {/* Main content */}
-      <div className="flex-1 flex border border-bg-200 rounded-xl bg-white h-full">
+      <div className="flex-1 min-h-0 flex border border-bg-200 rounded-xl bg-white">
         {/* Conversation list */}
         <div
-          className={`border-r border-bg-200 overflow-y-auto flex-shrink-0 transition-all duration-200 h-full ${
+          className={`border-r border-bg-200 overflow-y-auto flex-shrink-0 transition-all duration-200 min-h-0 ${
             sidebarCollapsed ? 'w-16' : 'w-80'
           }`}
         >
@@ -346,7 +346,7 @@ export default function Conversations() {
 
 
         {/* Conversation view */}
-        <div className="flex-1 h-full">
+        <div className="flex-1 min-h-0 flex flex-col">
           <ConversationView
             conversation={currentConversation}
           />

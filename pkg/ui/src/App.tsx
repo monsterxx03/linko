@@ -31,9 +31,9 @@ function App() {
 
   return (
     <SSEProvider>
-      <div className="min-h-screen bg-bg-50">
+      <div className="h-screen bg-bg-50 flex flex-col">
       {/* Header */}
-      <header className="bg-white border-b border-bg-200 sticky top-0 z-10">
+      <header className="bg-white border-b border-bg-200 flex-shrink-0 z-10">
         <div className="w-full px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -87,20 +87,20 @@ function App() {
       </header>
 
       {/* Main Content */}
-      <main className="w-full px-6 py-8 min-h-0">
+      <main className="flex-1 min-h-0 flex flex-col px-6 py-6">
         {/* Tab Content - Use visibility hidden instead of display none to preserve scroll position */}
-        <div className="contents">
-          <div className={activeTab === 'mitm' ? '' : 'invisible absolute w-full pointer-events-none'}>
+        <div className="flex-1 min-h-0 flex flex-col contents">
+          <div className={activeTab === 'mitm' ? 'flex-1 min-h-0 flex flex-col' : 'invisible absolute w-full pointer-events-none'}>
             <MitmTraffic />
           </div>
-          <div className={activeTab === 'conversations' ? '' : 'invisible absolute w-full pointer-events-none'}>
+          <div className={activeTab === 'conversations' ? 'flex-1 min-h-0 flex flex-col' : 'invisible absolute w-full pointer-events-none'}>
             <Conversations />
           </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-bg-200 mt-8">
+      <footer className="border-t border-bg-200 flex-shrink-0">
         <div className="w-full px-6 py-4">
           <div className="flex items-center justify-between text-xs text-bg-400">
             <span>Linko Monitor</span>
