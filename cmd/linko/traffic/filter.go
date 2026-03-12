@@ -42,6 +42,15 @@ func (m *Model) applyFiltersLocked() {
 
 		m.filteredEvents = append(m.filteredEvents, e)
 	}
+
+	// Reset selection when filter changes to avoid out-of-bounds index
+	if m.selectedIndex >= len(m.filteredEvents) {
+		if len(m.filteredEvents) > 0 {
+			m.selectedIndex = len(m.filteredEvents) - 1
+		} else {
+			m.selectedIndex = 0
+		}
+	}
 }
 
 // AddEvent adds or updates an event

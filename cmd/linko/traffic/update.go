@@ -179,8 +179,8 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "q", "Escape":
 			m.ClosePopup()
 		}
-	} else {
-		// List mode
+	} else if !m.searchInput.Focused() {
+		// List mode (search not focused)
 		switch key.Text {
 		case "q":
 			return m, tea.Quit
@@ -206,6 +206,11 @@ func (m *Model) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.DeleteSelected()
 		case "y":
 			// 'yy' to copy - would need clipboard support
+		}
+	} else {
+		// Search is focused - only handle Escape to blur
+		if key.Text == "esc" || keyStr == "ctrl+c" {
+			m.searchInput.Blur()
 		}
 	}
 
