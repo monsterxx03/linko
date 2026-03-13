@@ -29,6 +29,11 @@ func newFirewallManagerImpl(fm *FirewallManager) FirewallManagerInterface {
 }
 
 func (d *darwinFirewallManager) SetupFirewallRules() error {
+	// 解析 reserved domains
+	if err := d.fm.resolveReservedDomains(); err != nil {
+		slog.Warn("Failed to resolve reserved domains", "error", err)
+	}
+
 	if d.fm.skipCN {
 		if err := ipdb.LoadChinaIPRanges(); err != nil {
 			slog.Warn("Failed to load cached China IP ranges", "error", err)
@@ -44,6 +49,8 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 	} else {
 		allCIDRs = reservedCIDRs
 	}
+	// 追加域名解析出的 IP
+	allCIDRs = append(allCIDRs, d.fm.resolvedDomainIPs...)
 	proxyPort := d.fm.proxyPort
 	dnsServerPort := d.fm.dnsServerPort
 	cnDNS := d.fm.cnDNS
