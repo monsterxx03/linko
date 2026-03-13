@@ -141,6 +141,7 @@ func setupFirewall(cfg *config.Config, sc *ServerConfig) *proxy.FirewallManager 
 		cfg.DNS.DomesticDNS,
 		sc.RedirectOption,
 		forceProxyIPs,
+		cfg.Firewall.ReservedDomains,
 		cfg.MITM.GID,
 		sc.SkipCN,
 	)
