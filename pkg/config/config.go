@@ -84,6 +84,10 @@ type FirewallConfig struct {
 	// ForceProxyHosts is a list of domains or IPs that should always be proxied
 	// These hosts will not be added to the reserved list and will always be redirected
 	ForceProxyHosts []string `mapstructure:"force_proxy_hosts" yaml:"force_proxy_hosts"`
+
+	// ReservedDomains is a list of domains that should be resolved using Chinese DNS
+	// and added to the firewall reserved list (bypass proxy, direct connection)
+	ReservedDomains []string `mapstructure:"reserved_domains" yaml:"reserved_domains"`
 }
 
 // UpstreamConfig contains upstream proxy settings
