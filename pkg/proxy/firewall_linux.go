@@ -6,6 +6,7 @@ package proxy
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 
@@ -24,6 +25,11 @@ func newFirewallManagerImpl(fm *FirewallManager) FirewallManagerInterface {
 }
 
 func (l *linuxFirewallManager) SetupFirewallRules() error {
+	// 解析 reserved domains
+	if err := l.fm.resolveReservedDomains(); err != nil {
+		slog.Warn("Failed to resolve reserved domains", "error", err)
+	}
+
 	cmd := exec.Command("sudo", "sh", "-c", "echo 1 > /proc/sys/net/ipv4/ip_forward")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to enable IP forwarding: %w", err)
@@ -120,6 +126,16 @@ func (l *linuxFirewallManager) addReservedIPsToIPSet() error {
 	if err := cmd.Run(); err != nil {
 		return err
 	}
+
+	// 添加域名解析出的 IP
+	for _, ip := range l.fm.resolvedDomainIPs {
+		cmd := exec.Command("sudo", "ipset", "add", ipsetName, ip)
+		if err := cmd.Run(); err != nil {
+			slog.Warn("Failed to add domain IP to ipset", "ip", ip, "error", err)
+			continue
+		}
+	}
+
 	return nil
 }
 
