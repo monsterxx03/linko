@@ -1,5 +1,9 @@
 package proxy
 
+import (
+	"log/slog"
+)
+
 type FirewallManagerInterface interface {
 	SetupFirewallRules() error
 	CleanupFirewallRules() error
@@ -32,25 +36,28 @@ type RedirectOption struct {
 }
 
 type FirewallManager struct {
-	proxyPort     string
-	dnsServerPort string
-	redirectOpt   RedirectOption
-	cnDNS         []string
-	forceProxyIPs []string
-	mitmGID       int
-	skipCN        bool // whether to skip China IP ranges in firewall rules
-	impl          FirewallManagerInterface
+	proxyPort         string
+	dnsServerPort     string
+	redirectOpt       RedirectOption
+	cnDNS             []string
+	forceProxyIPs     []string
+	reservedDomains   []string
+	resolvedDomainIPs []string
+	mitmGID           int
+	skipCN            bool // whether to skip China IP ranges in firewall rules
+	impl              FirewallManagerInterface
 }
 
-func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, redirectOpt RedirectOption, forceProxyIPs []string, mitmGID int, skipCN bool) *FirewallManager {
+func NewFirewallManager(proxyPort string, dnsServerPort string, cnDNS []string, redirectOpt RedirectOption, forceProxyIPs []string, reservedDomains []string, mitmGID int, skipCN bool) *FirewallManager {
 	fm := &FirewallManager{
-		proxyPort:     proxyPort,
-		dnsServerPort: dnsServerPort,
-		cnDNS:         cnDNS,
-		redirectOpt:   redirectOpt,
-		forceProxyIPs: forceProxyIPs,
-		mitmGID:       mitmGID,
-		skipCN:        skipCN,
+		proxyPort:       proxyPort,
+		dnsServerPort:   dnsServerPort,
+		cnDNS:           cnDNS,
+		redirectOpt:     redirectOpt,
+		forceProxyIPs:   forceProxyIPs,
+		reservedDomains: reservedDomains,
+		mitmGID:         mitmGID,
+		skipCN:          skipCN,
 	}
 	fm.impl = newFirewallManagerImpl(fm)
 	return fm
@@ -70,4 +77,20 @@ func (fm *FirewallManager) GetCurrentRules() ([]FirewallRule, error) {
 
 func (fm *FirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
 	return fm.impl.CheckFirewallStatus()
+}
+
+// resolveReservedDomains resolves reserved domains using Chinese DNS
+func (fm *FirewallManager) resolveReservedDomains() error {
+	if len(fm.reservedDomains) == 0 {
+		return nil
+	}
+
+	ips, err := ResolveHosts(fm.reservedDomains, fm.cnDNS)
+	if err != nil {
+		slog.Warn("Failed to resolve reserved domains", "error", err)
+		return err
+	}
+	fm.resolvedDomainIPs = ips
+	slog.Info("Resolved reserved domains", "domains", fm.reservedDomains, "ips", ips)
+	return nil
 }
