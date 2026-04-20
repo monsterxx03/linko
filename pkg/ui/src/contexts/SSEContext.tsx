@@ -44,6 +44,7 @@ export interface LLMMessage {
   }>;
   system?: string[];
   tools?: ToolDef[];
+  thinking?: string;
 }
 
 export interface ToolDef {
@@ -529,6 +530,10 @@ export function SSEProvider({ children }: SSEProviderProps) {
           if (event.message.tool_results && event.message.tool_results.length > 0) {
             msg.tool_results = event.message.tool_results;
           }
+          // 只在有新 thinking 时才更新
+          if (event.message.thinking && event.message.thinking.trim() !== "") {
+            msg.thinking = event.message.thinking;
+          }
         } else {
           // Add new
           conv.messages.push({
@@ -545,7 +550,7 @@ export function SSEProvider({ children }: SSEProviderProps) {
             timestamp: new Date(event.timestamp).getTime(),
             system_prompts: event.message.system,
             tools: event.message.tools,
-            thinking: "",
+            thinking: event.message.thinking || "",
             streaming_tool_calls: [],
           });
         }
