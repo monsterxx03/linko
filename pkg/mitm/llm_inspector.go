@@ -334,6 +334,7 @@ func (l *LLMInspector) processCompleteResponse(httpMsg *HTTPMessage, hostname st
 	msg := llm.LLMMessage{
 		Role:      "assistant",
 		Content:   []string{resp.Content},
+		Thinking:  resp.Thinking,
 		ToolCalls: resp.ToolCalls,
 	}
 

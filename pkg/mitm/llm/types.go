@@ -8,6 +8,7 @@ import (
 type LLMMessage struct {
 	Role        string       `json:"role"`                   // "user", "assistant", "system", "tool"
 	Content     []string     `json:"content"`                // message content
+	Thinking    string       `json:"thinking,omitempty"`     // thinking content (for Claude, o1, etc.)
 	Name        string       `json:"name,omitempty"`         // optional name for the message
 	ToolCalls   []ToolCall   `json:"tool_calls,omitempty"`   // tool calls (for assistant messages)
 	ToolResults []ToolResult `json:"tool_results,omitempty"` // tool results (for user messages)
@@ -60,6 +61,7 @@ type APIError struct {
 // LLMResponse represents a response from an LLM
 type LLMResponse struct {
 	Content    string     `json:"content"`
+	Thinking   string     `json:"thinking,omitempty"`
 	StopReason string     `json:"stop_reason"`
 	Usage      TokenUsage `json:"usage"`
 	Error      *APIError  `json:"error,omitempty"`

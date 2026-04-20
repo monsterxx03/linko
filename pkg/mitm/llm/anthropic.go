@@ -54,10 +54,13 @@ type AnthropicMessage struct {
 }
 
 type AnthropicContent struct {
-	Type     string       `json:"type"`
-	Text     string       `json:"text,omitempty"`
-	Thinking string       `json:"thinking,omitempty"`
-	Source   *ImageSource `json:"source,omitempty"`
+	Type     string                 `json:"type"`
+	Text     string                 `json:"text,omitempty"`
+	Thinking string                 `json:"thinking,omitempty"`
+	Source   *ImageSource           `json:"source,omitempty"`
+	ID       string                 `json:"id,omitempty"`    // for tool_use
+	Name     string                 `json:"name,omitempty"`  // for tool_use
+	Input    map[string]interface{} `json:"input,omitempty"` // for tool_use
 }
 
 type ImageSource struct {
@@ -199,24 +202,38 @@ func (a anthropicProvider) ParseResponse(path string, body []byte) (*LLMResponse
 		}, nil
 	}
 
-	content := ""
+	var textContent string
+	var thinkingContent string
+	var toolCalls []ToolCall
+
 	for _, c := range resp.Content {
-		if c.Type == "text" {
-			content = c.Text
-			break
+		switch c.Type {
+		case "text":
+			textContent += c.Text
+		case "thinking":
+			thinkingContent += c.Thinking
+		case "tool_use":
+			args, _ := json.Marshal(c.Input)
+			toolCalls = append(toolCalls, ToolCall{
+				ID:   c.ID,
+				Type: "function",
+				Function: FunctionCall{
+					Name:      c.Name,
+					Arguments: string(args),
+				},
+			})
 		}
-	}
-	if content == "" {
-		fmt.Println(string(body))
 	}
 
 	return &LLMResponse{
-		Content:    content,
+		Content:    textContent,
+		Thinking:   thinkingContent,
 		StopReason: resp.StopReason,
 		Usage: TokenUsage{
 			InputTokens:  resp.Usage.InputTokens,
 			OutputTokens: resp.Usage.OutputTokens,
 		},
+		ToolCalls: toolCalls,
 	}, nil
 }
 
