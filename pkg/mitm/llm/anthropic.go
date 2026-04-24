@@ -110,6 +110,7 @@ type anthropicProvider struct {
 }
 
 func (a anthropicProvider) Match(hostname, path string, body []byte) bool {
+	// Match any path containing /v1/messages (including subpaths like /v1/messages/count_tokens)
 	if strings.Contains(path, "/v1/messages") {
 		return true
 	}

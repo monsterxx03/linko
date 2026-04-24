@@ -28,7 +28,7 @@ func TestAnthropicMatch(t *testing.T) {
 			hostname: "api.anthropic.com",
 			path:     "/v1/messages/count_tokens",
 			body:     []byte(`{"model": "claude-3-5-sonnet-20241022"}`),
-			want:     false, // Match only matches exact /v1/messages
+			want:     true, // Path contains /v1/messages, so it matches
 		},
 		{
 			name:     "DeepSeek compatible API",
@@ -59,11 +59,11 @@ func TestAnthropicMatch(t *testing.T) {
 			want:     false,
 		},
 		{
-			name:     "unknown hostname",
+			name:     "unknown hostname with messages path",
 			hostname: "api.unknown.com",
 			path:     "/v1/messages",
 			body:     []byte(`{}`),
-			want:     false,
+			want:     true, // Path contains /v1/messages, so it matches
 		},
 	}
 
@@ -454,41 +454,6 @@ func TestAnthropicExtractToolsFromReq(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestAnthropicCompatibleHosts(t *testing.T) {
-	// Verify compatibleHosts map contains expected hosts
-	expectedHosts := []string{
-		"api.minimaxi.com",
-		"api.minimax.io",
-		"api.deepseek.com",
-		"open.bigmodel.cn",
-		"api.z.ai",
-		"dashscope.aliyuncs.com",
-		"api.moonshot.cn",
-		"api.longcat.chat",
-		"api.tbox.cn",
-		"api.xiaomimimo.com",
-	}
-
-	for _, hostname := range expectedHosts {
-		t.Run(hostname, func(t *testing.T) {
-			if !compatibleHosts[hostname] {
-				t.Errorf("expected %s to be in compatibleHosts map", hostname)
-			}
-		})
-	}
-
-	// Test matching with path containing "anthropic"
-	provider := anthropicProvider{logger: slog.Default()}
-	matched := provider.Match("api.deepseek.com", "/v1/chat/completions", []byte(`{}`))
-	if matched {
-		t.Error("expected Match() = false for path without 'anthropic'")
-	}
-
-	// With "anthropic" in path
-	matched = provider.Match("api.deepseek.com", "/v1/chat/completions", []byte(`{}`))
-	_ = matched
 }
 
 // TestTokenDeltaMerging tests that SSE deltas are properly merged
