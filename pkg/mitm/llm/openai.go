@@ -251,6 +251,11 @@ func (o openaiProvider) extractSystemPromptsFromReq(req *OpenAIRequest) []string
 
 // extractConversationID extracts conversation ID from request
 func (o openaiProvider) extractConversationID(hostname string, headers map[string]string, req *OpenAIRequest) string {
+	// 优先从 header x-tachi-session-id 获取会话 ID
+	if sessionID, ok := headers["X-Tachi-Session-Id"]; ok && sessionID != "" {
+		return fmt.Sprintf("tachi-%s", sessionID)
+	}
+
 	// 当 hostname 是 opencode.ai 时，优先从 header X-Opencode-Session 获取会话 ID
 	if hostname == "opencode.ai" {
 		if sessionID, ok := headers["X-Opencode-Session"]; ok && sessionID != "" {

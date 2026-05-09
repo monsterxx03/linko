@@ -96,9 +96,11 @@ func (g geminiProvider) ParseFullRequest(hostname string, headers map[string]str
 	// First try standard Gemini format
 	var req GeminiRequest
 	if err := json.Unmarshal(body, &req); err == nil && len(req.Contents) > 0 {
-		// 当 hostname 是 opencode.ai 时，优先从 header X-Opencode-Session 获取会话 ID
+		// 优先从 header x-tachi-session-id 获取会话 ID
 		conversationID := "gemini-default"
-		if hostname == "opencode.ai" {
+		if sessionID, ok := headers["X-Tachi-Session-Id"]; ok && sessionID != "" {
+			conversationID = fmt.Sprintf("tachi-%s", sessionID)
+		} else if hostname == "opencode.ai" {
 			if sessionID, ok := headers["X-Opencode-Session"]; ok && sessionID != "" {
 				conversationID = fmt.Sprintf("opencode-%s", sessionID)
 			}
