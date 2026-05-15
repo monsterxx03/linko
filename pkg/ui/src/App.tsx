@@ -89,7 +89,7 @@ function App() {
       {/* Main Content */}
       <main className="flex-1 min-h-0 flex flex-col px-6 py-6">
         {/* Tab Content - Use visibility hidden instead of display none to preserve scroll position */}
-        <div className="flex-1 min-h-0 flex flex-col contents">
+        <div className="flex-1 min-h-0 flex flex-col">
           <div className={activeTab === 'mitm' ? 'flex-1 min-h-0 flex flex-col' : 'invisible absolute w-full pointer-events-none'}>
             <MitmTraffic />
           </div>
