@@ -320,7 +320,7 @@ class LLMConversationStore {
 
   getAll(): Conversation[] {
     return Array.from(this.conversationsMap.values())
-      .sort((a, b) => b.last_updated - a.last_updated)
+      .sort((a, b) => b.started_at - a.started_at)
       .slice(0, this.maxConversations);
   }
 
