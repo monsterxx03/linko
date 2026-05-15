@@ -560,7 +560,6 @@ export function SSEProvider({ children }: SSEProviderProps) {
           model: event.model || conv.model,
           total_tokens: event.total_tokens || conv.total_tokens,
         });
-        llmStore.setCurrentId(event.conversation_id);
       },
     );
 

@@ -1,5 +1,6 @@
 import { useState, memo, useCallback } from 'react';
 import { hasSystemReminderTag } from './utils';
+import { MarkdownContent } from './MarkdownContent';
 
 interface CollapsibleContentProps {
   content: string;
@@ -69,11 +70,7 @@ const CollapsibleMarkdown = memo(function CollapsibleMarkdown({ content, index }
   const handleToggle = useCallback(() => setCollapsed(!collapsed), [collapsed]);
 
   if (!collapsed) {
-    return (
-      <div className="text-sm text-slate-800 whitespace-pre-wrap break-all">
-        {content}
-      </div>
-    );
+    return <MarkdownContent content={content} />;
   }
 
   const preview = content.substring(0, COLLAPSE_THRESHOLD) + '...';
@@ -107,9 +104,7 @@ const CollapsibleMarkdown = memo(function CollapsibleMarkdown({ content, index }
       </button>
       {!collapsed && (
         <div className="px-3 py-2 bg-slate-50 border-t border-slate-200">
-          <div className="text-sm text-slate-800 whitespace-pre-wrap break-all">
-            {content}
-          </div>
+          <MarkdownContent content={content} />
         </div>
       )}
     </div>
