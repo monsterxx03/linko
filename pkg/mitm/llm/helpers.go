@@ -19,6 +19,37 @@ func generateOpenAIConversationHash(messages []OpenAIMessage) string {
 	return hex.EncodeToString(hash[:8])
 }
 
+// extractToolResultContent handles both string and array content for tool results.
+// Anthropic's tool_result content can be a plain string or an array of content blocks.
+func extractToolResultContent(content any) string {
+	switch c := content.(type) {
+	case string:
+		return c
+	case []any:
+		var parts []string
+		for _, item := range c {
+			if itemMap, ok := item.(map[string]any); ok {
+				if text, ok := itemMap["text"].(string); ok {
+					parts = append(parts, text)
+				}
+			}
+		}
+		if len(parts) > 0 {
+			return parts[0]
+		}
+		// Fallback: marshal as JSON
+		if jsonBytes, err := json.Marshal(c); err == nil {
+			return string(jsonBytes)
+		}
+		return ""
+	default:
+		if jsonBytes, err := json.Marshal(c); err == nil {
+			return string(jsonBytes)
+		}
+		return ""
+	}
+}
+
 func convertAnthropicMessages(messages []AnthropicMessage) []LLMMessage {
 	var result []LLMMessage
 	for _, m := range messages {
@@ -61,7 +92,7 @@ func convertAnthropicMessages(messages []AnthropicMessage) []LLMMessage {
 						})
 					case "tool_result":
 						toolUseID, _ := itemMap["tool_use_id"].(string)
-						content, _ := itemMap["content"].(string)
+						content := extractToolResultContent(itemMap["content"])
 						// Extract to ToolResults field instead of contentParts
 						toolResults = append(toolResults, ToolResult{
 							ToolUseID: toolUseID,
@@ -188,7 +219,7 @@ func convertOpenAIMessages(messages []OpenAIMessage) []LLMMessage {
 						})
 					case "tool_result":
 						toolUseID, _ := partMap["tool_use_id"].(string)
-						content, _ := partMap["content"].(string)
+						content := extractToolResultContent(partMap["content"])
 						toolResults = append(toolResults, ToolResult{
 							ToolUseID: toolUseID,
 							Content:   content,

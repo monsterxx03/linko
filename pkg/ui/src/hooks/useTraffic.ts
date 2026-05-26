@@ -58,10 +58,20 @@ export function useTraffic(): UseTrafficReturn {
         if (filter === 'responses' && event.direction !== 'server->client') {
           return false;
         }
-        // Search
+        // Search — match against hostname, URL, method, status code
         if (search) {
-          const eventStr = JSON.stringify(event).toLowerCase();
-          if (!eventStr.includes(search.toLowerCase())) {
+          const term = search.toLowerCase();
+          const searchable = [
+            event.hostname,
+            event.request?.url,
+            event.request?.method,
+            event.response?.status_code != null ? String(event.response.status_code) : '',
+            event.response?.status,
+          ]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase();
+          if (!searchable.includes(term)) {
             return false;
           }
         }
