@@ -87,6 +87,7 @@ type firewallRuleData struct {
 	RedirectDNS    bool
 	RedirectPorts  []int // 通用重定向端口列表: 80(HTTP), 443(HTTPS), 22(SSH)
 	MITMGID        int
+	ExtIf          string // 动态检测的默认网络接口
 }
 
 func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, cnDNS []string, tableName string, forceTableName string, cidrs []string, forceProxyIPs []string) (string, error) {
@@ -103,7 +104,7 @@ func (d *darwinFirewallManager) renderFirewallRules(proxyPort, dnsPort string, c
 	}
 
 	const ruleTemplate = `# Linko Transparent Proxy Rules
-ext_if = "en0"
+ext_if = "{{.ExtIf}}"
 lo_if = "lo0"
 linko_port = "{{.ProxyPort}}"
 dns_port = "{{.DNSPort}}"
@@ -146,6 +147,7 @@ pass out quick proto tcp from any to <{{.TableName}}> ! tagged FORCE_PROXY
 		RedirectDNS:    d.fm.redirectOpt.RedirectDNS,
 		RedirectPorts:  redirectPorts,
 		MITMGID:        d.fm.mitmGID,
+		ExtIf:          getDefaultInterface(),
 	}
 
 	var buf bytes.Buffer
@@ -159,6 +161,33 @@ pass out quick proto tcp from any to <{{.TableName}}> ! tagged FORCE_PROXY
 	}
 
 	return buf.String(), nil
+}
+
+// getDefaultInterface returns the network interface used for the default route.
+// This handles cases where a Mac has both Ethernet and WiFi connected —
+// "en0" is not always the active interface.
+func getDefaultInterface() string {
+	cmd := exec.Command("route", "-n", "get", "default")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		slog.Warn("failed to detect default interface, falling back to en0", "error", err)
+		return "en0"
+	}
+
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "interface:") {
+			iface := strings.TrimSpace(strings.TrimPrefix(line, "interface:"))
+			if iface != "" {
+				slog.Info("detected default network interface", "interface", iface)
+				return iface
+			}
+		}
+	}
+
+	slog.Warn("could not parse default interface, falling back to en0")
+	return "en0"
 }
 
 func (d *darwinFirewallManager) CleanupFirewallRules() error {
