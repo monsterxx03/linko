@@ -29,12 +29,16 @@ func newFirewallManagerImpl(fm *FirewallManager) FirewallManagerInterface {
 }
 
 func (d *darwinFirewallManager) SetupFirewallRules() error {
+	slog.Info("setting up macOS firewall rules", "proxyPort", d.fm.proxyPort, "dnsPort", d.fm.dnsServerPort)
+
 	// 解析 reserved domains
+	slog.Info("resolving reserved domains...")
 	if err := d.fm.resolveReservedDomains(); err != nil {
 		slog.Warn("Failed to resolve reserved domains", "error", err)
 	}
 
 	if d.fm.skipCN {
+		slog.Info("loading China IP ranges...")
 		if err := ipdb.LoadChinaIPRanges(); err != nil {
 			slog.Warn("Failed to load cached China IP ranges", "error", err)
 			slog.Info("Run 'linko update-cn-ip' to download China IP data")
@@ -56,24 +60,38 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 	cnDNS := d.fm.cnDNS
 	forceProxyIPs := d.fm.forceProxyIPs
 
+	slog.Info("CIDR summary", "reservedCIDRs", len(reservedCIDRs), "chinaCIDRs", len(chinaCIDRs),
+		"resolvedDomainIPs", len(d.fm.resolvedDomainIPs), "totalCIDRs", len(allCIDRs),
+		"forceProxyIPs", len(forceProxyIPs))
+
+	slog.Info("rendering firewall rules...")
 	ruleConfig, err := d.renderFirewallRules(proxyPort, dnsServerPort, cnDNS, pfTableName, pfForceTableName, allCIDRs, forceProxyIPs)
 	if err != nil {
 		return fmt.Errorf("failed to render firewall rules: %w", err)
 	}
 
+	slog.Info("writing pf config to", "path", pfConfPath)
 	if err := d.writeMacOSRules(ruleConfig); err != nil {
 		return fmt.Errorf("failed to write MacOS rules: %w", err)
 	}
 
+	slog.Info("ensuring pf anchor line in /etc/pf.conf...")
 	if err := d.ensurePfAnchorLine(); err != nil {
 		return fmt.Errorf("failed to ensure pf anchor line: %w", err)
 	}
 
+	slog.Info("loading pf anchor...")
 	if err := d.loadMacOSAnchor(); err != nil {
-		return err
+		return fmt.Errorf("failed to load pf anchor: %w", err)
 	}
 
-	return d.enablePf()
+	slog.Info("enabling pf...")
+	if err := d.enablePf(); err != nil {
+		return fmt.Errorf("failed to enable pf: %w", err)
+	}
+
+	slog.Info("firewall rules setup complete")
+	return nil
 }
 
 type firewallRuleData struct {
@@ -205,15 +223,22 @@ func (d *darwinFirewallManager) CleanupFirewallRules() error {
 
 func (d *darwinFirewallManager) disablePf() error {
 	cmd := exec.Command("sudo", "pfctl", "-d")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to disable pf: %w", err)
+		return fmt.Errorf("pfctl -d failed: %w\nstderr: %s", err, stderr.String())
 	}
 	return nil
 }
 
 func (d *darwinFirewallManager) enablePf() error {
 	cmd := exec.Command("sudo", "pfctl", "-e")
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("pfctl -e failed: %w\nstderr: %s", err, stderr.String())
+	}
+	return nil
 }
 
 func (d *darwinFirewallManager) removeConfigFile() error {
@@ -226,7 +251,12 @@ func (d *darwinFirewallManager) removeConfigFile() error {
 
 func (d *darwinFirewallManager) writeMacOSRules(rules string) error {
 	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("cat > %s << 'EOF'\n%s\nEOF", pfConfPath, rules))
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to write pf config: %w\nstderr: %s", err, stderr.String())
+	}
+	return nil
 }
 
 func (d *darwinFirewallManager) loadMacOSAnchor() error {
@@ -254,7 +284,12 @@ func (d *darwinFirewallManager) ensurePfAnchorLine() error {
 	}
 
 	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo '%s' >> /etc/pf.conf", anchorLine))
-	return cmd.Run()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to append anchor line to /etc/pf.conf: %w\nstderr: %s", err, stderr.String())
+	}
+	return nil
 }
 
 func (d *darwinFirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
