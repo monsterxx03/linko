@@ -5,12 +5,14 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
 	"os"
 	"os/exec"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/monsterxx03/linko/pkg/ipdb"
 )
@@ -209,20 +211,33 @@ func getDefaultInterface() string {
 }
 
 func (d *darwinFirewallManager) CleanupFirewallRules() error {
-	cmd := exec.Command("sudo", "pfctl", "-a", pfAnchorName, "-F", "all")
+	const cleanupTimeout = 10 * time.Second
+
+	ctx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "sudo", "pfctl", "-a", pfAnchorName, "-F", "all")
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to flush linko anchor: %w", err)
 	}
 
-	if err := d.disablePf(); err != nil {
+	if err := d.disablePf(ctx); err != nil {
 		slog.Warn("failed to disable pf", "error", err)
+	}
+
+	if err := d.removeConfigFile(); err != nil {
+		slog.Warn("failed to remove config file", "error", err)
+	}
+
+	if err := d.removePfAnchorLine(); err != nil {
+		slog.Warn("failed to remove anchor line from /etc/pf.conf", "error", err)
 	}
 
 	return nil
 }
 
-func (d *darwinFirewallManager) disablePf() error {
-	cmd := exec.Command("sudo", "pfctl", "-d")
+func (d *darwinFirewallManager) disablePf(ctx context.Context) error {
+	cmd := exec.CommandContext(ctx, "sudo", "pfctl", "-d")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
@@ -245,6 +260,36 @@ func (d *darwinFirewallManager) removeConfigFile() error {
 	cmd := exec.Command("sudo", "rm", "-f", pfConfPath)
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to remove config file: %w", err)
+	}
+	return nil
+}
+
+func (d *darwinFirewallManager) removePfAnchorLine() error {
+	anchorLine := fmt.Sprintf(`load anchor "%s" from "%s"`, pfAnchorName, pfConfPath)
+
+	data, err := os.ReadFile("/etc/pf.conf")
+	if err != nil {
+		return fmt.Errorf("failed to read /etc/pf.conf: %w", err)
+	}
+
+	if !strings.Contains(string(data), anchorLine) {
+		return nil // nothing to remove
+	}
+
+	// Filter out the anchor line
+	var lines []string
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimSpace(line) != anchorLine {
+			lines = append(lines, line)
+		}
+	}
+	newContent := strings.Join(lines, "\n")
+
+	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("cat > /etc/pf.conf << 'EOF'\n%s\nEOF", newContent))
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to write /etc/pf.conf: %w\nstderr: %s", err, stderr.String())
 	}
 	return nil
 }

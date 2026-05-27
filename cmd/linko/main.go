@@ -27,6 +27,7 @@ func main() {
 	rootCmd.AddCommand(updateCnIPCmd)
 	rootCmd.AddCommand(isCnIPCmd)
 	rootCmd.AddCommand(genCaCmd)
+	rootCmd.AddCommand(cleanupCmd)
 	rootCmd.AddCommand(versionCmd)
 
 	if err := rootCmd.Execute(); err != nil {

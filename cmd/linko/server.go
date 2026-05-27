@@ -25,6 +25,10 @@ type ServerConfig struct {
 
 // RunServer 通用服务器启动函数
 func RunServer(cfg *config.Config, sc *ServerConfig, logger *slog.Logger) error {
+	// 尽早注册信号处理，避免启动期间收到信号时 defer 不执行
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
 	if err := config.EnsureDirectories(cfg); err != nil {
 		return err
 	}
@@ -41,6 +45,14 @@ func RunServer(cfg *config.Config, sc *ServerConfig, logger *slog.Logger) error 
 	// 启动透明代理
 	slog.Info("starting transparent proxy", "address", "127.0.0.1:"+cfg.ProxyPort())
 	transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient)
+	transparentProxy.SetOnPanic(func(recovered interface{}) {
+		slog.Error("proxy goroutine panicked, triggering shutdown", "panic", recovered)
+		// 向 sigChan 发送信号触发优雅关闭（非阻塞）
+		select {
+		case sigChan <- syscall.SIGTERM:
+		default:
+		}
+	})
 	if err := transparentProxy.Start(); err != nil {
 		return err
 	}
@@ -117,8 +129,6 @@ func RunServer(cfg *config.Config, sc *ServerConfig, logger *slog.Logger) error 
 	}
 
 	// 等待退出信号
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
 	slog.Info("shutting down server...")

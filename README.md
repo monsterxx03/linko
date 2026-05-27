@@ -233,9 +233,18 @@ linko tui -s http://localhost:9810/api/mitm/traffic/sse
 | `sudo linko mitm`                               | Start MITM proxy, intercepts all HTTPS traffic (requires sudo) |
 | `sudo linko mitm --whitelist "domain1,domain2"` | Start MITM proxy with whitelist (requires sudo)                |
 | `linko mitm -h`                                 | Show MITM command help                                         |
-| `linko tui`                                     | Start TUI traffic monitor (requires MITM running)            |
+| `linko tui`                                     | Start TUI traffic monitor (requires MITM running)              |
+| `sudo linko cleanup`                            | Remove firewall rules and config after crash/SIGKILL           |
 
 ## Troubleshooting
+
+**Network broken after crash / kill -9:**
+
+- If linko was killed unexpectedly (e.g., `kill -9`, OOM, system crash), the pf firewall rules may still be active, redirecting traffic to a dead proxy. Run:
+  ```bash
+  sudo linko cleanup
+  ```
+  This flushes the pf anchor rules, disables pf, removes `/etc/pf.linko.conf`, and cleans the anchor line from `/etc/pf.conf`.
 
 **Certificate not trusted:**
 

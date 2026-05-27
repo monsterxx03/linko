@@ -27,6 +27,7 @@ type TransparentProxy struct {
 	enableDirect bool         // Enable direct connection when upstream is disabled
 	mitmHandler  *MITMHandler // MITM handler for HTTPS traffic
 	mitmEnabled  bool         // Whether MITM is enabled
+	onPanic      func(recovered interface{}) // Callback when a goroutine panics
 }
 
 // ProxyStats tracks proxy statistics
@@ -87,6 +88,14 @@ func (p *TransparentProxy) Stop() {
 // acceptLoop accepts incoming connections
 func (p *TransparentProxy) acceptLoop() {
 	defer p.wg.Add(-1)
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in acceptLoop", "panic", r)
+			if p.onPanic != nil {
+				p.onPanic(r)
+			}
+		}
+	}()
 
 	for {
 		conn, err := p.server.Accept()
@@ -107,6 +116,14 @@ func (p *TransparentProxy) acceptLoop() {
 // handleConnection handles a single connection
 func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 	defer clientConn.Close()
+	defer func() {
+		if r := recover(); r != nil {
+			slog.Error("panic in handleConnection", "panic", r, "remote", clientConn.RemoteAddr())
+			if p.onPanic != nil {
+				p.onPanic(r)
+			}
+		}
+	}()
 
 	// Update stats
 	p.stats.mu.Lock()
@@ -270,4 +287,10 @@ func (p *TransparentProxy) SetMITMEnabled(enabled bool) {
 // IsMITMEnabled returns whether MITM is enabled
 func (p *TransparentProxy) IsMITMEnabled() bool {
 	return p.mitmEnabled
+}
+
+// SetOnPanic sets a callback that will be invoked when a goroutine panics.
+// This allows the caller to trigger a graceful shutdown and firewall cleanup.
+func (p *TransparentProxy) SetOnPanic(fn func(recovered interface{})) {
+	p.onPanic = fn
 }
