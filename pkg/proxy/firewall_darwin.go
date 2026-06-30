@@ -92,6 +92,8 @@ func (d *darwinFirewallManager) SetupFirewallRules() error {
 		return fmt.Errorf("failed to enable pf: %w", err)
 	}
 
+	slog.Info("killing existing pf states for redirected ports...")
+	d.killPfStates()
 	slog.Info("firewall rules setup complete")
 	return nil
 }
@@ -254,6 +256,27 @@ func (d *darwinFirewallManager) enablePf() error {
 		return fmt.Errorf("pfctl -e failed: %w\nstderr: %s", err, stderr.String())
 	}
 	return nil
+}
+
+// killPfStates terminates existing pf states.
+// Any TCP connections established before pf rules were loaded would bypass
+// the rdr (redirect) rules, since pf only matches the initial SYN packet.
+// Killing those states forces clients to reconnect, at which point the
+// new SYN packets will match the rdr rules and get redirected to the proxy.
+//
+// We use pfctl -k 0.0.0.0/0 to kill all states, which is equivalent to
+// "all hosts". Using -k instead of -F state avoids any side effects of
+// flushing the entire state table, while achieving the same outcome:
+// all existing connections will be re-established and match our rdr rules.
+func (d *darwinFirewallManager) killPfStates() {
+	cmd := exec.Command("sudo", "pfctl", "-k", "0.0.0.0/0")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		slog.Warn("failed to kill pf states", "error", err, "stderr", stderr.String())
+	} else {
+		slog.Info("killed all pf states, connections will re-establish through proxy")
+	}
 }
 
 func (d *darwinFirewallManager) removeConfigFile() error {
