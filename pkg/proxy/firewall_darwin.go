@@ -248,7 +248,22 @@ func (d *darwinFirewallManager) disablePf(ctx context.Context) error {
 	return nil
 }
 
+func (d *darwinFirewallManager) isPfEnabled() bool {
+	cmd := exec.Command("sudo", "pfctl", "-s", "info")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		slog.Warn("failed to check pf status", "error", err)
+		return false
+	}
+	return strings.Contains(stdout.String(), "Status: Enabled")
+}
+
 func (d *darwinFirewallManager) enablePf() error {
+	if d.isPfEnabled() {
+		slog.Info("pf already enabled, skipping pfctl -e")
+		return nil
+	}
 	cmd := exec.Command("sudo", "pfctl", "-e")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
