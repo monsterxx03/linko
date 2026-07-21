@@ -30,7 +30,7 @@ func NewUpstreamClient(config config.UpstreamConfig) *UpstreamClient {
 func (u *UpstreamClient) Connect(targetHost string, targetPort int) (net.Conn, error) {
 	if !u.config.Enable {
 		// Direct connection if upstream is disabled
-		return net.Dial("tcp", fmt.Sprintf("%s:%d", targetHost, targetPort))
+		return net.Dial("tcp", net.JoinHostPort(targetHost, fmt.Sprintf("%d", targetPort)))
 	}
 
 	switch u.config.Type {

@@ -2,6 +2,7 @@ package llm
 
 import (
 	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -301,10 +302,10 @@ func TestOpenAIParseFullRequest(t *testing.T) {
 					{
 						Name:        "get_weather",
 						Description: "Get weather information",
-						InputSchema: map[string]interface{}{
+						InputSchema: map[string]any{
 							"type": "object",
-							"properties": map[string]interface{}{
-								"location": map[string]interface{}{"type": "string"},
+							"properties": map[string]any{
+								"location": map[string]any{"type": "string"},
 							},
 						},
 					},
@@ -441,12 +442,12 @@ data: [DONE]
 			body := []byte(tt.body)
 			deltas := provider.ParseSSEStreamFrom(body, tt.startPos)
 
-			var text string
+			var text strings.Builder
 			for _, d := range deltas {
-				text += d.Text
+				text.WriteString(d.Text)
 			}
-			if text != tt.wantText {
-				t.Errorf("ParseSSEStreamFrom() text = %v, want %v", text, tt.wantText)
+			if text.String() != tt.wantText {
+				t.Errorf("ParseSSEStreamFrom() text = %v, want %v", text.String(), tt.wantText)
 			}
 		})
 	}
@@ -528,7 +529,7 @@ func TestOpenAIExtractToolsFromReq(t *testing.T) {
 						Function: OpenAIFunction{
 							Name:        "get_weather",
 							Description: "Get weather",
-							Parameters:  map[string]interface{}{"type": "object"},
+							Parameters:  map[string]any{"type": "object"},
 						},
 					},
 				},
@@ -537,7 +538,7 @@ func TestOpenAIExtractToolsFromReq(t *testing.T) {
 				{
 					Name:        "get_weather",
 					Description: "Get weather",
-					InputSchema: map[string]interface{}{"type": "object"},
+					InputSchema: map[string]any{"type": "object"},
 				},
 			},
 		},

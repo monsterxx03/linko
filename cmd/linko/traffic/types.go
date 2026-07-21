@@ -23,7 +23,7 @@ type TrafficEvent struct {
 	RequestID    string        `json:"request_id"`
 	Request      *HTTPRequest  `json:"request,omitempty"`
 	Response     *HTTPResponse `json:"response,omitempty"`
-	Extra        interface{}   `json:"extra,omitempty"`
+	Extra        any           `json:"extra,omitempty"`
 }
 
 // HTTPRequest represents an HTTP request

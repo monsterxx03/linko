@@ -359,10 +359,9 @@ func renderEventItem(event TrafficEvent, m *Model, isSelected bool) string {
 	}
 
 	// Build content with proper padding to fill terminal
-	totalFixed := 6 + 1 + len(reqID) + 1 + 8 + 1 + len(statusStr) // including spaces
-	if totalFixed > width {
-		totalFixed = width
-	}
+	totalFixed := min(
+		// including spaces
+		6+1+len(reqID)+1+8+1+len(statusStr), width)
 	actualHostPathWidth := width - totalFixed - 1 // -1 for space after method
 	if actualHostPathWidth < 5 {
 		actualHostPathWidth = 5
@@ -515,10 +514,7 @@ func renderEventDetailsFull(event *TrafficEvent, m *Model, width, maxHeight, scr
 		m.SetScrollOffset(scrollOffset)
 	}
 
-	visibleLines := maxHeight
-	if visibleLines > len(lines)-scrollOffset {
-		visibleLines = len(lines) - scrollOffset
-	}
+	visibleLines := min(maxHeight, len(lines)-scrollOffset)
 	if visibleLines < 0 {
 		visibleLines = 0
 	}
@@ -536,7 +532,7 @@ func renderEventDetailsFull(event *TrafficEvent, m *Model, width, maxHeight, scr
 		"Request Headers:":  true,
 		"Response Headers:": true,
 		"Request Body:":     true,
-		"Response Body:":     true,
+		"Response Body:":    true,
 	}
 
 	for i := scrollOffset; i < scrollOffset+visibleLines && i < len(lines); i++ {
@@ -565,9 +561,9 @@ func wrapText(text string, maxWidth int) []string {
 
 	var lines []string
 	// Split by existing newlines first
-	paragraphs := strings.Split(text, "\n")
+	paragraphs := strings.SplitSeq(text, "\n")
 
-	for _, para := range paragraphs {
+	for para := range paragraphs {
 		words := strings.Fields(para)
 		if len(words) == 0 {
 			continue
@@ -610,13 +606,6 @@ func truncate(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen-3] + "..."
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // sortedKeys returns sorted keys from a map[string]string

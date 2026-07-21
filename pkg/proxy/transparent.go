@@ -24,10 +24,10 @@ type TransparentProxy struct {
 	wg           sync.WaitGroup
 	stats        *ProxyStats
 	upstream     *UpstreamClient
-	enableDirect bool         // Enable direct connection when upstream is disabled
-	mitmHandler  *MITMHandler // MITM handler for HTTPS traffic
-	mitmEnabled  bool         // Whether MITM is enabled
-	onPanic      func(recovered interface{}) // Callback when a goroutine panics
+	enableDirect bool                // Enable direct connection when upstream is disabled
+	mitmHandler  *MITMHandler        // MITM handler for HTTPS traffic
+	mitmEnabled  bool                // Whether MITM is enabled
+	onPanic      func(recovered any) // Callback when a goroutine panics
 }
 
 // ProxyStats tracks proxy statistics
@@ -213,7 +213,7 @@ func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, e
 	var totalBytes int64
 	var err error
 
-	for i := 0; i < 2; i++ {
+	for range 2 {
 		select {
 		case n := <-bytesChan:
 			totalBytes += n
@@ -235,13 +235,13 @@ func isLocalHost(ip string) bool {
 }
 
 // GetStats returns proxy statistics
-func (p *TransparentProxy) GetStats() map[string]interface{} {
+func (p *TransparentProxy) GetStats() map[string]any {
 	p.stats.mu.RLock()
 	defer p.stats.mu.RUnlock()
 
 	uptime := time.Since(p.stats.startTime).Seconds()
 
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 	stats["listen_addr"] = p.listenAddr
 	stats["upstream_enabled"] = p.upstream.IsEnabled()
 	if p.upstream.IsEnabled() {
@@ -291,6 +291,6 @@ func (p *TransparentProxy) IsMITMEnabled() bool {
 
 // SetOnPanic sets a callback that will be invoked when a goroutine panics.
 // This allows the caller to trigger a graceful shutdown and firewall cleanup.
-func (p *TransparentProxy) SetOnPanic(fn func(recovered interface{})) {
+func (p *TransparentProxy) SetOnPanic(fn func(recovered any)) {
 	p.onPanic = fn
 }

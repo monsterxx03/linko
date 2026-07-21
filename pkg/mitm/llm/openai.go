@@ -66,17 +66,17 @@ type OpenAITool struct {
 
 // OpenAIFunction represents the function definition within a tool
 type OpenAIFunction struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	Parameters  map[string]interface{} `json:"parameters"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters"`
 }
 
 type OpenAIMessage struct {
-	Role             string      `json:"role"`
-	Content          interface{} `json:"content"` // string or array of content parts
-	Name             string      `json:"name,omitempty"`
-	ToolCalls        []ToolCall  `json:"tool_calls,omitempty"`
-	ReasoningContent string      `json:"reasoning_content,omitempty"` // o1 model's reasoning
+	Role             string     `json:"role"`
+	Content          any        `json:"content"` // string or array of content parts
+	Name             string     `json:"name,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"` // o1 model's reasoning
 }
 
 type OpenAIContentPart struct {
@@ -103,7 +103,7 @@ type OpenAIChoice struct {
 	Index            int           `json:"index"`
 	Message          OpenAIMessage `json:"message"`
 	FinishReason     string        `json:"finish_reason"`
-	LogProbs         interface{}   `json:"logprobs,omitempty"`
+	LogProbs         any           `json:"logprobs,omitempty"`
 	ReasoningContent string        `json:"reasoning_content,omitempty"` // o1 model's reasoning in choice
 }
 
@@ -119,7 +119,7 @@ type OpenAIStreamChunk struct {
 	Created           int64               `json:"created"`
 	Model             string              `json:"model"`
 	Choices           []OpenAIChunkChoice `json:"choices"`
-	Usage             OpenAIUsage         `json:"usage,omitempty"` // for streaming final usage
+	Usage             OpenAIUsage         `json:"usage"` // for streaming final usage
 	SystemFingerprint string              `json:"system_fingerprint,omitempty"`
 }
 
@@ -129,7 +129,7 @@ type OpenAIChunkChoice struct {
 	FinishReason     string      `json:"finish_reason,omitempty"`
 	LogProbs         any         `json:"logprobs,omitempty"`
 	ReasoningContent string      `json:"reasoning_content,omitempty"` // for non-streaming o1 responses
-	Usage            OpenAIUsage `json:"usage,omitempty"`             // for streaming final usage
+	Usage            OpenAIUsage `json:"usage"`                       // for streaming final usage
 }
 
 type OpenAIDelta struct {

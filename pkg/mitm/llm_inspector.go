@@ -400,7 +400,7 @@ func (l *LLMInspector) publishLLMError(conversationID, requestID string, apiErro
 }
 
 // publishEvent publishes an event to the event bus
-func (l *LLMInspector) publishEvent(direction string, extra interface{}) {
+func (l *LLMInspector) publishEvent(direction string, extra any) {
 	if l.eventBus == nil {
 		return
 	}

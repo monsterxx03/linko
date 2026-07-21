@@ -1,6 +1,6 @@
 module github.com/monsterxx03/linko
 
-go 1.25.5
+go 1.26.5
 
 require (
 	charm.land/bubbles/v2 v2.0.0

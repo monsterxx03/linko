@@ -15,7 +15,7 @@ import (
 
 // bufferPool is a sync.Pool for managing buffers used in io.CopyBuffer
 var bufferPool = &sync.Pool{
-	New: func() interface{} {
+	New: func() any {
 		return make([]byte, DefaultBufferSize)
 	},
 }
@@ -27,7 +27,7 @@ type ConnectionHandler struct {
 	upstream        UpstreamClient
 	peekReader      *PeekReader // Optional pre-wrapped connection for whitelist check
 	inspector       *InspectorChain
-	ctx             interface{}
+	ctx             any
 }
 
 // UpstreamClient interface for connecting through upstream proxy
@@ -141,12 +141,11 @@ func (h *ConnectionHandler) peekSNI(peekReader *PeekReader, targetIP net.IP) (st
 
 	// TLS record header: 1 byte type + 2 bytes version + 2 bytes length
 	recordLen := int(header[3])<<8 | int(header[4])
-	totalLen := 5 + recordLen
-
-	// Peek at the complete TLS record
-	if totalLen > DefaultBufferSize {
-		totalLen = DefaultBufferSize // Cap at buffer size
-	}
+	totalLen := min(
+		// Peek at the complete TLS record
+		5+recordLen,
+		// Cap at buffer size
+		DefaultBufferSize)
 
 	peekData, err := peekReader.Peek(totalLen)
 	if err != nil && len(peekData) < 200 {

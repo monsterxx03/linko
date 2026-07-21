@@ -236,7 +236,7 @@ func (s *DNSServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 }
 
 // GetCacheStats returns cache statistics
-func (s *DNSServer) GetCacheStats() map[string]interface{} {
+func (s *DNSServer) GetCacheStats() map[string]any {
 	var cacheStats map[string]any
 	if s.cache != nil {
 		cacheStats = s.cache.GetStats()
@@ -253,14 +253,14 @@ func (s *DNSServer) GetCacheStats() map[string]interface{} {
 	statsStats := s.statsCollector.GetStatsSummary()
 	topDomains := s.statsCollector.GetTopDomains(20, "queries")
 
-	domains := make([]map[string]interface{}, 0, len(topDomains))
+	domains := make([]map[string]any, 0, len(topDomains))
 	for _, d := range topDomains {
 		domains = append(domains, FormatDomainStats(d))
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"cache": cacheStats,
-		"dns": map[string]interface{}{
+		"dns": map[string]any{
 			"total_domains":     statsStats.TotalDomains,
 			"total_queries":     statsStats.TotalQueries,
 			"total_success":     statsStats.TotalSuccess,

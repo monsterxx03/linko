@@ -248,8 +248,8 @@ func (scm *SiteCertManager) generateCertificate(hostname string) (*tls.Certifica
 	}
 
 	// Handle wildcard certificates
-	if strings.HasPrefix(hostname, "*.") {
-		base := strings.TrimPrefix(hostname, "*.")
+	if after, ok := strings.CutPrefix(hostname, "*."); ok {
+		base := after
 		template.DNSNames = []string{hostname, base}
 	}
 

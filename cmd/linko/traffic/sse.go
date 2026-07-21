@@ -171,7 +171,7 @@ func (c *SSEClient) Disconnect() {
 
 // JSONPretty prints JSON in a readable format
 func JSONPretty(data string) string {
-	var v interface{}
+	var v any
 	if err := json.Unmarshal([]byte(data), &v); err != nil {
 		return data
 	}
@@ -181,7 +181,6 @@ func JSONPretty(data string) string {
 	}
 	return string(b)
 }
-
 
 // FormatLatency formats latency in milliseconds to a human readable string
 func FormatLatency(ms int64) string {

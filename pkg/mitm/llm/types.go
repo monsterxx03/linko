@@ -18,9 +18,9 @@ type LLMMessage struct {
 
 // ToolDef represents a tool definition
 type ToolDef struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	InputSchema map[string]interface{} `json:"input_schema"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	InputSchema map[string]any `json:"input_schema"`
 }
 
 // ToolResult represents a tool execution result
@@ -77,7 +77,7 @@ type TokenDelta struct {
 	ToolID     string     `json:"tool_id,omitempty"`   // tool call ID
 	IsComplete bool       `json:"is_complete"`
 	StopReason string     `json:"stop_reason,omitempty"`
-	Usage      TokenUsage `json:"usage,omitempty"` // cumulative token usage
+	Usage      TokenUsage `json:"usage"` // cumulative token usage
 }
 
 // LLMMessageEvent is published when a new LLM message is detected
@@ -160,9 +160,9 @@ type GeminiFunctionCall struct {
 }
 
 type GeminiTool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	Parameters  map[string]interface{} `json:"parameters"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	Parameters  map[string]any `json:"parameters"`
 }
 
 type GeminiConfig struct {
@@ -239,7 +239,7 @@ type CloudCodeTools struct {
 }
 
 type CloudCodeFunction struct {
-	Name                 string                 `json:"name"`
-	Description          string                 `json:"description,omitempty"`
-	ParametersJsonSchema map[string]interface{} `json:"parametersJsonSchema"`
+	Name                 string         `json:"name"`
+	Description          string         `json:"description,omitempty"`
+	ParametersJsonSchema map[string]any `json:"parametersJsonSchema"`
 }

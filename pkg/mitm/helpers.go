@@ -51,12 +51,10 @@ func isHTTP2(data []byte) bool {
 	// 0x07 (GOAWAY), 0x08 (WINDOW_UPDATE), 0x09 (CONTINUATION)
 	frameType := data[3]
 	validFrameTypes := []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}
-	for _, t := range validFrameTypes {
-		if frameType == t {
-			// Also verify the length field is reasonable (not exceeding 16MB)
-			length := uint32(data[0])<<16 | uint32(data[1])<<8 | uint32(data[2])
-			return length < 0x1000000
-		}
+	if slices.Contains(validFrameTypes, frameType) {
+		// Also verify the length field is reasonable (not exceeding 16MB)
+		length := uint32(data[0])<<16 | uint32(data[1])<<8 | uint32(data[2])
+		return length < 0x1000000
 	}
 	return false
 }

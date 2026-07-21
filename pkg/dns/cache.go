@@ -87,10 +87,7 @@ func (c *DNSCache) Set(question, response *dns.Msg) {
 	// Calculate TTL from response
 	ttl := c.ttl
 	if response.Answer[0].Header().Ttl > 0 {
-		ttl = time.Duration(response.Answer[0].Header().Ttl) * time.Second
-		if ttl > c.ttl {
-			ttl = c.ttl
-		}
+		ttl = min(time.Duration(response.Answer[0].Header().Ttl)*time.Second, c.ttl)
 	}
 
 	entry := &CacheEntry{
@@ -181,11 +178,11 @@ func (c *DNSCache) CleanExpired() {
 }
 
 // GetStats returns cache statistics
-func (c *DNSCache) GetStats() map[string]interface{} {
+func (c *DNSCache) GetStats() map[string]any {
 	c.Mutex.RLock()
 	defer c.Mutex.RUnlock()
 
-	stats := make(map[string]interface{})
+	stats := make(map[string]any)
 	stats["size"] = len(c.cache)
 	stats["max_size"] = c.maxSize
 	stats["ttl"] = c.ttl.String()

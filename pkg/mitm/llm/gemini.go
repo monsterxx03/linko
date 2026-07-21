@@ -67,10 +67,10 @@ func (g geminiProvider) parseGeminiResponse(resp *GeminiResponse) (*LLMResponse,
 }
 
 func (g geminiProvider) parseGeminiCandidates(candidates []GeminiCandidate, usageMeta *GeminiUsageMetadata) (*LLMResponse, error) {
-	content := ""
+	var content strings.Builder
 	for _, part := range candidates[0].Content.Parts {
 		if part.Text != "" {
-			content += part.Text
+			content.WriteString(part.Text)
 		}
 	}
 
@@ -86,7 +86,7 @@ func (g geminiProvider) parseGeminiCandidates(candidates []GeminiCandidate, usag
 	}
 
 	return &LLMResponse{
-		Content:    content,
+		Content:    content.String(),
 		StopReason: stopReason,
 		Usage:      usage,
 	}, nil

@@ -28,24 +28,24 @@ type AnthropicMetadata struct {
 }
 
 type AnthropicTool struct {
-	Name        string                 `json:"name"`
-	Description string                 `json:"description,omitempty"`
-	InputSchema map[string]interface{} `json:"input_schema"`
+	Name        string         `json:"name"`
+	Description string         `json:"description,omitempty"`
+	InputSchema map[string]any `json:"input_schema"`
 }
 
 type AnthropicMessage struct {
-	Role    string      `json:"role"`
-	Content interface{} `json:"content"` // string or []AnthropicContent
+	Role    string `json:"role"`
+	Content any    `json:"content"` // string or []AnthropicContent
 }
 
 type AnthropicContent struct {
-	Type     string                 `json:"type"`
-	Text     string                 `json:"text,omitempty"`
-	Thinking string                 `json:"thinking,omitempty"`
-	Source   *ImageSource           `json:"source,omitempty"`
-	ID       string                 `json:"id,omitempty"`    // for tool_use
-	Name     string                 `json:"name,omitempty"`  // for tool_use
-	Input    map[string]interface{} `json:"input,omitempty"` // for tool_use
+	Type     string         `json:"type"`
+	Text     string         `json:"text,omitempty"`
+	Thinking string         `json:"thinking,omitempty"`
+	Source   *ImageSource   `json:"source,omitempty"`
+	ID       string         `json:"id,omitempty"`    // for tool_use
+	Name     string         `json:"name,omitempty"`  // for tool_use
+	Input    map[string]any `json:"input,omitempty"` // for tool_use
 }
 
 type ImageSource struct {
@@ -66,7 +66,7 @@ type AnthropicResponse struct {
 	Error        struct {
 		Type    string `json:"type"`
 		Message string `json:"message"`
-	} `json:"error,omitempty"`
+	} `json:"error"`
 }
 
 type AnthropicUsage struct {
@@ -83,24 +83,24 @@ type AnthropicStreamEvent struct {
 		Thinking    string `json:"thinking,omitempty"`
 		PartialJSON string `json:"partial_json,omitempty"`
 		StopReason  string `json:"stop_reason,omitempty"`
-	} `json:"delta,omitempty"`
+	} `json:"delta"`
 	Message struct {
 		ID         string             `json:"id"`
 		Type       string             `json:"type"`
 		Role       string             `json:"role"`
 		Content    []AnthropicContent `json:"content"`
 		StopReason string             `json:"stop_reason,omitempty"`
-		Usage      AnthropicUsage     `json:"usage,omitempty"`
-	} `json:"message,omitempty"`
+		Usage      AnthropicUsage     `json:"usage"`
+	} `json:"message"`
 	// Usage 用于 message_delta 事件的根级别 usage（不在 message 对象内）
-	Usage        AnthropicUsage `json:"usage,omitempty"`
+	Usage        AnthropicUsage `json:"usage"`
 	ContentBlock struct {
 		Type     string `json:"type"`
 		Text     string `json:"text,omitempty"`
 		Thinking string `json:"thinking,omitempty"`
 		ID       string `json:"id,omitempty"`   // for tool_use
 		Name     string `json:"name,omitempty"` // for tool_use
-	} `json:"content_block,omitempty"`
+	} `json:"content_block"`
 }
 
 // anthropicProvider implements Provider for Anthropic Claude API
@@ -187,14 +187,14 @@ func (a anthropicProvider) ParseResponse(path string, body []byte) (*LLMResponse
 		}, nil
 	}
 
-	var textContent string
+	var textContent strings.Builder
 	var thinkingContent string
 	var toolCalls []ToolCall
 
 	for _, c := range resp.Content {
 		switch c.Type {
 		case "text":
-			textContent += c.Text
+			textContent.WriteString(c.Text)
 		case "thinking":
 			thinkingContent += c.Thinking
 		case "tool_use":
@@ -211,7 +211,7 @@ func (a anthropicProvider) ParseResponse(path string, body []byte) (*LLMResponse
 	}
 
 	return &LLMResponse{
-		Content:    textContent,
+		Content:    textContent.String(),
 		Thinking:   thinkingContent,
 		StopReason: resp.StopReason,
 		Usage: TokenUsage{
@@ -365,8 +365,8 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 		if strings.HasPrefix(line, "event:") {
 			// Event type line - skip, we'll extract type from data JSON
 			continue
-		} else if strings.HasPrefix(line, "data:") {
-			data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		} else if after, ok := strings.CutPrefix(line, "data:"); ok {
+			data = strings.TrimSpace(after)
 		} else {
 			a.logger.Warn("skipping sse line", "line", line)
 			continue

@@ -1,5 +1,4 @@
 //go:build darwin
-// +build darwin
 
 package proxy
 
@@ -197,10 +196,10 @@ func getDefaultInterface() string {
 		return "en0"
 	}
 
-	for _, line := range strings.Split(stdout.String(), "\n") {
+	for line := range strings.SplitSeq(stdout.String(), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "interface:") {
-			iface := strings.TrimSpace(strings.TrimPrefix(line, "interface:"))
+		if after, ok := strings.CutPrefix(line, "interface:"); ok {
+			iface := strings.TrimSpace(after)
 			if iface != "" {
 				slog.Info("detected default network interface", "interface", iface)
 				return iface
@@ -316,7 +315,7 @@ func (d *darwinFirewallManager) removePfAnchorLine() error {
 
 	// Filter out the anchor line
 	var lines []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if strings.TrimSpace(line) != anchorLine {
 			lines = append(lines, line)
 		}
@@ -375,8 +374,8 @@ func (d *darwinFirewallManager) ensurePfAnchorLine() error {
 	return nil
 }
 
-func (d *darwinFirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
-	stats := make(map[string]interface{})
+func (d *darwinFirewallManager) CheckFirewallStatus() (map[string]any, error) {
+	stats := make(map[string]any)
 
 	cmd := exec.Command("sudo", "pfctl", "-s", "info")
 	var stdout bytes.Buffer
@@ -417,9 +416,9 @@ func (d *darwinFirewallManager) GetCurrentRules() ([]FirewallRule, error) {
 
 func (d *darwinFirewallManager) parseMacOSRules(output string) []FirewallRule {
 	var rules []FirewallRule
-	lines := strings.Split(output, "\n")
+	lines := strings.SplitSeq(output, "\n")
 
-	for _, line := range lines {
+	for line := range lines {
 		if strings.Contains(line, "rdr") && strings.Contains(line, "53") {
 			rules = append(rules, FirewallRule{
 				Protocol: "udp",

@@ -366,7 +366,7 @@ data: {"message":"Connected to LLM conversation stream"}
 				return
 			}
 			// Extract the actual event data from Extra field
-			var actualEvent interface{}
+			var actualEvent any
 			var eventType string
 
 			// Check if this is a TrafficEvent with Extra field

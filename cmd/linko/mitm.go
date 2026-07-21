@@ -105,7 +105,7 @@ func getSystemDNS() []string {
 	}
 
 	var nameservers []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "nameserver") {
 			parts := strings.Fields(line)

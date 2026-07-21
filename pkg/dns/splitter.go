@@ -152,7 +152,6 @@ func (s *DNSSplitter) BatchSplitQuery(ctx context.Context, questions []*dns.Msg)
 	var mu sync.Mutex
 
 	for _, msg := range questions {
-		msg := msg // capture loop variable
 		wg.Go(func() {
 			sem <- struct{}{}
 			defer func() { <-sem }()

@@ -116,10 +116,7 @@ func (h *MITMHandler) extractSNI(reader *mitm.PeekReader) (string, error) {
 
 	// Get the full record length
 	recordLen := int(header[3])<<8 | int(header[4])
-	totalLen := 5 + recordLen
-	if totalLen > 16384 {
-		totalLen = 16384
-	}
+	totalLen := min(5+recordLen, 16384)
 
 	// Peek at complete record
 	data, err := reader.Peek(totalLen)
@@ -151,8 +148,8 @@ func (h *MITMHandler) isInWhitelist(domain string) bool {
 
 	// Wildcard match
 	for pattern := range h.whitelist {
-		if strings.HasPrefix(pattern, "*.") {
-			base := strings.TrimPrefix(pattern, "*.")
+		if after, ok := strings.CutPrefix(pattern, "*."); ok {
+			base := after
 			if strings.HasSuffix(domainLower, "."+base) {
 				return true
 			}

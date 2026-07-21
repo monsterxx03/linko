@@ -263,19 +263,19 @@ func (s *DomainStats) copy() *DomainStats {
 	return stats
 }
 
-func FormatDomainStats(d *DomainStats) map[string]interface{} {
+func FormatDomainStats(d *DomainStats) map[string]any {
 	avgResponseTime := time.Duration(0)
 	if d.TotalQueries > 0 {
 		avgResponseTime = time.Duration(d.TotalResponseNs / d.TotalQueries)
 	}
 
-	queryTypes := make(map[string]interface{})
+	queryTypes := make(map[string]any)
 	for qt, ts := range d.QueryTypes {
 		avgNs := time.Duration(0)
 		if ts.Count > 0 {
 			avgNs = time.Duration(ts.TotalNs / ts.Count)
 		}
-		queryTypes[string(qt)] = map[string]interface{}{
+		queryTypes[string(qt)] = map[string]any{
 			"count":         ts.Count,
 			"success_count": ts.SuccessCount,
 			"failed_count":  ts.FailedCount,
@@ -283,7 +283,7 @@ func FormatDomainStats(d *DomainStats) map[string]interface{} {
 		}
 	}
 
-	return map[string]interface{}{
+	return map[string]any{
 		"domain":            d.Domain,
 		"total_queries":     d.TotalQueries,
 		"success_queries":   d.SuccessQueries,

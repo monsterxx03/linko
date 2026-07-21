@@ -117,7 +117,7 @@ func removeLineFromPfConf(anchorLine string) error {
 	}
 
 	var lines []string
-	for _, line := range strings.Split(content, "\n") {
+	for line := range strings.SplitSeq(content, "\n") {
 		if strings.TrimSpace(line) != anchorLine {
 			lines = append(lines, line)
 		}

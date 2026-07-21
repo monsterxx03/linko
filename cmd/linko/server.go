@@ -45,7 +45,7 @@ func RunServer(cfg *config.Config, sc *ServerConfig, logger *slog.Logger) error 
 	// 启动透明代理
 	slog.Info("starting transparent proxy", "address", "127.0.0.1:"+cfg.ProxyPort())
 	transparentProxy = proxy.NewTransparentProxy("127.0.0.1:"+cfg.ProxyPort(), upstreamClient)
-	transparentProxy.SetOnPanic(func(recovered interface{}) {
+	transparentProxy.SetOnPanic(func(recovered any) {
 		slog.Error("proxy goroutine panicked, triggering shutdown", "panic", recovered)
 		// 向 sigChan 发送信号触发优雅关闭（非阻塞）
 		select {

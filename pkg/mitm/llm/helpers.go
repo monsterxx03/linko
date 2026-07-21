@@ -4,18 +4,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"strings"
 )
 
 func generateOpenAIConversationHash(messages []OpenAIMessage) string {
-	data := ""
+	var data strings.Builder
 	for _, m := range messages {
-		data += m.Role + ":"
+		data.WriteString(m.Role + ":")
 		if content, ok := m.Content.(string); ok {
-			data += content
+			data.WriteString(content)
 		}
-		data += "|"
+		data.WriteString("|")
 	}
-	hash := sha256.Sum256([]byte(data))
+	hash := sha256.Sum256([]byte(data.String()))
 	return hex.EncodeToString(hash[:8])
 }
 

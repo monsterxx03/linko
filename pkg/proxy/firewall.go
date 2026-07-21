@@ -8,7 +8,7 @@ type FirewallManagerInterface interface {
 	SetupFirewallRules() error
 	CleanupFirewallRules() error
 	GetCurrentRules() ([]FirewallRule, error)
-	CheckFirewallStatus() (map[string]interface{}, error)
+	CheckFirewallStatus() (map[string]any, error)
 }
 
 type FirewallRule struct {
@@ -75,7 +75,7 @@ func (fm *FirewallManager) GetCurrentRules() ([]FirewallRule, error) {
 	return fm.impl.GetCurrentRules()
 }
 
-func (fm *FirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
+func (fm *FirewallManager) CheckFirewallStatus() (map[string]any, error) {
 	return fm.impl.CheckFirewallStatus()
 }
 

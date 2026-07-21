@@ -627,7 +627,7 @@ func TestConcurrentGetCertificate(t *testing.T) {
 	var wg sync.WaitGroup
 	certChan := make(chan *tls.Certificate, numGoroutines)
 
-	for i := 0; i < numGoroutines; i++ {
+	for range numGoroutines {
 		wg.Go(func() {
 			cert, err := scm.GetCertificate(hostname)
 			if err != nil {
