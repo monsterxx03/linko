@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+// bufferPool reduces allocations for relay buffers.
+var bufferPool = &sync.Pool{
+	New: func() any {
+		return make([]byte, 16*1024)
+	},
+}
+
 type OriginalDst struct {
 	IP   net.IP
 	Port int
@@ -199,7 +206,9 @@ func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, e
 	)
 
 	wg.Go(func() {
-		n, err := io.Copy(target, client)
+		buf := bufferPool.Get().([]byte)
+		defer bufferPool.Put(buf)
+		n, err := io.CopyBuffer(target, client, buf)
 		mu.Lock()
 		totalBytes += n
 		if err != nil && firstErr == nil {
@@ -209,7 +218,9 @@ func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, e
 	})
 
 	wg.Go(func() {
-		n, err := io.Copy(client, target)
+		buf := bufferPool.Get().([]byte)
+		defer bufferPool.Put(buf)
+		n, err := io.CopyBuffer(client, target, buf)
 		mu.Lock()
 		totalBytes += n
 		if err != nil && firstErr == nil {
