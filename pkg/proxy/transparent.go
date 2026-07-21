@@ -193,40 +193,42 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 	}
 }
 
-// relayBidirectional relays data between client and target
+// copyResult pairs byte count with the corresponding error from a single Copy direction.
+type copyResult struct {
+	n   int64
+	err error
+}
+
+// relayBidirectional relays data between client and target.
 func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, error) {
-	errChan := make(chan error, 2)
-	bytesChan := make(chan int64, 2)
+	results := make(chan copyResult, 2)
 
 	go func() {
 		n, err := io.Copy(target, client)
-		bytesChan <- n
-		errChan <- err
+		results <- copyResult{n, err}
 	}()
 
 	go func() {
 		n, err := io.Copy(client, target)
-		bytesChan <- n
-		errChan <- err
+		results <- copyResult{n, err}
 	}()
 
 	var totalBytes int64
-	var err error
+	var firstErr error
 
 	for range 2 {
 		select {
-		case n := <-bytesChan:
-			totalBytes += n
-		case e := <-errChan:
-			if err == nil {
-				err = e
+		case r := <-results:
+			totalBytes += r.n
+			if r.err != nil && firstErr == nil {
+				firstErr = r.err
 			}
 		case <-p.ctx.Done():
 			return totalBytes, p.ctx.Err()
 		}
 	}
 
-	return totalBytes, err
+	return totalBytes, firstErr
 }
 
 // isLocalHost checks if an IP address is localhost
