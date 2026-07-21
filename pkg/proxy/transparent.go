@@ -17,17 +17,16 @@ type OriginalDst struct {
 
 // TransparentProxy represents a transparent proxy
 type TransparentProxy struct {
-	listenAddr   string
-	server       net.Listener
-	ctx          context.Context
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
-	stats        *ProxyStats
-	upstream     *UpstreamClient
-	enableDirect bool                // Enable direct connection when upstream is disabled
-	mitmHandler  *MITMHandler        // MITM handler for HTTPS traffic
-	mitmEnabled  bool                // Whether MITM is enabled
-	onPanic      func(recovered any) // Callback when a goroutine panics
+	listenAddr  string
+	server      net.Listener
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	stats       *ProxyStats
+	upstream    *UpstreamClient
+	mitmHandler *MITMHandler        // MITM handler for HTTPS traffic
+	mitmEnabled bool                // Whether MITM is enabled
+	onPanic     func(recovered any) // Callback when a goroutine panics
 }
 
 // ProxyStats tracks proxy statistics
@@ -49,8 +48,7 @@ func NewTransparentProxy(listenAddr string, upstream *UpstreamClient) *Transpare
 		stats: &ProxyStats{
 			startTime: time.Now(),
 		},
-		upstream:     upstream,
-		enableDirect: !upstream.IsEnabled(),
+		upstream: upstream,
 	}
 }
 
@@ -63,8 +61,7 @@ func (p *TransparentProxy) Start() error {
 
 	p.server = listener
 
-	p.wg.Add(1)
-	go p.acceptLoop()
+	p.wg.Go(p.acceptLoop)
 
 	if p.upstream.IsEnabled() {
 		slog.Info("Transparent proxy listening", "address", p.listenAddr, "upstream_type", p.upstream.GetConfig().Type, "upstream_addr", p.upstream.GetConfig().Addr, "mode", "proxy")
@@ -87,7 +84,6 @@ func (p *TransparentProxy) Stop() {
 
 // acceptLoop accepts incoming connections
 func (p *TransparentProxy) acceptLoop() {
-	defer p.wg.Add(-1)
 	defer func() {
 		if r := recover(); r != nil {
 			slog.Error("panic in acceptLoop", "panic", r)
@@ -193,41 +189,36 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 	}
 }
 
-// copyResult pairs byte count with the corresponding error from a single Copy direction.
-type copyResult struct {
-	n   int64
-	err error
-}
-
 // relayBidirectional relays data between client and target.
 func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, error) {
-	results := make(chan copyResult, 2)
+	var (
+		totalBytes int64
+		firstErr   error
+		mu         sync.Mutex
+		wg         sync.WaitGroup
+	)
 
-	go func() {
+	wg.Go(func() {
 		n, err := io.Copy(target, client)
-		results <- copyResult{n, err}
-	}()
-
-	go func() {
-		n, err := io.Copy(client, target)
-		results <- copyResult{n, err}
-	}()
-
-	var totalBytes int64
-	var firstErr error
-
-	for range 2 {
-		select {
-		case r := <-results:
-			totalBytes += r.n
-			if r.err != nil && firstErr == nil {
-				firstErr = r.err
-			}
-		case <-p.ctx.Done():
-			return totalBytes, p.ctx.Err()
+		mu.Lock()
+		totalBytes += n
+		if err != nil && firstErr == nil {
+			firstErr = err
 		}
-	}
+		mu.Unlock()
+	})
 
+	wg.Go(func() {
+		n, err := io.Copy(client, target)
+		mu.Lock()
+		totalBytes += n
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+		mu.Unlock()
+	})
+
+	wg.Wait()
 	return totalBytes, firstErr
 }
 
