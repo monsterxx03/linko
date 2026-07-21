@@ -436,3 +436,64 @@ func TestParseSNI_WithOtherExtensions(t *testing.T) {
 		t.Errorf("Expected hostname %s, got %s", hostname, sniInfo.Hostname)
 	}
 }
+
+// TestParseSNI_MaliciousExtLen ensures no panic when extLen exceeds data bounds
+func TestParseSNI_MaliciousExtLen(t *testing.T) {
+	// Build a ClientHello where the SNI extension declares extLen = 0xFFFF
+	// but the actual data is much shorter
+	recordHeader := []byte{0x16, 0x03, 0x01, 0x00, 0x00}
+	handshakeHeader := []byte{0x01, 0x00, 0x00, 0x00}
+
+	clientVersion := []byte{0x03, 0x01}
+	random := make([]byte, 32)
+	sessionID := []byte{0x00}
+	cipherSuites := []byte{0x00, 0x02, 0x00, 0x0a}
+	compression := []byte{0x01, 0x00}
+
+	// Malicious SNI extension with extLen = 0xFFFF
+	// Extension header: type (2) + length (2)
+	// type = 0x0000 (SNI), length = 0xFFFF
+	sniExt := []byte{
+		0x00, 0x00, // extension type SNI
+		0xFF, 0xFF, // extLen = 65535 (much larger than actual data)
+		0x00, 0x01, // list length (1 byte remaining)
+		0x00,       // name type hostname
+		0x00, 0x01, // name length
+		'a',
+	}
+
+	extensions := []byte{0x00, 0x00}
+	extensions = append(extensions, sniExt...)
+	extLen := len(extensions) - 2
+	extensions[0] = byte(extLen >> 8)
+	extensions[1] = byte(extLen & 0xff)
+
+	clientHello := append(clientVersion, random...)
+	clientHello = append(clientHello, sessionID...)
+	clientHello = append(clientHello, cipherSuites...)
+	clientHello = append(clientHello, compression...)
+	clientHello = append(clientHello, extensions...)
+
+	helloLen := len(clientHello)
+	handshakeHeader[1] = byte(helloLen >> 16)
+	handshakeHeader[2] = byte(helloLen >> 8)
+	handshakeHeader[3] = byte(helloLen & 0xff)
+
+	recordLen := helloLen + 4
+	recordHeader[3] = byte(recordLen >> 8)
+	recordHeader[4] = byte(recordLen & 0xff)
+
+	data := append(recordHeader, handshakeHeader...)
+	data = append(data, clientHello...)
+
+	// This should not panic and should gracefully handle the malicious extLen
+	sniInfo, err := parseSNI(data)
+	if err != nil {
+		// Acceptable: bounds check triggered an error
+		t.Logf("parseSNI returned error (acceptable): %v", err)
+		return
+	}
+	if sniInfo.IsValid {
+		t.Error("Expected IsValid to be false for malicious extLen")
+	}
+}

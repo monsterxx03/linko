@@ -110,6 +110,11 @@ func parseSNI(data []byte) (*SNIInfo, error) {
 		pos += 4
 
 		if extType == 0x0000 { // SNI extension
+			// Bounds check before slicing — malicious/corrupted ClientHello
+			// could declare extLen larger than remaining data
+			if pos+extLen > len(data) {
+				break
+			}
 			sniData := data[pos : pos+extLen]
 			hostname, err := parseSNIExtension(sniData)
 			if err != nil {

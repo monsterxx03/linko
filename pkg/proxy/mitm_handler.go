@@ -116,7 +116,7 @@ func (h *MITMHandler) extractSNI(reader *mitm.PeekReader) (string, error) {
 
 	// Get the full record length
 	recordLen := int(header[3])<<8 | int(header[4])
-	totalLen := min(5+recordLen, 16384)
+	totalLen := min(5+recordLen, mitm.DefaultBufferSize)
 
 	// Peek at complete record
 	data, err := reader.Peek(totalLen)
