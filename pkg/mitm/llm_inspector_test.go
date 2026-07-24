@@ -382,7 +382,7 @@ func bytesEqual(a, b []byte) bool {
 // newAnthropicRequest builds a complete raw HTTP request for the Anthropic
 // Messages API.
 func newAnthropicRequest(body string) []byte {
-	return []byte(fmt.Sprintf("POST /v1/messages HTTP/1.1\r\nHost: api.anthropic.com\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(body), body))
+	return fmt.Appendf(nil, "POST /v1/messages HTTP/1.1\r\nHost: api.anthropic.com\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(body), body)
 }
 
 const anthropicTestBody = `{"model":"claude-3-5-sonnet-20241022","max_tokens":1024,"stream":true,"messages":[{"role":"user","content":"hi"}]}`

@@ -35,6 +35,14 @@ type StatsResponse struct {
 }
 
 func NewAdminServer(addr string, uiPath string, uiEmbed bool, dnsServer *dns.DNSServer, eventBus *mitm.EventBus, llmEventBus *mitm.EventBus) *AdminServer {
+	// Register SSE serializers so each event is serialized exactly once at
+	// publish time, regardless of subscriber count.
+	if eventBus != nil {
+		eventBus.SetSerializer(serializeTrafficEvent)
+	}
+	if llmEventBus != nil {
+		llmEventBus.SetSerializer(serializeLLMEvent)
+	}
 	return &AdminServer{
 		addr:        addr,
 		uiPath:      uiPath,
@@ -43,6 +51,33 @@ func NewAdminServer(addr string, uiPath string, uiEmbed bool, dnsServer *dns.DNS
 		eventBus:    eventBus,
 		llmEventBus: llmEventBus,
 	}
+}
+
+// serializeTrafficEvent serializes a traffic event for the MITM traffic SSE
+// stream: the whole event as JSON, under the "traffic" event name.
+func serializeTrafficEvent(event *mitm.TrafficEvent) (string, []byte, error) {
+	data, err := json.Marshal(event)
+	return "traffic", data, err
+}
+
+// serializeLLMEvent serializes an event from the LLM event bus for the
+// conversation SSE stream: the payload is the Extra field, and the event
+// name is derived from Direction (llm_message / llm_token / conversation).
+func serializeLLMEvent(event *mitm.TrafficEvent) (string, []byte, error) {
+	if event.Extra != nil {
+		name := event.Direction
+		switch name {
+		case "llm_message", "llm_token", "conversation":
+			// valid event name
+		default:
+			name = "traffic"
+		}
+		data, err := json.Marshal(event.Extra)
+		return name, data, err
+	}
+	// Backward compatibility: no Extra field, send the event itself.
+	data, err := json.Marshal(event)
+	return "traffic", data, err
 }
 
 func (s *AdminServer) Start() error {
@@ -294,22 +329,20 @@ data: {"message":"Connected to MITM traffic stream"}
 		case <-ctx.Done():
 			// Client closed connection or context cancelled
 			return
-		case event, ok := <-subscriber.Channel:
+		case published, ok := <-subscriber.Channel:
 			if !ok {
 				return
 			}
-			// Marshal event to JSON
-			eventData, err := json.Marshal(event)
-			if err != nil {
+			if published.Err != nil {
 				continue
 			}
-			// Format SSE message
-			eventMsg := `event: traffic
-data: ` + string(eventData) + `
+			// Format SSE message (payload was serialized once at publish time)
+			eventMsg := `event: ` + published.Name + `
+data: ` + string(published.Data) + `
 
 `
 			// Write event to response
-			_, err = w.Write([]byte(eventMsg))
+			_, err := w.Write([]byte(eventMsg))
 			if err != nil {
 				return
 			}
@@ -361,48 +394,21 @@ data: {"message":"Connected to LLM conversation stream"}
 		case <-ctx.Done():
 			// Client closed connection or context cancelled
 			return
-		case event, ok := <-subscriber.Channel:
+		case published, ok := <-subscriber.Channel:
 			if !ok {
 				return
 			}
-			// Extract the actual event data from Extra field
-			var actualEvent any
-			var eventType string
-
-			// Check if this is a TrafficEvent with Extra field
-			if event.Extra != nil {
-				// Use the Extra field as the actual event
-				actualEvent = event.Extra
-				// Determine event type based on direction
-				switch event.Direction {
-				case "llm_message":
-					eventType = "llm_message"
-				case "llm_token":
-					eventType = "llm_token"
-				case "conversation":
-					eventType = "conversation"
-				default:
-					eventType = "traffic"
-				}
-			} else {
-				// If no Extra field, use the event itself (for backward compatibility)
-				actualEvent = event
-				eventType = "traffic"
-			}
-
-			// Marshal the actual event to JSON
-			eventData, err := json.Marshal(actualEvent)
-			if err != nil {
+			if published.Err != nil {
 				continue
 			}
-
-			// Format SSE message
-			eventMsg := `event: ` + eventType + `
-data: ` + string(eventData) + `
+			// Format SSE message (event name and payload were determined once
+			// at publish time by the bus serializer)
+			eventMsg := `event: ` + published.Name + `
+data: ` + string(published.Data) + `
 
 `
 			// Write event to response
-			_, err = w.Write([]byte(eventMsg))
+			_, err := w.Write([]byte(eventMsg))
 			if err != nil {
 				return
 			}

@@ -1,6 +1,7 @@
 package mitm
 
 import (
+	"encoding/json"
 	"log/slog"
 	"sync"
 	"time"
@@ -41,11 +42,26 @@ type HTTPResponse struct {
 	Latency       int64             `json:"latency"`        // Response latency in milliseconds
 }
 
+// PublishedEvent is a single publication: the event itself plus its
+// pre-serialized SSE representation, computed once at publish time and
+// shared by all subscribers (previously each subscriber serialized the
+// same event independently).
+type PublishedEvent struct {
+	Event *TrafficEvent // The original event
+	Name  string        // SSE event type (e.g. "traffic", "llm_token")
+	Data  []byte        // Serialized JSON payload
+	Err   error         // Serialization error, if any
+}
+
+// SerializeFunc converts an event to its SSE representation (event name +
+// JSON payload).
+type SerializeFunc func(event *TrafficEvent) (name string, data []byte, err error)
+
 // Subscriber represents an event subscriber
 type Subscriber struct {
-	ID      string             // Unique subscriber ID
-	Name    string             // Subscriber name for logging
-	Channel chan *TrafficEvent // Channel for receiving events
+	ID      string               // Unique subscriber ID
+	Name    string               // Subscriber name for logging
+	Channel chan *PublishedEvent // Channel for receiving events
 }
 
 // EventBus manages the publishing and subscribing of traffic events
@@ -53,8 +69,9 @@ type EventBus struct {
 	subscribers map[*Subscriber]bool // Active subscribers
 	mu          sync.RWMutex         // Mutex for thread safety
 	logger      *slog.Logger         // Logger for error and warning messages
-	history     []*TrafficEvent      // Historical events for replay
+	history     []*PublishedEvent    // Historical events for replay
 	historySize int                  // Maximum number of historical events to keep
+	serialize   SerializeFunc        // Optional serializer; defaults to whole-event JSON
 }
 
 // NewEventBus creates a new EventBus with the specified history size
@@ -65,9 +82,16 @@ func NewEventBus(logger *slog.Logger, historySize int) *EventBus {
 	return &EventBus{
 		subscribers: make(map[*Subscriber]bool),
 		logger:      logger,
-		history:     make([]*TrafficEvent, 0, historySize),
+		history:     make([]*PublishedEvent, 0, historySize),
 		historySize: historySize,
 	}
+}
+
+// SetSerializer sets the function used to serialize events for subscribers.
+// It must be called before the bus is used concurrently (during startup
+// wiring); the admin server sets it for the buses it consumes.
+func (eb *EventBus) SetSerializer(fn SerializeFunc) {
+	eb.serialize = fn
 }
 
 // Publish publishes a traffic event to all subscribers
@@ -82,11 +106,21 @@ func (eb *EventBus) Publish(event *TrafficEvent) {
 		event.Timestamp = time.Now()
 	}
 
+	// Serialize once for all subscribers (done before taking the lock to
+	// keep the critical section short).
+	published := &PublishedEvent{Event: event}
+	if eb.serialize != nil {
+		published.Name, published.Data, published.Err = eb.serialize(event)
+	} else {
+		published.Name = "traffic"
+		published.Data, published.Err = json.Marshal(event)
+	}
+
 	// Lock for writing
 	eb.mu.Lock()
 
 	// Add to history (keep only the latest N events)
-	eb.history = append(eb.history, event)
+	eb.history = append(eb.history, published)
 	if len(eb.history) > eb.historySize {
 		eb.history = eb.history[len(eb.history)-eb.historySize:]
 	}
@@ -94,7 +128,7 @@ func (eb *EventBus) Publish(event *TrafficEvent) {
 	// Publish to all subscribers
 	for subscriber := range eb.subscribers {
 		select {
-		case subscriber.Channel <- event:
+		case subscriber.Channel <- published:
 			// Event sent successfully
 		default:
 			eb.logger.Warn("Subscriber channel is full, skipping event",
@@ -112,15 +146,15 @@ func (eb *EventBus) Publish(event *TrafficEvent) {
 func (eb *EventBus) Subscribe() *Subscriber {
 	subscriber := &Subscriber{
 		ID:      time.Now().Format("20060102150405.000000") + "-sub",
-		Name:    "",                            // Name can be set by caller for logging
-		Channel: make(chan *TrafficEvent, 100), // Buffered channel to prevent blocking
+		Name:    "",                              // Name can be set by caller for logging
+		Channel: make(chan *PublishedEvent, 100), // Buffered channel to prevent blocking
 	}
 
 	eb.mu.Lock()
 	eb.subscribers[subscriber] = true
 
 	// Copy historical events for replay
-	historicalEvents := make([]*TrafficEvent, len(eb.history))
+	historicalEvents := make([]*PublishedEvent, len(eb.history))
 	copy(historicalEvents, eb.history)
 	eb.mu.Unlock()
 

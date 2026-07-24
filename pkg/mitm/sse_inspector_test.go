@@ -354,7 +354,7 @@ func TestSSEInspector_OnConnectionClosed(t *testing.T) {
 	requestID := connID + "-1"
 
 	body := `{"q":1}`
-	reqData := []byte(fmt.Sprintf("POST /api HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(body), body))
+	reqData := fmt.Appendf(nil, "POST /api HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(body), body)
 	if _, err := inspector.Inspect(DirectionClientToServer, reqData, "example.com", connID, requestID); err != nil {
 		t.Fatalf("request inspect failed: %v", err)
 	}
