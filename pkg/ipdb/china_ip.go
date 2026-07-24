@@ -170,8 +170,11 @@ func GetReservedCIDRs() []string {
 
 func IsChinaIP(ipStr string) bool {
 	GetChinaCIDRs()
-	ranger := chinaRanger.Load().(cidranger.Ranger)
-	if ranger == nil {
+	// chinaRanger may have never been stored if the embedded IP data failed
+	// to load; a plain type assertion on the nil interface would panic here,
+	// crashing the process on every DNS query (and leaving pf rules behind).
+	ranger, ok := chinaRanger.Load().(cidranger.Ranger)
+	if !ok || ranger == nil {
 		return false
 	}
 

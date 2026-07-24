@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -45,6 +46,12 @@ func (s *DNSSplitter) SplitQuery(ctx context.Context, question *dns.Msg) (*dns.M
 	// Query domestic DNS first
 	domesticResp, domesticErr := s.queryDNS(ctx, question, s.domestic, false)
 	if domesticErr == nil && domesticResp != nil {
+		// NXDOMAIN is authoritative and globally consistent (the name does
+		// not exist), so there is no point querying foreign DNS too.
+		if domesticResp.Rcode == dns.RcodeNameError {
+			slog.Debug("domestic DNS returned NXDOMAIN", "qname", qname)
+			return domesticResp, nil
+		}
 		// Check if response IPs are domestic
 		if s.areIPsDomestic(domesticResp) {
 			slog.Debug("using domestic DNS result", "qname", qname, "dns", s.domestic)
@@ -83,8 +90,11 @@ func (s *DNSSplitter) queryDNS(ctx context.Context, msg *dns.Msg, servers []stri
 		var resp *dns.Msg
 		var err error
 
+		host, port := serverHostPort(server)
+		addr := net.JoinHostPort(host, strconv.Itoa(port))
+
 		if useTCP && s.upstream != nil && s.upstream.IsEnabled() {
-			conn, err := s.upstream.Connect(server, 53)
+			conn, err := s.upstream.Connect(host, port)
 			if err != nil {
 				lastErr = err
 				continue
@@ -94,9 +104,9 @@ func (s *DNSSplitter) queryDNS(ctx context.Context, msg *dns.Msg, servers []stri
 			conn.Close()
 		} else if useTCP {
 			client := &dns.Client{Net: "tcp", Timeout: 5 * time.Second}
-			resp, _, err = client.Exchange(msg, net.JoinHostPort(server, "53"))
+			resp, _, err = client.Exchange(msg, addr)
 		} else {
-			resp, _, err = s.client.Exchange(msg, net.JoinHostPort(server, "53"))
+			resp, _, err = s.client.Exchange(msg, addr)
 		}
 
 		if err != nil {
@@ -104,7 +114,12 @@ func (s *DNSSplitter) queryDNS(ctx context.Context, msg *dns.Msg, servers []stri
 			continue
 		}
 
-		if resp != nil && resp.Rcode == dns.RcodeSuccess {
+		// Any authoritative answer (including NXDOMAIN/REFUSED) is a valid
+		// response from this server; only transport-level errors above fall
+		// through to the next server. Treating NXDOMAIN as failure here would
+		// make the caller synthesize SERVFAIL for names that legitimately do
+		// not exist, breaking negative caching on clients.
+		if resp != nil {
 			response = resp
 			break
 		}
@@ -115,6 +130,21 @@ func (s *DNSSplitter) queryDNS(ctx context.Context, msg *dns.Msg, servers []stri
 	}
 
 	return response, nil
+}
+
+// serverHostPort splits a DNS server entry into host and port. Entries
+// without an explicit port default to 53. Both plain IPs ("8.8.8.8") and
+// host:port forms ("127.0.0.1:5353", "[::1]:5353") are accepted.
+func serverHostPort(server string) (string, int) {
+	host, portStr, err := net.SplitHostPort(server)
+	if err != nil {
+		return server, 53
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return server, 53
+	}
+	return host, port
 }
 
 // areIPsDomestic checks if all IPs in the response are domestic
