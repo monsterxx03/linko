@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"slices"
 	"sync"
 	"time"
 )
@@ -98,19 +99,16 @@ func (h *ConnectionHandler) HandleConnection(clientConn net.Conn, targetIP net.I
 	}
 	defer serverConn.Close()
 
-	// Create TLS config for client side (MITM side)
-	clientTLSConfig := &tls.Config{
-		Certificates: []tls.Certificate{*siteCert},
-		ServerName:   hostname,
-		// Accept any certificate from the server
-		InsecureSkipVerify: true,
-	}
+	// Create TLS config for the client-facing side (MITM server side).
+	clientTLSConfig := h.newClientTLSConfig(siteCert, hostname)
 
-	// Create TLS config for server side (connecting to actual server)
+	// Create TLS config for the upstream side (connecting to actual server).
+	// ALPN is restricted to HTTP/1.1 so the origin cannot negotiate h2
+	// either: the relay is a single opaque stream and the HTTP inspectors
+	// only understand HTTP/1.x framing.
 	serverTLSConfig := &tls.Config{
 		ServerName: hostname,
-		// Verify server certificate
-		InsecureSkipVerify: false,
+		NextProtos: []string{alpnHTTP11},
 	}
 
 	// Upgrade connection to TLS with client using the peek reader
@@ -166,6 +164,36 @@ func (h *ConnectionHandler) peekSNI(peekReader *PeekReader, targetIP net.IP) (st
 	return targetIP.String(), nil
 }
 
+// ALPN protocol IDs. The HTTP inspectors only understand HTTP/1.x framing,
+// so HTTP/2 must never be negotiated on either side of the MITM connection.
+const (
+	alpnHTTP11 = "http/1.1"
+	alpnH2     = "h2"
+)
+
+// newClientTLSConfig builds the TLS config for the client-facing side of
+// the MITM connection. ALPN is explicitly restricted to HTTP/1.1: clients
+// offering h2 receive "http/1.1" in the ServerHello and must fall back.
+// Clients offering h2 only fail the handshake with no_application_protocol
+// instead of silently bypassing inspection.
+func (h *ConnectionHandler) newClientTLSConfig(siteCert *tls.Certificate, hostname string) *tls.Config {
+	return &tls.Config{
+		Certificates: []tls.Certificate{*siteCert},
+		NextProtos:   []string{alpnHTTP11},
+		GetConfigForClient: func(hello *tls.ClientHelloInfo) (*tls.Config, error) {
+			if slices.Contains(hello.SupportedProtos, alpnH2) {
+				h.logger.Warn("client offered HTTP/2, forcing HTTP/1.1 (HTTP/2 traffic cannot be inspected)",
+					"hostname", hostname,
+					"supported_protos", hello.SupportedProtos,
+				)
+			}
+			// Return nil to fall back to the outer config (certificates + NextProtos).
+			return nil, nil
+		},
+	}
+}
+
+// generateConnectionID generates a unique connection ID
 func generateConnectionID() string {
 	hash := sha256.Sum256([]byte(time.Now().Format(time.RFC3339Nano) + "-" + randomString(8)))
 	return hex.EncodeToString(hash[:8])

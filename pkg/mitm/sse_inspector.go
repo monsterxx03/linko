@@ -42,7 +42,11 @@ func (s *SSEInspector) Inspect(direction Direction, data []byte, hostname string
 func (s *SSEInspector) inspectRequest(inputData []byte, requestID string) ([]byte, error) {
 	// Detect HTTP/2 requests (they use binary framing, not text-based method names)
 	if isHTTP2(inputData) {
-		s.logger.Info("detected http/2 request", "request_id", requestID)
+		// ALPN is restricted to HTTP/1.1 on both sides of the MITM connection,
+		// so seeing h2 framing here means something leaked through (e.g. h2
+		// with prior knowledge). Inspection is skipped for this stream.
+		s.logger.Warn("detected HTTP/2 request despite ALPN restriction, skipping inspection",
+			"request_id", requestID)
 		return inputData, nil
 	}
 
