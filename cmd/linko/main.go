@@ -10,12 +10,9 @@ import (
 var rootCmd = &cobra.Command{
 	Use:   "linko",
 	Short: "Linko - Network proxy and traffic analysis tool",
-	Long: `Linko is a high-performance network proxy server with DNS splitting,
-traffic analysis, and multi-protocol support.
+	Long: `Linko is a high-performance network proxy server for traffic analysis.
 
 Features:
-  - Transparent proxy with DNS splitting
-  - Multi-protocol support (SOCKS5, HTTP, Shadowsocks)
   - Real-time traffic analysis
   - SNI-based host extraction`,
 }

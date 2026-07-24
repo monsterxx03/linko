@@ -378,7 +378,7 @@ func (a anthropicProvider) ParseSSEStreamFrom(body []byte, startPos int) []Token
 
 		var event AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(data), &event); err != nil {
-			a.logger.Warn("failed to parse Anthropic SSE event", "error", err, "data", data)
+			a.logger.Debug("failed to parse Anthropic SSE event", "error", err, "data", data)
 			continue
 		}
 

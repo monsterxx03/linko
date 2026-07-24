@@ -404,7 +404,7 @@ func (o openaiProvider) ParseSSEStreamFrom(body []byte, startPos int) []TokenDel
 
 		var chunk OpenAIStreamChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			o.logger.Warn("failed to parse OpenAI SSE event", "error", err, "data", data)
+			o.logger.Debug("failed to parse OpenAI SSE event", "error", err, "data", data)
 			continue
 		}
 
