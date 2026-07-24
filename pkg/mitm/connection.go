@@ -171,7 +171,11 @@ func generateConnectionID() string {
 	return hex.EncodeToString(hash[:8])
 }
 
-// relayTraffic relays data between client and server
+// relayTraffic relays data between client and server until both directions
+// terminate. Copy errors are logged at debug level but never returned:
+// by the time relaying starts, the connection has already been fully taken
+// over (TLS terminated), so callers cannot fall back to another handling
+// path and an error return would carry no actionable meaning.
 func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname string) error {
 	var wg sync.WaitGroup
 
@@ -203,7 +207,14 @@ func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname strin
 		// Get buffer from pool
 		buffer := bufferPool.Get().([]byte)
 		defer bufferPool.Put(buffer)
-		_, _ = io.CopyBuffer(serverWriter, clientReader, buffer)
+		_, err := io.CopyBuffer(serverWriter, clientReader, buffer)
+		// Propagate EOF to the server so the opposite copy can terminate.
+		// Without this, when one direction ends (e.g. client disconnects)
+		// the other direction blocks on Read forever, leaking goroutines.
+		closeWrite(server)
+		if err != nil {
+			h.logger.Debug("client->server relay ended", "hostname", hostname, "connection_id", connectionID, "error", err)
+		}
 	})
 
 	// Server -> Client
@@ -211,11 +222,31 @@ func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname strin
 		// Get buffer from pool
 		buffer := bufferPool.Get().([]byte)
 		defer bufferPool.Put(buffer)
-		_, _ = io.CopyBuffer(clientWriter, serverReader, buffer)
+		_, err := io.CopyBuffer(clientWriter, serverReader, buffer)
+		// Propagate EOF to the client (see comment above).
+		closeWrite(client)
+		if err != nil {
+			h.logger.Debug("server->client relay ended", "hostname", hostname, "connection_id", connectionID, "error", err)
+		}
 	})
 
 	wg.Wait()
 	return nil
+}
+
+// closeWrite shuts down the write side of c when the connection type
+// supports half-close (e.g. *net.TCPConn, *tls.Conn), signaling EOF
+// (TCP FIN or TLS close_notify) to the peer while still allowing
+// in-flight data to be read back. For connection types without
+// half-close support it falls back to closing the whole connection.
+// Close errors are intentionally ignored: this is a best-effort
+// teardown of an already-finished stream.
+func closeWrite(c net.Conn) {
+	if cw, ok := c.(interface{ CloseWrite() error }); ok {
+		_ = cw.CloseWrite()
+		return
+	}
+	_ = c.Close()
 }
 
 // PeekReader is a net.Conn that allows peeking at data

@@ -197,6 +197,10 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 }
 
 // relayBidirectional relays data between client and target.
+// When one direction finishes, EOF is propagated to the other connection
+// (TCP half-close when supported) so its copy can terminate. Without this,
+// a peer closing one direction would leave the other copy blocked on Read
+// forever, leaking goroutines and file descriptors.
 func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, error) {
 	var (
 		totalBytes int64
@@ -205,32 +209,39 @@ func (p *TransparentProxy) relayBidirectional(client, target net.Conn) (int64, e
 		wg         sync.WaitGroup
 	)
 
-	wg.Go(func() {
+	relay := func(dst, src net.Conn) {
 		buf := bufferPool.Get().([]byte)
 		defer bufferPool.Put(buf)
-		n, err := io.CopyBuffer(target, client, buf)
+		n, err := io.CopyBuffer(dst, src, buf)
 		mu.Lock()
 		totalBytes += n
 		if err != nil && firstErr == nil {
 			firstErr = err
 		}
 		mu.Unlock()
-	})
+		closeWrite(dst)
+	}
 
-	wg.Go(func() {
-		buf := bufferPool.Get().([]byte)
-		defer bufferPool.Put(buf)
-		n, err := io.CopyBuffer(client, target, buf)
-		mu.Lock()
-		totalBytes += n
-		if err != nil && firstErr == nil {
-			firstErr = err
-		}
-		mu.Unlock()
-	})
+	wg.Go(func() { relay(target, client) })
+	wg.Go(func() { relay(client, target) })
 
 	wg.Wait()
 	return totalBytes, firstErr
+}
+
+// closeWrite shuts down the write side of c when the connection type
+// supports half-close (e.g. *net.TCPConn, *tls.Conn), signaling EOF
+// (TCP FIN or TLS close_notify) to the peer while still allowing
+// in-flight data to be read back. For connection types without
+// half-close support it falls back to closing the whole connection.
+// Close errors are intentionally ignored: this is a best-effort
+// teardown of an already-finished stream.
+func closeWrite(c net.Conn) {
+	if cw, ok := c.(interface{ CloseWrite() error }); ok {
+		_ = cw.CloseWrite()
+		return
+	}
+	_ = c.Close()
 }
 
 // isLocalHost checks if an IP address is localhost
