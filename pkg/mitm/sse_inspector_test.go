@@ -5,7 +5,9 @@ import (
 	"compress/gzip"
 	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
+	"time"
 )
 
 // mockSSEHTTPProcessor implements HTTPProcessorInterface for SSE inspector testing
@@ -376,5 +378,179 @@ func TestSSEInspector_OnConnectionClosed(t *testing.T) {
 	}
 	if _, ok := inspector.requestCache.Load(requestID); ok {
 		t.Error("requestCache entry not purged on connection close")
+	}
+}
+
+// --- SSE snapshot throttling tests (real HTTPProcessor) ---
+
+func setTestThrottle(t *testing.T, minBytes int, interval time.Duration) {
+	t.Helper()
+	ob, oi := ssePublishMinBytes, ssePublishInterval
+	ssePublishMinBytes, ssePublishInterval = minBytes, interval
+	t.Cleanup(func() { ssePublishMinBytes, ssePublishInterval = ob, oi })
+}
+
+func newThrottleTestInspector(t *testing.T) (*SSEInspector, *Subscriber) {
+	t.Helper()
+	logger := slog.Default()
+	eventBus := NewEventBus(logger, 100)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024)
+	sub := eventBus.Subscribe()
+	return inspector, sub
+}
+
+func sendTestRequest(t *testing.T, inspector *SSEInspector, connID, requestID string) {
+	t.Helper()
+	body := `{"q":1}`
+	reqData := fmt.Appendf(nil, "POST /api HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(body), body)
+	if _, err := inspector.Inspect(DirectionClientToServer, reqData, "example.com", connID, requestID); err != nil {
+		t.Fatalf("request inspect failed: %v", err)
+	}
+}
+
+func receiveTrafficEvent(t *testing.T, sub *Subscriber, timeout time.Duration) *PublishedEvent {
+	t.Helper()
+	select {
+	case pe := <-sub.Channel:
+		return pe
+	case <-time.After(timeout):
+		t.Fatal("timed out waiting for traffic event")
+		return nil
+	}
+}
+
+// drainTrafficEvents returns all immediately available events without blocking.
+func drainTrafficEvents(sub *Subscriber) []*PublishedEvent {
+	var events []*PublishedEvent
+	for {
+		select {
+		case pe := <-sub.Channel:
+			events = append(events, pe)
+		default:
+			return events
+		}
+	}
+}
+
+// TestSSEInspector_ThrottledTailFlush verifies that small chunks below the
+// byte threshold are not published per chunk, but the stream's tail is
+// flushed by the debounce timer with the full accumulated content.
+func TestSSEInspector_ThrottledTailFlush(t *testing.T) {
+	setTestThrottle(t, 64*1024, 50*time.Millisecond)
+	inspector, sub := newThrottleTestInspector(t)
+	const connID = "conn-throttle"
+	requestID := connID + "-1"
+	sendTestRequest(t, inspector, connID, requestID)
+
+	chunks := []string{
+		"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: {\"n\":0}\n\n",
+	}
+	for i := 1; i < 10; i++ {
+		chunks = append(chunks, fmt.Sprintf("data: {\"n\":%d}\n\n", i))
+	}
+	for _, c := range chunks {
+		if _, err := inspector.Inspect(DirectionServerToClient, []byte(c), "example.com", connID, requestID); err != nil {
+			t.Fatalf("response inspect failed: %v", err)
+		}
+	}
+
+	// Only the first chunk is published immediately (below byte threshold,
+	// inside the debounce interval).
+	first := receiveTrafficEvent(t, sub, time.Second)
+	if first.Event.Request == nil {
+		t.Error("first snapshot should carry the request")
+	}
+	if got := drainTrafficEvents(sub); len(got) != 0 {
+		t.Fatalf("expected no more events before debounce, got %d", len(got))
+	}
+
+	// The trailing flush publishes the full accumulated stream.
+	tail := receiveTrafficEvent(t, sub, 2*time.Second)
+	if tail.Event.Response == nil || !strings.Contains(tail.Event.Response.Body, `{"n":9}`) {
+		t.Errorf("tail snapshot missing final chunk content")
+	}
+
+	// Nothing further.
+	time.Sleep(150 * time.Millisecond)
+	if got := drainTrafficEvents(sub); len(got) != 0 {
+		t.Fatalf("expected no more events after tail flush, got %d", len(got))
+	}
+}
+
+// TestSSEInspector_ByteThresholdPublishing verifies that during a fast
+// stream, snapshots are published once per ssePublishMinBytes of new data
+// instead of once per chunk.
+func TestSSEInspector_ByteThresholdPublishing(t *testing.T) {
+	setTestThrottle(t, 4096, 10*time.Second) // interval effectively disabled
+	inspector, sub := newThrottleTestInspector(t)
+	const connID = "conn-bytes"
+	requestID := connID + "-1"
+	sendTestRequest(t, inspector, connID, requestID)
+
+	// 5 chunks x ~2KB payload: publishes on chunks 1, 3, 5.
+	chunkData := strings.Repeat("y", 2048)
+	hdr := "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n"
+	for i := 0; i < 5; i++ {
+		data := fmt.Sprintf("data: %s\n\n", chunkData)
+		if i == 0 {
+			data = hdr + data
+		}
+		if _, err := inspector.Inspect(DirectionServerToClient, []byte(data), "example.com", connID, requestID); err != nil {
+			t.Fatalf("chunk %d inspect failed: %v", i, err)
+		}
+	}
+
+	events := []*PublishedEvent{
+		receiveTrafficEvent(t, sub, time.Second),
+		receiveTrafficEvent(t, sub, time.Second),
+		receiveTrafficEvent(t, sub, time.Second),
+	}
+	if got := drainTrafficEvents(sub); len(got) != 0 {
+		t.Fatalf("expected exactly 3 throttled events, got %d more", len(got))
+	}
+	last := events[len(events)-1]
+	if last.Event.Response == nil {
+		t.Fatal("final snapshot has no response")
+	}
+	wantLen := 5 * len("data: "+chunkData+"\n\n")
+	if len(last.Event.Response.Body) != wantLen {
+		t.Errorf("final snapshot body length = %d, want %d (full stream)", len(last.Event.Response.Body), wantLen)
+	}
+}
+
+// TestSSEInspector_ConnectionCloseFlushesTail verifies that when a
+// connection closes before the debounce timer fires, the unpublished tail
+// snapshot is flushed and the publish state is purged.
+func TestSSEInspector_ConnectionCloseFlushesTail(t *testing.T) {
+	setTestThrottle(t, 64*1024, 10*time.Second) // debounce timer effectively disabled
+	inspector, sub := newThrottleTestInspector(t)
+	const connID = "conn-closeflush"
+	requestID := connID + "-1"
+	sendTestRequest(t, inspector, connID, requestID)
+
+	chunks := []string{
+		"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: {\"n\":0}\n\n",
+		"data: {\"n\":1}\n\n",
+		"data: {\"n\":2}\n\n",
+	}
+	for _, c := range chunks {
+		if _, err := inspector.Inspect(DirectionServerToClient, []byte(c), "example.com", connID, requestID); err != nil {
+			t.Fatalf("response inspect failed: %v", err)
+		}
+	}
+
+	_ = receiveTrafficEvent(t, sub, time.Second) // first chunk
+	if got := drainTrafficEvents(sub); len(got) != 0 {
+		t.Fatalf("expected no more events before close, got %d", len(got))
+	}
+
+	inspector.OnConnectionClosed(connID)
+
+	tail := receiveTrafficEvent(t, sub, time.Second)
+	if tail.Event.Response == nil || !strings.Contains(tail.Event.Response.Body, `{"n":2}`) {
+		t.Errorf("close-flush snapshot missing final chunk content")
+	}
+	if _, ok := inspector.publishStates.Load(requestID); ok {
+		t.Error("publish state not purged on connection close")
 	}
 }

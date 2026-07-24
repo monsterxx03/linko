@@ -10,10 +10,32 @@ import (
 
 type SSEInspector struct {
 	*BaseInspector
-	eventBus     *EventBus
-	logger       *slog.Logger
-	httpProc     HTTPProcessorInterface
-	requestCache sync.Map
+	eventBus      *EventBus
+	logger        *slog.Logger
+	httpProc      HTTPProcessorInterface
+	requestCache  sync.Map
+	publishStates sync.Map // requestID -> *ssePublishState (throttled snapshot publishing)
+}
+
+// Throttle settings for SSE snapshot publishing. Every published event is
+// still a full snapshot (frontend merge semantics unchanged), just emitted
+// less often: at most once per ssePublishMinBytes new bytes, or once per
+// ssePublishInterval, whichever comes first. Vars (not consts) so tests can
+// override them.
+var (
+	ssePublishMinBytes = 64 * 1024
+	ssePublishInterval = 100 * time.Millisecond
+)
+
+// ssePublishState tracks throttled snapshot publishing for one SSE stream.
+type ssePublishState struct {
+	mu          sync.Mutex
+	hostname    string
+	lastLen     int           // body length at last publish
+	lastAt      time.Time     // last publish time (zero = never published)
+	pendingResp *HTTPResponse // latest snapshot, possibly unpublished
+	pendingLen  int           // length of pendingResp.Body
+	timer       *time.Timer   // trailing debounce timer, if any
 }
 
 func NewSSEInspector(logger *slog.Logger, eventBus *EventBus, hostname string, maxBodySize int64) *SSEInspector {
@@ -136,9 +158,79 @@ func (s *SSEInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 		ContentLength: int64(len(bodyStr)),
 	}
 
-	s.publishTrafficEvent(hostname, requestID, DirectionServerToClient.String(), httpReq, httpResp)
-	// For SSE, return the accumulated data (resultData may be longer than bodyStr if there are multiple events)
+	st := s.loadPublishState(requestID, hostname)
+
+	st.mu.Lock()
+	st.pendingResp = httpResp
+	st.pendingLen = len(bodyStr)
+
+	now := time.Now()
+	due := st.lastAt.IsZero() || // first chunk always publishes (carries the request)
+		len(bodyStr)-st.lastLen >= ssePublishMinBytes ||
+		now.Sub(st.lastAt) >= ssePublishInterval
+	if due {
+		st.lastLen = len(bodyStr)
+		st.lastAt = now
+		if st.timer != nil {
+			st.timer.Stop()
+			st.timer = nil
+		}
+		st.mu.Unlock()
+		s.publishTrafficEvent(hostname, requestID, DirectionServerToClient.String(), httpReq, httpResp)
+		return resultData, nil
+	}
+
+	// Not due: the snapshot stays stashed; schedule a trailing flush so the
+	// stream's tail is published even if no more chunks arrive (e.g. on
+	// keep-alive connections that stay open after the stream ends).
+	if st.timer == nil {
+		st.timer = time.AfterFunc(ssePublishInterval, func() {
+			s.trailingPublish(requestID)
+		})
+	}
+	st.mu.Unlock()
 	return resultData, nil
+}
+
+// loadPublishState returns the publish state for requestID, creating it if
+// needed, and refreshes the hostname.
+func (s *SSEInspector) loadPublishState(requestID, hostname string) *ssePublishState {
+	if val, exists := s.publishStates.Load(requestID); exists {
+		st := val.(*ssePublishState)
+		st.mu.Lock()
+		st.hostname = hostname
+		st.mu.Unlock()
+		return st
+	}
+	st := &ssePublishState{hostname: hostname}
+	s.publishStates.Store(requestID, st)
+	return st
+}
+
+// trailingPublish publishes the latest stashed snapshot of a stream whose
+// updates fell below the throttle thresholds (debounced tail flush).
+func (s *SSEInspector) trailingPublish(requestID string) {
+	val, exists := s.publishStates.Load(requestID)
+	if !exists {
+		return
+	}
+	st := val.(*ssePublishState)
+
+	st.mu.Lock()
+	if st.pendingResp == nil || st.pendingLen <= st.lastLen {
+		// Nothing new to publish.
+		st.timer = nil
+		st.mu.Unlock()
+		return
+	}
+	resp := st.pendingResp
+	hostname := st.hostname
+	st.lastLen = st.pendingLen
+	st.lastAt = time.Now()
+	st.timer = nil
+	st.mu.Unlock()
+
+	s.publishTrafficEvent(hostname, requestID, DirectionServerToClient.String(), nil, resp)
 }
 
 func (s *SSEInspector) publishTrafficEvent(hostname, requestID, direction string, httpReq *HTTPRequest, httpResp *HTTPResponse) {
@@ -170,8 +262,35 @@ func (s *SSEInspector) ClearPending(requestID string) {
 // OnConnectionClosed purges all per-connection state when a connection
 // closes. This is the backstop for SSE streams that never terminated
 // cleanly (their pending response buffers accumulate the whole stream).
+// Unpublished tail snapshots are flushed first: a server may close the
+// connection right after the final chunk, before the debounce timer fires.
 func (s *SSEInspector) OnConnectionClosed(connectionID string) {
 	prefix := connectionID + "-"
+
+	// Flush unpublished tail snapshots, stop timers, and purge publish states.
+	s.publishStates.Range(func(key, val any) bool {
+		id, ok := key.(string)
+		if !ok || !strings.HasPrefix(id, prefix) {
+			return true
+		}
+		st := val.(*ssePublishState)
+		st.mu.Lock()
+		resp := st.pendingResp
+		hasUnpublished := resp != nil && st.pendingLen > st.lastLen
+		hostname := st.hostname
+		if st.timer != nil {
+			st.timer.Stop()
+			st.timer = nil
+		}
+		st.mu.Unlock()
+
+		if hasUnpublished {
+			s.publishTrafficEvent(hostname, id, DirectionServerToClient.String(), nil, resp)
+		}
+		s.publishStates.Delete(key)
+		return true
+	})
+
 	deleteKeysByPrefix(&s.requestCache, prefix)
 	s.httpProc.ClearPendingByPrefix(prefix)
 }
