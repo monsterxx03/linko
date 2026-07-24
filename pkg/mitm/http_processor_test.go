@@ -793,3 +793,61 @@ func TestHTTPProcessor_ResponseWithNoContentLength(t *testing.T) {
 	_ = isComplete
 	_ = msg
 }
+
+func TestHTTPProcessor_ClearPendingByPrefix(t *testing.T) {
+	logger := slog.Default()
+	processor := NewHTTPProcessor(logger, 1024*1024)
+
+	// Create incomplete (pending) requests for two connections.
+	incomplete := []byte("POST /api HTTP/1.1\r\nHost: x.com\r\nContent-Length: 10\r\n\r\nabc")
+	processor.ProcessRequest(incomplete, "conn-a-1")
+	processor.ProcessRequest(incomplete, "conn-a-2")
+	processor.ProcessRequest(incomplete, "conn-b-1")
+
+	// Also a pending SSE response on conn-a.
+	sseResp := []byte("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: x\n\n")
+	processor.ProcessResponse(sseResp, "conn-a-3")
+
+	processor.ClearPendingByPrefix("conn-a-")
+
+	for _, id := range []string{"conn-a-1", "conn-a-2", "conn-a-3"} {
+		if _, exists := processor.GetPendingMessage(id); exists {
+			t.Errorf("expected %s to be cleared", id)
+		}
+	}
+	if _, exists := processor.GetPendingMessage("conn-b-1"); !exists {
+		t.Error("conn-b-1 should not be affected by clearing conn-a- prefix")
+	}
+}
+
+func TestHTTPProcessor_SSEResponseNotTruncated(t *testing.T) {
+	logger := slog.Default()
+	processor := NewHTTPProcessor(logger, 64) // tiny 64-byte limit
+
+	// SSE response with a body larger than maxBodySize must NOT be truncated:
+	// the stream is parsed incrementally from the accumulated body, and
+	// truncation would hide the terminating event.
+	sseBody := strings.Repeat("data: {\"text\":\"padding\"}\n\n", 10) // ~270 bytes
+	sseResp := "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n" + sseBody
+	_, msg, _, err := processor.ProcessResponse([]byte(sseResp), "req-sse-trunc")
+	if err != nil || msg == nil {
+		t.Fatalf("ProcessResponse failed: msg=%v err=%v", msg, err)
+	}
+	if !msg.IsSSE {
+		t.Fatal("expected IsSSE to be detected")
+	}
+	if len(msg.Body) != len(sseBody) {
+		t.Errorf("SSE body truncated: got %d bytes, want %d", len(msg.Body), len(sseBody))
+	}
+
+	// Control: non-SSE bodies are still truncated.
+	jsonBody := strings.Repeat("x", 200)
+	jsonResp := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(jsonBody), jsonBody)
+	_, msg2, complete, err := processor.ProcessResponse([]byte(jsonResp), "req-json-trunc")
+	if err != nil || msg2 == nil || !complete {
+		t.Fatalf("ProcessResponse failed: msg=%v complete=%v err=%v", msg2, complete, err)
+	}
+	if len(msg2.Body) != 64 {
+		t.Errorf("non-SSE body should be truncated to 64 bytes, got %d", len(msg2.Body))
+	}
+}

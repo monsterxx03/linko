@@ -1,7 +1,9 @@
 package mitm
 
 import (
+	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/monsterxx03/linko/pkg/mitm/llm"
@@ -43,6 +45,19 @@ func (m *mockHTTPProcessor) ProcessResponse(inputData []byte, requestID string) 
 func (m *mockHTTPProcessor) ClearPending(requestID string) {
 	delete(m.pendingReqs, requestID)
 	delete(m.pendingResps, requestID)
+}
+
+func (m *mockHTTPProcessor) ClearPendingByPrefix(prefix string) {
+	for id := range m.pendingReqs {
+		if strings.HasPrefix(id, prefix) {
+			delete(m.pendingReqs, id)
+		}
+	}
+	for id := range m.pendingResps {
+		if strings.HasPrefix(id, prefix) {
+			delete(m.pendingResps, id)
+		}
+	}
 }
 
 func (m *mockHTTPProcessor) GetPendingMessage(requestID string) (*HTTPMessage, bool) {
@@ -360,4 +375,143 @@ func bytesEqual(a, b []byte) bool {
 		}
 	}
 	return true
+}
+
+// --- SSE stream state cleanup tests (real HTTPProcessor + real Anthropic parser) ---
+
+// newAnthropicRequest builds a complete raw HTTP request for the Anthropic
+// Messages API.
+func newAnthropicRequest(body string) []byte {
+	return []byte(fmt.Sprintf("POST /v1/messages HTTP/1.1\r\nHost: api.anthropic.com\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(body), body))
+}
+
+const anthropicTestBody = `{"model":"claude-3-5-sonnet-20241022","max_tokens":1024,"stream":true,"messages":[{"role":"user","content":"hi"}]}`
+
+const sseResponseHeaders = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n"
+
+// assertLLMStateCleared asserts that no per-request state is left behind in
+// the inspector or its HTTP processor.
+func assertLLMStateCleared(t *testing.T, inspector *LLMInspector, requestID string) {
+	t.Helper()
+	if _, ok := inspector.requestPaths.Load(requestID); ok {
+		t.Error("requestPaths entry not cleared")
+	}
+	if _, ok := inspector.conversationIDs.Load(requestID); ok {
+		t.Error("conversationIDs entry not cleared")
+	}
+	if _, ok := inspector.processedBytes.Load(requestID); ok {
+		t.Error("processedBytes entry not cleared")
+	}
+	if _, ok := inspector.accumulatedContent.Load(requestID); ok {
+		t.Error("accumulatedContent entry not cleared")
+	}
+	if _, ok := inspector.httpProc.GetPendingMessage(requestID); ok {
+		t.Error("httpProc pending entry not cleared")
+	}
+}
+
+// TestLLMInspector_SSEStreamCleanupOnComplete verifies that a cleanly
+// terminated SSE stream (message_delta with stop_reason) releases all
+// per-request state immediately.
+func TestLLMInspector_SSEStreamCleanupOnComplete(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger, 10)
+	inspector := NewLLMInspector(logger, eventBus, "", nil) // real HTTPProcessor
+	const connID = "conn-cleanup"
+	requestID := connID + "-1"
+
+	if _, err := inspector.Inspect(DirectionClientToServer, newAnthropicRequest(anthropicTestBody), "api.anthropic.com", connID, requestID); err != nil {
+		t.Fatalf("request inspect failed: %v", err)
+	}
+	if _, ok := inspector.requestPaths.Load(requestID); !ok {
+		t.Fatal("expected requestPaths entry after request")
+	}
+
+	chunk1 := sseResponseHeaders +
+		"data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"usage\":{\"input_tokens\":10}}}\n\n" +
+		"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\n"
+	chunk2 := "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\" world\"}}\n\n" +
+		"data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n"
+
+	if _, err := inspector.Inspect(DirectionServerToClient, []byte(chunk1), "api.anthropic.com", connID, requestID); err != nil {
+		t.Fatalf("chunk1 inspect failed: %v", err)
+	}
+	// Mid-stream: state must still be present.
+	if _, ok := inspector.processedBytes.Load(requestID); !ok {
+		t.Fatal("expected processedBytes entry mid-stream")
+	}
+
+	if _, err := inspector.Inspect(DirectionServerToClient, []byte(chunk2), "api.anthropic.com", connID, requestID); err != nil {
+		t.Fatalf("chunk2 inspect failed: %v", err)
+	}
+
+	assertLLMStateCleared(t, inspector, requestID)
+}
+
+// TestLLMInspector_OnConnectionClosedPurgesAbortedStream verifies the
+// connection-close backstop: a stream that never terminates (client abort)
+// leaves state behind, and OnConnectionClosed must purge it.
+func TestLLMInspector_OnConnectionClosedPurgesAbortedStream(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger, 10)
+	inspector := NewLLMInspector(logger, eventBus, "", nil)
+	const connID = "conn-abort"
+	requestID := connID + "-1"
+
+	if _, err := inspector.Inspect(DirectionClientToServer, newAnthropicRequest(anthropicTestBody), "api.anthropic.com", connID, requestID); err != nil {
+		t.Fatalf("request inspect failed: %v", err)
+	}
+
+	// Stream starts but never terminates.
+	chunk1 := sseResponseHeaders +
+		"data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}\n\n"
+	if _, err := inspector.Inspect(DirectionServerToClient, []byte(chunk1), "api.anthropic.com", connID, requestID); err != nil {
+		t.Fatalf("chunk inspect failed: %v", err)
+	}
+
+	// Sanity: leaked state exists before the hook runs.
+	if _, ok := inspector.accumulatedContent.Load(requestID); !ok {
+		t.Fatal("expected accumulatedContent entry before abort")
+	}
+	if _, ok := inspector.httpProc.GetPendingMessage(requestID); !ok {
+		t.Fatal("expected pending response before abort")
+	}
+
+	inspector.OnConnectionClosed(connID)
+
+	assertLLMStateCleared(t, inspector, requestID)
+}
+
+// TestLLMInspector_SSEStreamLargerThanMaxBodyCompletes verifies that streams
+// larger than maxBodySize (1MB default) are not truncated, so the terminating
+// event is still seen and state is cleaned up. Before the truncation fix,
+// token parsing stalled at 1MB and the stream never completed.
+func TestLLMInspector_SSEStreamLargerThanMaxBodyCompletes(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger, 10)
+	inspector := NewLLMInspector(logger, eventBus, "", nil)
+	const connID = "conn-big"
+	requestID := connID + "-1"
+
+	if _, err := inspector.Inspect(DirectionClientToServer, newAnthropicRequest(anthropicTestBody), "api.anthropic.com", connID, requestID); err != nil {
+		t.Fatalf("request inspect failed: %v", err)
+	}
+
+	// ~1.2MB of text deltas, beyond the 1MB default maxBodySize.
+	var sb strings.Builder
+	sb.WriteString(sseResponseHeaders)
+	text := strings.Repeat("x", 4096)
+	for sb.Len() < 1200*1024 {
+		sb.WriteString(fmt.Sprintf("data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":%q}}\n\n", text))
+	}
+	chunk2 := "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":5}}\n\n"
+
+	if _, err := inspector.Inspect(DirectionServerToClient, []byte(sb.String()), "api.anthropic.com", connID, requestID); err != nil {
+		t.Fatalf("chunk1 inspect failed: %v", err)
+	}
+	if _, err := inspector.Inspect(DirectionServerToClient, []byte(chunk2), "api.anthropic.com", connID, requestID); err != nil {
+		t.Fatalf("chunk2 inspect failed: %v", err)
+	}
+
+	assertLLMStateCleared(t, inspector, requestID)
 }

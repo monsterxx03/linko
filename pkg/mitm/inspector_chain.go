@@ -42,6 +42,23 @@ func (c *InspectorChain) ShouldInspect(hostname string) bool {
 	return false
 }
 
+// connectionCloseListener is an optional interface for inspectors that keep
+// per-connection state. It is called when a connection closes so leftover
+// state (e.g. from streams that never terminated cleanly) can be purged.
+type connectionCloseListener interface {
+	OnConnectionClosed(connectionID string)
+}
+
+// NotifyConnectionClosed notifies all inspectors implementing
+// connectionCloseListener that the given connection has closed.
+func (c *InspectorChain) NotifyConnectionClosed(connectionID string) {
+	for _, inspector := range c.inspectors {
+		if listener, ok := inspector.(connectionCloseListener); ok {
+			listener.OnConnectionClosed(connectionID)
+		}
+	}
+}
+
 // RequestIDGenerator generates unique request IDs for HTTP request/response pairs
 type RequestIDGenerator struct {
 	connectionID string

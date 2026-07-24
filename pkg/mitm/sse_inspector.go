@@ -167,6 +167,15 @@ func (s *SSEInspector) ClearPending(requestID string) {
 	s.requestCache.Delete(requestID)
 }
 
+// OnConnectionClosed purges all per-connection state when a connection
+// closes. This is the backstop for SSE streams that never terminated
+// cleanly (their pending response buffers accumulate the whole stream).
+func (s *SSEInspector) OnConnectionClosed(connectionID string) {
+	prefix := connectionID + "-"
+	deleteKeysByPrefix(&s.requestCache, prefix)
+	s.httpProc.ClearPendingByPrefix(prefix)
+}
+
 // GetRequestCache returns the request cache for other inspectors to access
 func (s *SSEInspector) GetRequestCache() *sync.Map {
 	return &s.requestCache

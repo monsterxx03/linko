@@ -259,6 +259,11 @@ func (h *ConnectionHandler) relayTraffic(client, server net.Conn, hostname strin
 	})
 
 	wg.Wait()
+
+	// Both copy goroutines have exited, so no Inspect call can be in flight:
+	// notify inspectors to purge any leftover per-connection state (e.g.
+	// streams aborted midway that never saw a terminating event).
+	h.inspector.NotifyConnectionClosed(connectionID)
 	return nil
 }
 

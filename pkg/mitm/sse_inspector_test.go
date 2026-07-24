@@ -3,6 +3,7 @@ package mitm
 import (
 	"bytes"
 	"compress/gzip"
+	"fmt"
 	"log/slog"
 	"testing"
 )
@@ -33,6 +34,10 @@ func (m *mockSSEHTTPProcessor) ProcessResponse(inputData []byte, requestID strin
 }
 
 func (m *mockSSEHTTPProcessor) ClearPending(requestID string) {
+	// No-op for mock
+}
+
+func (m *mockSSEHTTPProcessor) ClearPendingByPrefix(prefix string) {
 	// No-op for mock
 }
 
@@ -335,5 +340,41 @@ func TestSSEInspector_CompressedRequest(t *testing.T) {
 	// Verify request was cached
 	if _, exists := inspector.requestCache.Load(requestID); !exists {
 		t.Error("Expected request to be cached")
+	}
+}
+
+// TestSSEInspector_OnConnectionClosed verifies the connection-close backstop:
+// the pending SSE response buffer (which accumulates the whole stream) is
+// purged when the connection closes.
+func TestSSEInspector_OnConnectionClosed(t *testing.T) {
+	logger := slog.Default()
+	eventBus := NewEventBus(logger, 10)
+	inspector := NewSSEInspector(logger, eventBus, "", 1024*1024) // keep the real HTTPProcessor
+	const connID = "conn-sse-close"
+	requestID := connID + "-1"
+
+	body := `{"q":1}`
+	reqData := []byte(fmt.Sprintf("POST /api HTTP/1.1\r\nHost: example.com\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n%s", len(body), body))
+	if _, err := inspector.Inspect(DirectionClientToServer, reqData, "example.com", connID, requestID); err != nil {
+		t.Fatalf("request inspect failed: %v", err)
+	}
+
+	resp := "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: {\"a\":1}\n\n"
+	if _, err := inspector.Inspect(DirectionServerToClient, []byte(resp), "example.com", connID, requestID); err != nil {
+		t.Fatalf("response inspect failed: %v", err)
+	}
+
+	// The SSE pending response accumulates until the connection closes.
+	if _, ok := inspector.httpProc.GetPendingMessage(requestID); !ok {
+		t.Fatal("expected pending SSE response")
+	}
+
+	inspector.OnConnectionClosed(connID)
+
+	if _, ok := inspector.httpProc.GetPendingMessage(requestID); ok {
+		t.Error("pending SSE response not purged on connection close")
+	}
+	if _, ok := inspector.requestCache.Load(requestID); ok {
+		t.Error("requestCache entry not purged on connection close")
 	}
 }

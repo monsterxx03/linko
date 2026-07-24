@@ -31,6 +31,7 @@ type HTTPProcessorInterface interface {
 	ProcessRequest(inputData []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
 	ProcessResponse(inputData []byte, requestID string) ([]byte, *HTTPMessage, bool, error)
 	ClearPending(requestID string)
+	ClearPendingByPrefix(prefix string)
 	GetPendingMessage(requestID string) (*HTTPMessage, bool)
 }
 
@@ -239,6 +240,23 @@ func (p *HTTPProcessor) ClearPending(requestID string) {
 	p.pendingResps.Delete(requestID)
 }
 
+// ClearPendingByPrefix clears pending state for all requestIDs starting with
+// prefix (e.g. "connectionID-"), used when a connection closes.
+func (p *HTTPProcessor) ClearPendingByPrefix(prefix string) {
+	deleteKeysByPrefix(&p.pendingReqs, prefix)
+	deleteKeysByPrefix(&p.pendingResps, prefix)
+}
+
+// deleteKeysByPrefix deletes all string keys with the given prefix from m.
+func deleteKeysByPrefix(m *sync.Map, prefix string) {
+	m.Range(func(key, _ any) bool {
+		if id, ok := key.(string); ok && strings.HasPrefix(id, prefix) {
+			m.Delete(key)
+		}
+		return true
+	})
+}
+
 func (p *HTTPProcessor) loadOrCreatePendingRequest(requestID string) *pendingHTTPRequest {
 	if val, exists := p.pendingReqs.Load(requestID); exists {
 		return val.(*pendingHTTPRequest)
@@ -350,14 +368,20 @@ func (p *HTTPProcessor) buildResponseMessage(data []byte) *HTTPMessage {
 	bodyBytes, _ := io.ReadAll(resp.Body)
 
 	contentType := resp.Header.Get("Content-Type")
-	// Only decompress readable content types, but always apply body size limit
+	isSSE := strings.Contains(strings.ToLower(contentType), "text/event-stream")
+
+	// Only decompress readable content types
 	if isReadableTextType(contentType) {
 		// Decompress if needed
 		contentEncoding := getContentEncoding(resp.Header)
-		decompressed := decompressBody(bodyBytes, contentEncoding, contentType, p.logger)
-		bodyBytes = p.truncateBody(decompressed)
-	} else {
-		// Apply body size limit even for non-readable types
+		bodyBytes = decompressBody(bodyBytes, contentEncoding, contentType, p.logger)
+	}
+
+	// Apply body size limit, except for SSE streams: they are parsed
+	// incrementally from the accumulated body, so truncating them would hide
+	// the stream's terminating event for responses over maxBodySize —
+	// stalling delta parsing and preventing end-of-stream state cleanup.
+	if !isSSE {
 		bodyBytes = p.truncateBody(bodyBytes)
 	}
 
@@ -376,7 +400,7 @@ func (p *HTTPProcessor) buildResponseMessage(data []byte) *HTTPMessage {
 		ContentType: contentType,
 		IsResponse:  true,
 		StatusCode:  resp.StatusCode,
-		IsSSE:       p.detectSSE(data[:bytes.Index(data, []byte("\r\n\r\n"))+4]),
+		IsSSE:       isSSE,
 	}
 }
 

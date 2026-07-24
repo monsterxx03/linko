@@ -166,3 +166,57 @@ func TestALPNAbsentClientStillWorks(t *testing.T) {
 		t.Fatalf("unexpected h2 warning for ALPN-less client, got logs: %q", logBuf.String())
 	}
 }
+
+// closeRecordingInspector records OnConnectionClosed notifications.
+type closeRecordingInspector struct {
+	*BaseInspector
+	closed chan string
+}
+
+func (r *closeRecordingInspector) Inspect(direction Direction, data []byte, hostname string, connectionID, requestID string) ([]byte, error) {
+	return data, nil
+}
+
+func (r *closeRecordingInspector) OnConnectionClosed(connectionID string) {
+	r.closed <- connectionID
+}
+
+// TestRelayTrafficNotifiesInspectorsOnClose verifies that relayTraffic fans
+// out a connection-close notification to inspectors implementing the
+// connectionCloseListener interface.
+func TestRelayTrafficNotifiesInspectorsOnClose(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	chain := NewInspectorChain()
+	recorder := &closeRecordingInspector{
+		BaseInspector: NewBaseInspector("recorder", ""),
+		closed:        make(chan string, 1),
+	}
+	chain.Add(recorder)
+	h := NewConnectionHandler(nil, logger, nil, chain, nil)
+
+	clientProxy, clientPeer := net.Pipe()
+	serverProxy, serverPeer := net.Pipe()
+	defer serverPeer.Close()
+
+	done := make(chan struct{})
+	go func() {
+		_ = h.relayTraffic(clientProxy, serverProxy, "example.com")
+		close(done)
+	}()
+	_ = clientPeer.Close()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("relayTraffic did not return after client closed")
+	}
+
+	select {
+	case connID := <-recorder.closed:
+		if connID == "" {
+			t.Error("OnConnectionClosed called with empty connectionID")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("OnConnectionClosed was not called")
+	}
+}

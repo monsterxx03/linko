@@ -267,8 +267,14 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 
 			l.publishConversationUpdate(conversationID, "complete", 1, event.TotalTokens, "")
 
-			// 清理累积内容缓存
+			// Stream terminated cleanly: purge all per-request state
+			// immediately instead of waiting for the connection to close
+			// (keep-alive connections may serve many more requests).
 			l.accumulatedContent.Delete(requestID)
+			l.requestPaths.Delete(requestID)
+			l.conversationIDs.Delete(requestID)
+			l.processedBytes.Delete(requestID)
+			l.httpProc.ClearPending(requestID)
 		} else {
 			// 保存累积内容以便后续 chunk 使用
 			l.accumulatedContent.Store(requestID, accumulatedContent)
@@ -276,6 +282,18 @@ func (l *LLMInspector) processSSEStream(httpMsg *HTTPMessage, hostname string, r
 	}
 
 	return bodyBytes, nil
+}
+
+// OnConnectionClosed purges all per-connection state when a connection
+// closes. This is the backstop for streams that never terminated cleanly
+// (client abort, network drop) and therefore never saw an IsComplete delta.
+func (l *LLMInspector) OnConnectionClosed(connectionID string) {
+	prefix := connectionID + "-"
+	deleteKeysByPrefix(&l.requestPaths, prefix)
+	deleteKeysByPrefix(&l.conversationIDs, prefix)
+	deleteKeysByPrefix(&l.processedBytes, prefix)
+	deleteKeysByPrefix(&l.accumulatedContent, prefix)
+	l.httpProc.ClearPendingByPrefix(prefix)
 }
 
 // processCompleteResponse processes regular JSON responses
