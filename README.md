@@ -6,35 +6,83 @@
 
 Linko includes a built-in MITM (Man-in-the-Middle) proxy that intercepts HTTPS traffic and decrypts it for analysis. It also supports visualizing LLM API messages.
 
-**Note:** Linko currently only supports macOS.
+**Platform support:** macOS (pfctl) · Linux (nftables)
 
 ## Installation
 
-### Homebrew (Recommended)
+### Homebrew (macOS)
 
 ```bash
 brew tap monsterxx03/tap
 brew install linko
 ```
 
-### Manual
+### Linux (Debian/Ubuntu)
 
-Download the latest release from the [Releases](https://github.com/monsterxx03/linko/releases) page and install manually.
+For Debian-based systems, download the Linux binary from [Releases](https://github.com/monsterxx03/linko/releases) and install:
+
+```bash
+# Ensure nftables and conntrack are installed
+sudo apt update && sudo apt install -y nftables conntrack
+
+# Download and install the binary
+sudo curl -L -o /usr/local/bin/linko https://github.com/monsterxx03/linko/releases/latest/download/linko-linux-amd64
+sudo chmod +x /usr/local/bin/linko
+```
+
+### Manual (All Platforms)
+
+Download the latest release from the [Releases](https://github.com/monsterxx03/linko/releases) page and install manually. Pre-built binaries are available for:
+
+- macOS: `linko-darwin-arm64`, `linko-darwin-amd64`
+- Linux: `linko-linux-arm64`, `linko-linux-amd64`
+
+### Build from Source
+
+```bash
+git clone https://github.com/monsterxx03/linko.git
+cd linko
+make deps
+make ui-build   # Build the admin UI (requires bun)
+make build      # Build the Go binary to bin/linko
+```
+
+To build for Linux from macOS:
+
+```bash
+make build-linux
+```
 
 ## MITM Proxy Working Principle
 
 Linko's MITM proxy works as a **transparent proxy (transparent MITM)**.
-Unlike traditional HTTP proxies that require applications to manually configure proxy settings (e.g., `http_proxy=127.0.0.1:8080`), Linko uses macOS's firewall rules (`pfctl`) to redirect network traffic at the system level.
+Unlike traditional HTTP proxies that require applications to manually configure proxy settings (e.g., `http_proxy=127.0.0.1:8080`), Linko uses the system firewall to redirect network traffic at the kernel level.
 
 ### How It Works
 
-1. **Traffic Redirection via pfctl**: Linko configures macOS's `pf` firewall to redirect outgoing HTTPS traffic (port 443) to the local MITM proxy (port 9890). This happens at the kernel level, so applications are unaware their traffic is being intercepted.
+1. **Traffic Redirection via Firewall Rules**: Linko configures the system firewall to redirect outgoing HTTPS traffic (port 443) to the local MITM proxy. This happens at the kernel level, so applications are unaware their traffic is being intercepted.
+
+   - **macOS**: Uses `pfctl` to set up `rdr` (redirect) rules in a dedicated pf anchor
+   - **Linux**: Uses `nftables` with `nat output` hook to DNAT traffic to the proxy
 
 2. **Certificate Generation**: Linko generates a CA certificate that signs on-the-fly certificates for each intercepted domain, enabling decryption of HTTPS traffic.
 
 3. **Transparent Interception**: Since the redirection happens at the network layer, no application configuration is needed. All HTTPS traffic from all applications flows through the MITM proxy automatically.
 
 This is called "transparent" because the proxy is invisible to applications—they think they're communicating directly with the remote server.
+
+### Platform Firewall Details
+
+| Mechanism | macOS | Linux |
+|-----------|-------|-------|
+| Firewall framework | `pfctl` (Packet Filter) | `nftables` |
+| Traffic redirect | `rdr` rule on `lo0` | `dnat` in `nat output` hook |
+| Original dst query | `DIOCNATLOOK` ioctl | `SO_ORIGINAL_DST` getsockopt |
+| Loop prevention | GID-based (`setgid`) | cgroupv2 + socket mark |
+| State refresh | `pfctl -k 0.0.0.0/0` | `conntrack -D` |
+| Config path | `/etc/pf.linko.conf` | `/etc/nftables/linko.conf` |
+
+> **Linux dependency:** nftables and conntrack tools must be installed. On Ubuntu/Debian: `sudo apt install nftables conntrack`
 
 ### Step 1: Generate CA Certificate
 
@@ -54,6 +102,20 @@ This generates a CA certificate and private key in `~/.config/linko/certs/`:
 ```bash
 # Add to system keychain (requires admin privileges)
 sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain ~/.config/linko/certs/ca.crt
+```
+
+**Linux (Debian/Ubuntu):**
+
+```bash
+sudo cp ~/.config/linko/certs/ca.crt /usr/local/share/ca-certificates/linko-ca.crt
+sudo update-ca-certificates
+```
+
+**Linux (RHEL/Fedora):**
+
+```bash
+sudo cp ~/.config/linko/certs/ca.crt /etc/pki/ca-trust/source/anchors/linko-ca.crt
+sudo update-ca-trust
 ```
 
 ### Step 3: Start MITM Proxy
@@ -125,7 +187,7 @@ If you want to inspect Gemini CLI's HTTPS traffic through MITM, you need to disa
 NODE_TLS_REJECT_UNAUTHORIZED=0 gemini
 ```
 
-## Using with OpenCLAW
+## Using with OpenCLAW (macOS)
 
 If you want to inspect OpenCLAW's HTTPS traffic through MITM, add the following to `~/Library/LaunchAgents/ai.openclaw.gateway.plist` in the `EnvironmentVariables` dict, then restart the gateway:
 
@@ -238,25 +300,34 @@ linko tui -s http://localhost:9810/api/mitm/traffic/sse
 
 ## Troubleshooting
 
-**Network broken after crash / kill -9:**
+### Network broken after crash / kill -9
 
-- If linko was killed unexpectedly (e.g., `kill -9`, OOM, system crash), the pf firewall rules may still be active, redirecting traffic to a dead proxy. Run:
-  ```bash
-  sudo linko cleanup
-  ```
-  This flushes the pf anchor rules, disables pf, removes `/etc/pf.linko.conf`, and cleans the anchor line from `/etc/pf.conf`.
+If linko was killed unexpectedly (e.g., `kill -9`, OOM, system crash), the firewall rules may still be active, redirecting traffic to a dead proxy. Run:
 
-**Certificate not trusted:**
+```bash
+sudo linko cleanup
+```
+
+Platform-specific cleanup behavior:
+
+- **macOS:** Flushes pf anchor rules, disables pf, removes `/etc/pf.linko.conf`, and cleans the anchor line from `/etc/pf.conf`.
+- **Linux:** Deletes the `ip linko` nftables table (atomic removal of all rules, sets, and chains), removes `/etc/nftables/linko.conf`, and cleans up the linko cgroup.
+
+### Certificate not trusted
 
 - Make sure you've added the CA certificate to your system trust store
+- On Linux, verify it appears in the trusted list: `awk -v cmd='openssl x509 -noout -subject' '/BEGIN/{close(cmd)};{print | cmd}' < /etc/ssl/certs/ca-certificates.crt | grep -i linko`
 - Restart your browser after trusting the certificate
 
-**Traffic not showing:**
+### Traffic not showing
 
 - Ensure MITM proxy is running with sudo
-- Check firewall rules are properly configured
+- Check firewall rules are properly configured:
+  - **macOS:** `sudo pfctl -a com.apple/linko -s nat`
+  - **Linux:** `sudo nft list table ip linko`
 
-**Connection errors:**
+### Connection errors
 
 - Some applications use certificate pinning and won't work with MITM
 - You may need to disable certificate pinning for specific apps
+- On Linux, verify that nftables and conntrack tools are installed: `which nft && which conntrack`
