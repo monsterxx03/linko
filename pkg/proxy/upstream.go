@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/monsterxx03/linko/pkg/config"
 )
@@ -26,11 +27,11 @@ func NewUpstreamClient(config config.UpstreamConfig) *UpstreamClient {
 	}
 }
 
-// Connect establishes a connection to target through upstream proxy
+// Connect establishes a connection to target through upstream proxy.
 func (u *UpstreamClient) Connect(targetHost string, targetPort int) (net.Conn, error) {
 	if !u.config.Enable {
 		// Direct connection if upstream is disabled
-		return net.Dial("tcp", net.JoinHostPort(targetHost, fmt.Sprintf("%d", targetPort)))
+		return net.DialTimeout("tcp", net.JoinHostPort(targetHost, fmt.Sprintf("%d", targetPort)), 15*time.Second)
 	}
 
 	switch u.config.Type {
@@ -46,7 +47,7 @@ func (u *UpstreamClient) Connect(targetHost string, targetPort int) (net.Conn, e
 // connectSOCKS5 connects through SOCKS5 upstream proxy
 func (u *UpstreamClient) connectSOCKS5(targetHost string, targetPort int) (net.Conn, error) {
 	// Connect to SOCKS5 proxy
-	conn, err := net.Dial("tcp", u.config.Addr)
+	conn, err := net.DialTimeout("tcp", u.config.Addr, 15*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SOCKS5 proxy: %w", err)
 	}
@@ -121,7 +122,7 @@ func (u *UpstreamClient) socks5Handshake(conn net.Conn, targetHost string, targe
 // connectHTTP connects through HTTP upstream proxy
 func (u *UpstreamClient) connectHTTP(targetHost string, targetPort int) (net.Conn, error) {
 	// Connect to HTTP proxy
-	conn, err := net.Dial("tcp", u.config.Addr)
+	conn, err := net.DialTimeout("tcp", u.config.Addr, 15*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to HTTP proxy: %w", err)
 	}

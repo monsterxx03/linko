@@ -177,7 +177,7 @@ func (p *TransparentProxy) handleConnection(clientConn net.Conn) {
 			return
 		}
 	} else {
-		targetConn, err = net.DialTCP("tcp", nil, &net.TCPAddr{IP: originalDst.IP, Port: originalDst.Port})
+		targetConn, err = net.DialTimeout("tcp", net.JoinHostPort(targetHost, fmt.Sprintf("%d", targetPort)), 15*time.Second)
 		if err != nil {
 			slog.Error("Failed to connect to target", "target", originalDst, "error", err)
 			return
