@@ -4,16 +4,19 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"os/exec"
 	"strings"
+	"text/template"
+	"time"
 
 	"github.com/monsterxx03/linko/pkg/ipdb"
 )
 
-const ipsetName = "linko_reserved"
-const ipsetForceName = "linko_force"
+const nftConfPath = "/etc/nftables/linko.conf"
 
 type linuxFirewallManager struct {
 	fm *FirewallManager
@@ -24,226 +27,432 @@ func newFirewallManagerImpl(fm *FirewallManager) FirewallManagerInterface {
 }
 
 func (l *linuxFirewallManager) SetupFirewallRules() error {
-	// 解析 reserved domains
-	if err := l.fm.resolveReservedDomains(); err != nil {
-		slog.Warn("Failed to resolve reserved domains", "error", err)
+	slog.Info("setting up nftables firewall rules",
+		"proxyPort", l.fm.proxyPort,
+		"dnsPort", l.fm.dnsServerPort,
+		"skipCN", l.fm.skipCN,
+	)
+
+	// 1. Enable IP forwarding (required for DNAT to work on localhost)
+	if err := l.ensureIPForward(); err != nil {
+		return fmt.Errorf("enable IP forwarding: %w", err)
 	}
 
+	// 2. Setup cgroupv2-based PID-aware loop prevention.
+	//    Creates a dedicated cgroup for linko and moves the process into it.
+	//    nftables uses socket cgroupv2 matching to identify the proxy's own
+	//    traffic and bypass DNAT. Falls back silently to SO_MARK-only if
+	//    cgroupv2 is unavailable.
+	slog.Info("setting up cgroupv2 for PID-aware loop prevention...")
+	if err := setupLinkoCgroup(); err != nil {
+		slog.Warn("cgroupv2 setup failed, relying on SO_MARK only", "error", err)
+	}
+
+	// 3. Resolve reserved domains
+	slog.Info("resolving reserved domains...")
+	if err := l.fm.resolveReservedDomains(); err != nil {
+		slog.Warn("failed to resolve reserved domains", "error", err)
+	}
+
+	// 4. Load China IP ranges if skipCN is enabled
+	if l.fm.skipCN {
+		slog.Info("loading China IP ranges...")
+		if err := ipdb.LoadChinaIPRanges(); err != nil {
+			slog.Warn("failed to load cached China IP ranges", "error", err)
+			slog.Info("run 'linko update-cn-ip' to download China IP data")
+		}
+	}
+
+	// 5. Collect CIDR ranges for the reserved set
+	chinaCIDRs, _ := ipdb.GetChinaCIDRs()
+	reservedCIDRs := ipdb.GetReservedCIDRs()
+	var allCIDRs []string
+	if l.fm.skipCN {
+		allCIDRs = append(reservedCIDRs, chinaCIDRs...)
+	} else {
+		allCIDRs = reservedCIDRs
+	}
+	allCIDRs = append(allCIDRs, l.fm.resolvedDomainIPs...)
+
+	forceProxyIPs := l.fm.forceProxyIPs
+
+	slog.Info("CIDR summary",
+		"reservedCIDRs", len(reservedCIDRs),
+		"chinaCIDRs", len(chinaCIDRs),
+		"resolvedDomainIPs", len(l.fm.resolvedDomainIPs),
+		"totalCIDRs", len(allCIDRs),
+		"forceProxyIPs", len(forceProxyIPs),
+	)
+
+	// 6. Pre-flight check: verify the kernel supports nftables DNAT.
+	//    Some distros ship kernels with CONFIG_NFT_NAT=m but omit the
+	//    module binary, causing cryptic "No such file or directory" errors.
+	if err := l.checkNftablesNatSupport(); err != nil {
+		return fmt.Errorf("nftables DNAT check failed: %w", err)
+	}
+
+	// 7. Render nftables config
+	slog.Info("rendering nftables rules...")
+	config, err := l.renderNftablesConfig(
+		l.fm.proxyPort, l.fm.dnsServerPort, l.fm.cnDNS,
+		allCIDRs, forceProxyIPs,
+	)
+	if err != nil {
+		return fmt.Errorf("render nftables config: %w", err)
+	}
+
+	// 8. Write and apply
+	slog.Info("writing nftables config", "path", nftConfPath)
+	if err := l.writeNftConfig(config); err != nil {
+		return fmt.Errorf("write nftables config: %w", err)
+	}
+
+	// 9. Ensure the table exists and is clean before applying the full ruleset.
+	//    Using nft add + flush separately avoids shell syntax inside the template.
+	slog.Info("preparing nftables table...")
+	if err := l.ensureNftTable(); err != nil {
+		return fmt.Errorf("prepare nftables table: %w", err)
+	}
+
+	slog.Info("applying nftables rules...")
+	if err := l.applyNftConfig(); err != nil {
+		return fmt.Errorf("apply nftables rules: %w", err)
+	}
+
+	// 10. Flush conntrack to force re-establishment through new rules
+	l.flushConntrack()
+
+	slog.Info("nftables firewall rules setup complete")
+	return nil
+}
+
+// nftablesRuleData holds the template variables for the nftables config.
+type nftablesRuleData struct {
+	ProxyPort     string
+	DNSPort       string
+	CNDNS         []string
+	CIDRs         []string
+	ForceProxyIPs []string
+	RedirectDNS   bool
+	RedirectPorts []int
+}
+
+func (l *linuxFirewallManager) renderNftablesConfig(
+	proxyPort, dnsPort string,
+	cnDNS []string,
+	cidrs, forceProxyIPs []string,
+) (string, error) {
+	// Filter cnDNS to IPv4 only — the china_dns set is type ipv4_addr,
+	// and nftables rejects IPv6 entries with "Address family for hostname
+	// not supported". The same filtering applies to CIDRs and force IPs.
+	cnDNSv4 := filterIPv4(cnDNS)
+
+	// Build redirect port list
+	var redirectPorts []int
+	if l.fm.redirectOpt.RedirectHTTP {
+		redirectPorts = append(redirectPorts, 80)
+	}
+	if l.fm.redirectOpt.RedirectHTTPS {
+		redirectPorts = append(redirectPorts, 443)
+	}
+	if l.fm.redirectOpt.RedirectSSH {
+		redirectPorts = append(redirectPorts, 22)
+	}
+
+	const nftTemplate = `# Linko Transparent Proxy - nftables Ruleset
+# Auto-generated by linko — do not edit manually.
+
+table ip linko {
+
+    # ── Sets ────────────────────────────────────────
+
+    set reserved_cidrs {
+        type ipv4_addr
+        flags interval
+        auto-merge
+        {{- if .CIDRs }}
+        elements = {
+            {{- range $i, $cidr := .CIDRs }}
+            {{- if $i }}, {{ end }}{{ $cidr }}
+            {{- end }}
+        }
+        {{- end }}
+    }
+
+    set force_proxy_ips {
+        type ipv4_addr
+        flags interval
+        {{- if .ForceProxyIPs }}
+        elements = {
+            {{- range $i, $ip := .ForceProxyIPs }}
+            {{- if $i }}, {{ end }}{{ $ip }}
+            {{- end }}
+        }
+        {{- end }}
+    }
+
+    set china_dns {
+        type ipv4_addr
+        flags constant
+        {{- if .CNDNS }}
+        elements = {
+            {{- range $i, $dns := .CNDNS }}
+            {{- if $i }}, {{ end }}{{ $dns }}
+            {{- end }}
+        }
+        {{- end }}
+    }
+
+    # ── NAT output chain ────────────────────────────
+
+    chain output_nat {
+        type nat hook output priority -100; policy accept
+
+        # ⭐ PID-aware loop prevention: packets from linko's own sockets
+        #    (identified by the /linko cgroup) bypass DNAT entirely. The
+        #    cgroup is set up at startup by moving the linko process into
+        #    /sys/fs/cgroup/linko/. The socket cgroupv2 expression reads
+        #    the socket owner's cgroup path at the kernel level, before
+        #    any DNAT/redirect is applied.
+        socket cgroupv2 level 1 "/linko" accept
+
+        # Force proxy targets — always redirected even if also in reserved set
+        ip daddr @force_proxy_ips tcp dport { {{ range $i, $port := .RedirectPorts }}{{ if $i }}, {{ end }}{{ $port }}{{ end }} } dnat to 127.0.0.1:{{ .ProxyPort }}
+
+        # ── DNS: redirect all queries to local splitter ──────────────
+        # NOTE: These rules MUST come before reserved_cidrs accept,
+        # because the user's DNS servers may be in the reserved set
+        # (e.g., China IP ranges when skipCN is enabled). If reserved
+        # accepted first, DNS queries would bypass the splitter entirely.
+        {{- if .RedirectDNS }}
+        # China DNS servers — direct, bypass splitter
+        udp dport 53 ip daddr @china_dns accept
+
+        # All other DNS → redirect to local splitter
+        udp dport 53 dnat to 127.0.0.1:{{ .DNSPort }}
+        {{- end }}
+
+        # ── Reserved CIDRs: skip redirect, connect directly ──────────
+        ip daddr @reserved_cidrs accept
+
+        # HTTP/HTTPS/SSH redirect → transparent proxy
+        {{- if .RedirectPorts }}
+        tcp dport { {{ range $i, $port := .RedirectPorts }}{{ if $i }}, {{ end }}{{ $port }}{{ end }} } dnat to 127.0.0.1:{{ .ProxyPort }}
+        {{- end }}
+    }
+}
+`
+
+	data := nftablesRuleData{
+		ProxyPort:     proxyPort,
+		DNSPort:       dnsPort,
+		CNDNS:         cnDNSv4,
+		CIDRs:         cidrs,
+		ForceProxyIPs: forceProxyIPs,
+		RedirectDNS:   l.fm.redirectOpt.RedirectDNS,
+		RedirectPorts: redirectPorts,
+	}
+
+	var buf bytes.Buffer
+	tmpl, err := template.New("nftables").Parse(nftTemplate)
+	if err != nil {
+		return "", fmt.Errorf("parse nftables template: %w", err)
+	}
+	if err := tmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("execute nftables template: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+// ensureIPForward enables IPv4 packet forwarding, which is required for
+// DNAT rules in the OUTPUT chain to work correctly.
+func (l *linuxFirewallManager) ensureIPForward() error {
 	cmd := exec.Command("sudo", "sh", "-c", "echo 1 > /proc/sys/net/ipv4/ip_forward")
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to enable IP forwarding: %w", err)
+		return fmt.Errorf("enable ip_forward: %w", err)
+	}
+	return nil
+}
+
+// writeNftConfig writes the rendered nftables config to the config file.
+// The parent directory is created first if it doesn't exist.
+func (l *linuxFirewallManager) writeNftConfig(config string) error {
+	// Ensure the directory exists
+	if err := l.ensureNftDir(); err != nil {
+		return err
+	}
+	// Use tee to atomically write the file with proper permissions
+	cmd := exec.Command("sudo", "tee", nftConfPath)
+	cmd.Stdin = strings.NewReader(config)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("write %s: %w\nstderr: %s", nftConfPath, err, stderr.String())
+	}
+	return nil
+}
+
+// ensureNftDir creates the directory for the nftables config file if it does
+// not already exist. This handles the case where /etc/nftables/ doesn't
+// exist on a fresh system.
+func (l *linuxFirewallManager) ensureNftDir() error {
+	cmd := exec.Command("sudo", "mkdir", "-p", "/etc/nftables")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("create /etc/nftables: %w\nstderr: %s", err, stderr.String())
+	}
+	return nil
+}
+
+// checkNftablesNatSupport verifies that the kernel actually supports
+// nftables DNAT in the output hook. Some distros set CONFIG_NFT_NAT=m
+// in their kernel config but fail to ship the module binary, causing
+// cryptic "No such file or directory" errors at runtime.
+func (l *linuxFirewallManager) checkNftablesNatSupport() error {
+	defer func() {
+		_ = exec.Command("sudo", "nft", "delete", "table", "ip", "linko_probe").Run()
+	}()
+
+	// Submit a minimal ruleset via nft -f to probe DNAT support.
+	probeConfig := `table ip linko_probe {
+    chain output_nat {
+        type nat hook output priority -100; policy accept;
+        tcp dport 9 dnat to 127.0.0.1:9999
+    }
+}`
+	cmd := exec.Command("sudo", "nft", "-f", "-")
+	cmd.Stdin = strings.NewReader(probeConfig)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf(
+			"kernel nftables DNAT probe failed — the kernel is missing NAT support "+
+				"(CONFIG_NFT_NAT=m but nft_nat.ko not installed): %w\nstderr: %s",
+			err, stderr.String(),
+		)
 	}
 
-	if err := l.createIPSet(); err != nil {
-		return fmt.Errorf("failed to create ipset: %w", err)
+	slog.Debug("nftables DNAT support verified")
+	return nil
+}
+
+// ensureNftTable creates the linko table and flushes it, so the subsequent
+// nft -f can safely define the full ruleset without worrying about stale
+// data from a previous run. Using separate nft commands avoids any need
+// for shell syntax inside the nftables template.
+func (l *linuxFirewallManager) ensureNftTable() error {
+	// add table is a no-op if it already exists.
+	cmd := exec.Command("sudo", "nft", "add", "table", "ip", "linko")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("nft add table ip linko: %w\nstderr: %s", err, stderr.String())
 	}
 
-	if err := l.createForceIPSet(); err != nil {
-		return fmt.Errorf("failed to create force ipset: %w", err)
+	// flush clears all chains, rules, and set elements.
+	cmd = exec.Command("sudo", "nft", "flush", "table", "ip", "linko")
+	stderr.Reset()
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("nft flush table ip linko: %w\nstderr: %s", err, stderr.String())
 	}
 
-	proxyPort := l.fm.proxyPort
-	dnsServerPort := l.fm.dnsServerPort
+	return nil
+}
 
-	var rules []string
-
-	// Always add input rules
-	rules = append(rules,
-		fmt.Sprintf("iptables -A INPUT -p udp --dport %s -j ACCEPT", dnsServerPort),
-		fmt.Sprintf("iptables -A INPUT -p tcp --dport %s -j ACCEPT", proxyPort),
-	)
-
-	// Conditionally add redirect rules based on configuration
-	if l.fm.redirectOpt.RedirectDNS {
-		rules = append(rules, fmt.Sprintf("iptables -t nat -A OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", dnsServerPort))
+// applyNftConfig applies the nftables config via nft -f (atomic submit).
+func (l *linuxFirewallManager) applyNftConfig() error {
+	cmd := exec.Command("sudo", "nft", "-f", nftConfPath)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("nft -f %s: %w\nstderr: %s", nftConfPath, err, stderr.String())
 	}
+	return nil
+}
+
+// flushConntrack kills existing connection tracking entries on the
+// redirected ports. Without this, previously established connections would
+// keep bypassing the new DNAT rules because conntrack already knows about
+// them. After flushing, connections are re-established through the new rules.
+//
+// Each port uses the correct L4 protocol: TCP for HTTP/S/SSH, UDP for DNS.
+// Only ports that are actually being redirected are flushed.
+func (l *linuxFirewallManager) flushConntrack() {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// (port, protocol) pairs that are actually being redirected.
+	type portProto struct {
+		port string
+		proto string
+	}
+	var targets []portProto
 
 	if l.fm.redirectOpt.RedirectHTTP {
-		rules = append(rules,
-			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetForceName),
-			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
-			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", proxyPort),
-		)
+		targets = append(targets, portProto{"80", "tcp"})
 	}
-
 	if l.fm.redirectOpt.RedirectHTTPS {
-		rules = append(rules,
-			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetForceName),
-			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
-			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
-		)
+		targets = append(targets, portProto{"443", "tcp"})
 	}
-
 	if l.fm.redirectOpt.RedirectSSH {
-		rules = append(rules,
-			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 22 -m set --match-set %s dst -j ACCEPT", ipsetForceName),
-			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 22 -m set --match-set %s dst -j ACCEPT", ipsetName),
-			fmt.Sprintf("iptables -t nat -A OUTPUT -p tcp --dport 22 -j REDIRECT --to-port %s", proxyPort),
+		targets = append(targets, portProto{"22", "tcp"})
+	}
+	if l.fm.redirectOpt.RedirectDNS {
+		targets = append(targets, portProto{"53", "udp"})
+	}
+
+	for _, t := range targets {
+		cmd := exec.CommandContext(ctx, "sudo", "conntrack", "-D",
+			"-p", t.proto, "--dport", t.port)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			// conntrack exits 1 when no entries match — that's expected.
+			// Other errors (tool missing, permission denied) are worth noting.
+			slog.Debug("conntrack -D (expected if no entries exist)",
+				"port", t.port, "proto", t.proto,
+				"error", err, "stderr", stderr.String(),
+			)
+		}
+	}
+
+	if len(targets) > 0 {
+		slog.Info("flushed conntrack entries",
+			"targets", targets,
 		)
 	}
-
-	for _, rule := range rules {
-		cmd := exec.Command("sudo", "sh", "-c", rule)
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to execute rule %s: %w", rule, err)
-		}
-	}
-
-	return nil
 }
 
-func (l *linuxFirewallManager) createIPSet() error {
-	cmd := exec.Command("sudo", "ipset", "list", "-n")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("ipset not available: %w", err)
-	}
-
-	cmd = exec.Command("sudo", "ipset", "destroy", ipsetName)
-	cmd.Run()
-
-	cmd = exec.Command("sudo", "ipset", "create", ipsetName, "hash:net", "family", "inet")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to create ipset: %w", err)
-	}
-
-	if err := l.addReservedIPsToIPSet(); err != nil {
-		return fmt.Errorf("failed to add reserved IPs: %w", err)
-	}
-
-	if l.fm.skipCN {
-		if err := l.addChinaIPsToIPSet(); err != nil {
-			return fmt.Errorf("failed to add China IPs: %w", err)
-		}
-	}
-
-	return nil
-}
-
-func (l *linuxFirewallManager) addReservedIPsToIPSet() error {
-	addresses := strings.Join(ipdb.GetReservedCIDRs(), "\n")
-	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | ipset add - %s", addresses, ipsetName))
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-
-	// 添加域名解析出的 IP
-	for _, ip := range l.fm.resolvedDomainIPs {
-		cmd := exec.Command("sudo", "ipset", "add", ipsetName, ip)
-		if err := cmd.Run(); err != nil {
-			slog.Warn("Failed to add domain IP to ipset", "ip", ip, "error", err)
-			continue
-		}
-	}
-
-	return nil
-}
-
-func (l *linuxFirewallManager) addChinaIPsToIPSet() error {
-	if err := ipdb.LoadChinaIPRanges(); err != nil {
-		return fmt.Errorf("failed to load China IP ranges: %w", err)
-	}
-
-	chinaIPs, _ := ipdb.GetChinaCIDRs()
-	if len(chinaIPs) == 0 {
-		return nil
-	}
-
-	addresses := strings.Join(chinaIPs, "\n")
-	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | ipset add - %s", addresses, ipsetName))
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (l *linuxFirewallManager) createForceIPSet() error {
-	// Destroy existing force ipset if it exists
-	cmd := exec.Command("sudo", "ipset", "destroy", ipsetForceName)
-	cmd.Run()
-
-	cmd = exec.Command("sudo", "ipset", "create", ipsetForceName, "hash:net", "family", "inet")
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to create force ipset: %w", err)
-	}
-
-	if err := l.addForceProxyIPsToIPSet(); err != nil {
-		return fmt.Errorf("failed to add force proxy IPs: %w", err)
-	}
-
-	return nil
-}
-
-func (l *linuxFirewallManager) addForceProxyIPsToIPSet() error {
-	forceProxyIPs := l.fm.forceProxyIPs
-	if len(forceProxyIPs) == 0 {
-		return nil
-	}
-
-	addresses := strings.Join(forceProxyIPs, "\n")
-	cmd := exec.Command("sudo", "sh", "-c", fmt.Sprintf("echo -e '%s' | ipset add - %s", addresses, ipsetForceName))
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (l *linuxFirewallManager) destroyIPSet() {
-	exec.Command("sudo", "ipset", "destroy", ipsetName).Run()
-	exec.Command("sudo", "ipset", "destroy", ipsetForceName).Run()
-}
-
+// CleanupFirewallRules removes all nftables rules created by linko.
 func (l *linuxFirewallManager) CleanupFirewallRules() error {
-	proxyPort := l.fm.proxyPort
-	dnsServerPort := l.fm.dnsServerPort
-
-	var rules []string
-
-	// Always clean up input rules
-	rules = append(rules,
-		fmt.Sprintf("iptables -D INPUT -p tcp --dport %s -j ACCEPT", proxyPort),
-		fmt.Sprintf("iptables -D INPUT -p udp --dport %s -j ACCEPT", dnsServerPort),
-	)
-
-	// Conditionally clean up redirect rules based on configuration
-	if l.fm.redirectOpt.RedirectHTTPS {
-		rules = append(rules,
-			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -j REDIRECT --to-port %s", proxyPort),
-			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 443 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		)
+	// Atomic removal: deleting the table removes all chains and sets at once.
+	cmd := exec.Command("sudo", "nft", "delete", "table", "ip", "linko")
+	if err := cmd.Run(); err != nil {
+		// Table may not exist — that's fine
+		slog.Debug("nft delete table (may be already gone)", "error", err)
 	}
 
-	if l.fm.redirectOpt.RedirectSSH {
-		rules = append(rules,
-			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 22 -j REDIRECT --to-port %s", proxyPort),
-			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 22 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		)
-	}
+	// Remove the config file
+	_ = exec.Command("sudo", "rm", "-f", nftConfPath).Run()
 
-	if l.fm.redirectOpt.RedirectHTTP {
-		rules = append(rules,
-			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -j REDIRECT --to-port %s", proxyPort),
-			fmt.Sprintf("iptables -t nat -D OUTPUT -p tcp --dport 80 -m set --match-set %s dst -j ACCEPT", ipsetName),
-		)
-	}
+	// Clean up the cgroup directory. If linko is still running, removal
+	// will fail with EBUSY — that's expected and the cgroup will be
+	// cleaned up on the next reboot or by 'linko cleanup'.
+	CleanupLinkoCgroup()
 
-	if l.fm.redirectOpt.RedirectDNS {
-		rules = append(rules, fmt.Sprintf("iptables -t nat -D OUTPUT -p udp --dport 53 -j REDIRECT --to-port %s", dnsServerPort))
-	}
-
-	for _, rule := range rules {
-		cmd := exec.Command("sudo", "sh", "-c", rule)
-		cmd.Run()
-	}
-
-	l.destroyIPSet()
-
+	slog.Info("nftables firewall rules cleaned up")
 	return nil
 }
 
-func (l *linuxFirewallManager) CheckFirewallStatus() (map[string]interface{}, error) {
-	stats := make(map[string]interface{})
+// CheckFirewallStatus returns the current nftables ruleset status.
+func (l *linuxFirewallManager) CheckFirewallStatus() (map[string]any, error) {
+	stats := make(map[string]any)
 
-	cmd := exec.Command("sudo", "iptables", "-t", "nat", "-L", "-n", "-v")
+	// Check if the linko table exists
+	cmd := exec.Command("sudo", "nft", "list", "table", "ip", "linko")
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
@@ -251,56 +460,77 @@ func (l *linuxFirewallManager) CheckFirewallStatus() (map[string]interface{}, er
 		stats["error"] = err.Error()
 	} else {
 		stats["enabled"] = true
-		stats["output"] = stdout.String()
+		stats["ruleset"] = stdout.String()
 	}
-
-	cmd = exec.Command("sudo", "ipset", "list", ipsetName)
-	var ipsetBuf bytes.Buffer
-	cmd.Stdout = &ipsetBuf
-	cmd.Run()
-	stats["ipset"] = ipsetBuf.String()
 
 	return stats, nil
 }
 
+// GetCurrentRules returns the current nftables rules as structured rules.
 func (l *linuxFirewallManager) GetCurrentRules() ([]FirewallRule, error) {
-	cmd := exec.Command("sudo", "iptables", "-t", "nat", "-L", "OUTPUT", "-n")
+	cmd := exec.Command("sudo", "nft", "-a", "list", "table", "ip", "linko")
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("failed to get Linux rules: %w", err)
+		return nil, fmt.Errorf("list nftables rules: %w", err)
 	}
-
-	return l.parseLinuxRules(stdout.String()), nil
+	return parseNftablesRules(stdout.String()), nil
 }
 
-func (l *linuxFirewallManager) parseLinuxRules(output string) []FirewallRule {
+// parseNftablesRules does a best-effort parse of nftables output for display.
+// Uses "dport <port>" or "dport { <port" patterns to avoid false matches
+// on port-like substrings in IP addresses or comments.
+func parseNftablesRules(output string) []FirewallRule {
 	var rules []FirewallRule
-	lines := strings.Split(output, "\n")
-
-	for _, line := range lines {
-		if strings.Contains(line, "REDIRECT") && strings.Contains(line, "53") {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.Contains(line, "dnat") {
+			continue
+		}
+		// Match on "dport <N>" or "dport { <N" to avoid false positives
+		// (e.g. "dport 53" matches port 53, "53" alone might match anywhere).
+		if strings.Contains(line, "dport 53") || strings.Contains(line, "dport { 53") {
 			rules = append(rules, FirewallRule{
-				Protocol: "udp",
-				DstPort:  "53",
-				Target:   "REDIRECT",
+				Protocol: "udp", DstPort: "53", Target: "DNAT",
 			})
 		}
-		if strings.Contains(line, "REDIRECT") && strings.Contains(line, "80") {
+		if strings.Contains(line, "dport 80") || strings.Contains(line, "dport { 80") {
 			rules = append(rules, FirewallRule{
-				Protocol: "tcp",
-				DstPort:  "80",
-				Target:   "REDIRECT",
+				Protocol: "tcp", DstPort: "80", Target: "DNAT",
 			})
 		}
-		if strings.Contains(line, "REDIRECT") && strings.Contains(line, "443") {
+		if strings.Contains(line, "dport 443") || strings.Contains(line, "dport { 443") {
 			rules = append(rules, FirewallRule{
-				Protocol: "tcp",
-				DstPort:  "443",
-				Target:   "REDIRECT",
+				Protocol: "tcp", DstPort: "443", Target: "DNAT",
+			})
+		}
+		if strings.Contains(line, "dport 22") || strings.Contains(line, "dport { 22") {
+			rules = append(rules, FirewallRule{
+				Protocol: "tcp", DstPort: "22", Target: "DNAT",
 			})
 		}
 	}
-
 	return rules
+}
+
+// filterIPv4 returns only the valid IPv4 addresses from the given list.
+// IPv6 addresses and invalid entries are silently filtered out. This is
+// used when populating nftables sets of type ipv4_addr, which cannot
+// contain IPv6 addresses ("Address family for hostname not supported").
+func filterIPv4(addrs []string) []string {
+	if len(addrs) == 0 {
+		return nil
+	}
+	v4 := make([]string, 0, len(addrs))
+	for _, s := range addrs {
+		ip := net.ParseIP(s)
+		if ip == nil {
+			continue // not a valid IP
+		}
+		if ip.To4() == nil {
+			continue // IPv6 or other; ipv4_addr set can't hold it
+		}
+		v4 = append(v4, s)
+	}
+	return v4
 }

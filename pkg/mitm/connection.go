@@ -92,7 +92,7 @@ func (h *ConnectionHandler) HandleConnection(clientConn net.Conn, targetIP net.I
 			return fmt.Errorf("failed to connect to upstream: %w", err)
 		}
 	} else {
-		serverConn, err = net.DialTCP("tcp", nil, &net.TCPAddr{IP: targetIP, Port: targetPort})
+		serverConn, err = net.Dial("tcp", net.JoinHostPort(targetHost, fmt.Sprintf("%d", targetPort)))
 		if err != nil {
 			return fmt.Errorf("failed to connect to target: %w", err)
 		}

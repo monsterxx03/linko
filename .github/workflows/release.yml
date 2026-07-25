@@ -45,6 +45,14 @@ jobs:
               run: |
                 CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=${{ steps.version.outputs.VERSION }}" -o bin/linko-darwin-amd64 ./cmd/linko
 
+            - name: Build Linux arm64
+              run: |
+                CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=${{ steps.version.outputs.VERSION }}" -o bin/linko-linux-arm64 ./cmd/linko
+
+            - name: Build Linux amd64
+              run: |
+                CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X github.com/monsterxx03/linko/pkg/version.Version=${{ steps.version.outputs.VERSION }}" -o bin/linko-linux-amd64 ./cmd/linko
+
             - name: Create Release
               id: create_release
               uses: softprops/action-gh-release@v2
@@ -52,6 +60,8 @@ jobs:
                   files: |
                       bin/linko-darwin-arm64
                       bin/linko-darwin-amd64
+                      bin/linko-linux-arm64
+                      bin/linko-linux-amd64
                   tag_name: ${{ github.ref_name }}
                   name: Release ${{ github.ref_name }}
                   draft: false

@@ -97,6 +97,8 @@ func runMITM(cmd *cobra.Command, args []string) {
 }
 
 // getSystemDNS reads the system default DNS servers from /etc/resolv.conf
+// and returns only IPv4 addresses. IPv6 addresses are filtered out because
+// firewall rules use ipv4_addr sets which cannot hold IPv6 entries.
 func getSystemDNS() []string {
 	data, err := os.ReadFile("/etc/resolv.conf")
 	if err != nil {
@@ -110,11 +112,15 @@ func getSystemDNS() []string {
 		if strings.HasPrefix(line, "nameserver") {
 			parts := strings.Fields(line)
 			if len(parts) >= 2 {
-				ip := parts[1]
-				// Validate IP address
-				if net.ParseIP(ip) != nil {
-					nameservers = append(nameservers, ip)
+				ip := net.ParseIP(parts[1])
+				if ip == nil {
+					continue
 				}
+				// Only IPv4 — nftables china_dns set is type ipv4_addr
+				if ip.To4() == nil {
+					continue
+				}
+				nameservers = append(nameservers, ip.String())
 			}
 		}
 	}

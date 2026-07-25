@@ -40,25 +40,23 @@ func ResolveHosts(hosts []string, dnsServers []string) ([]string, error) {
 	return result, nil
 }
 
-// resolveDomainWithSystemDNS resolves a domain using the system's default DNS.
+// resolveDomainWithSystemDNS resolves a domain to IPv4 addresses using the system DNS.
 func resolveDomainWithSystemDNS(domain string) ([]string, error) {
-	// Use system DNS resolver
-	addrs, err := net.DefaultResolver.LookupIP(context.Background(), "ip", domain)
+	// Use "ip4" to only query A records — firewall rules only support IPv4
+	addrs, err := net.DefaultResolver.LookupIP(context.Background(), "ip4", domain)
 	if err != nil {
 		return nil, err
 	}
 
 	var ips []string
 	for _, ip := range addrs {
-		if ipv4 := ip.To4(); ipv4 != nil {
-			ips = append(ips, ipv4.String())
-		}
+		ips = append(ips, ip.String())
 	}
 
 	return ips, nil
 }
 
-// resolveDomain resolves a single domain to IPv4 addresses using the specified DNS server.
+// resolveDomain resolves a domain to IPv4 addresses using the specified DNS server.
 func resolveDomain(domain string, dnsServer string) ([]string, error) {
 	// Create a custom resolver that uses the specified DNS server
 	resolver := &net.Resolver{
@@ -71,17 +69,15 @@ func resolveDomain(domain string, dnsServer string) ([]string, error) {
 
 	ctx := context.Background()
 
-	// Lookup A records (IPv4)
-	addrs, err := resolver.LookupIP(ctx, "ip", domain)
+	// Use "ip4" to only query A records — firewall rules only support IPv4
+	addrs, err := resolver.LookupIP(ctx, "ip4", domain)
 	if err != nil {
 		return nil, err
 	}
 
 	var ips []string
 	for _, ip := range addrs {
-		if ipv4 := ip.To4(); ipv4 != nil {
-			ips = append(ips, ipv4.String())
-		}
+		ips = append(ips, ip.String())
 	}
 
 	return ips, nil
